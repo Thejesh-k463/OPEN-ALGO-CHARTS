@@ -511,7 +511,9 @@ const buildEventMarkers: BuildFn = (el, lib, _tab) => {
   el.style.position = 'relative';
   const legend = document.createElement('div');
   legend.className = 'oac-legend oac-legend--multi';
-  legend.innerHTML = '<span class="oac-dot" style="background:#26a69a"></span>Dividend <span class="oac-dot" style="background:#f0a020"></span>Earnings <span class="oac-dot" style="background:#4f8cff"></span>Split <span class="oac-dot" style="background:#ef5350"></span>Expiry';
+  // One element per entry: the legend is a flex column, so a loose swatch and
+  // label became separate rows, each swatch sitting above its own name.
+  legend.innerHTML = '<span><span class="oac-dot" style="background:#26a69a"></span>Dividend</span><span><span class="oac-dot" style="background:#f0a020"></span>Earnings</span><span><span class="oac-dot" style="background:#4f8cff"></span>Split</span><span><span class="oac-dot" style="background:#ef5350"></span>Expiry</span>';
   el.appendChild(legend);
   chart.timeScale.fitContent(bars.length);
   return chart;

@@ -2203,11 +2203,15 @@ return chart;`} />
 
 <div>
 ### Draw it yourself
-<RunnableExample hideCode height={320} tiers={['draw']} caption="Click the buttons, then click the chart to place anchors. Drag a shape or its handles; press Delete to remove the selection." code={`const wrap = document.createElement('div');
+<RunnableExample hideCode height={320} tiers={['draw']} caption="Click the buttons, then click the chart to place anchors. Drag a shape or its handles; press Delete to remove the selection." code={`// The buttons wrap onto a second row in a narrow column, so the chart takes
+// whatever height they leave rather than a fixed one that overflows the card.
+el.style.display = 'flex';
+el.style.flexDirection = 'column';
+const wrap = document.createElement('div');
 wrap.style.cssText = 'display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap';
 el.appendChild(wrap);
 const host = document.createElement('div');
-host.style.cssText = 'height:270px';
+host.style.cssText = 'flex:1;min-height:0';
 el.appendChild(host);
 
 const chart = lib.createChart(host);
