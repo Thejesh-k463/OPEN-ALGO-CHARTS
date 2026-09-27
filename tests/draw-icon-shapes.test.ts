@@ -38,9 +38,17 @@ const same = (a: Pt, b: Pt): boolean => len(sub(a, b)) < EPS;
 /** Parallel and pointing the same way. */
 const along = (a: Pt, b: Pt): boolean => Math.abs(cross(a, b)) < EPS && dotp(a, b) > 0;
 
-/** Every straight segment of a glyph. */
+/**
+ * Every straight segment of a glyph, the closing edge of a closed subpath
+ * included: a `z` strokes that edge as surely as an `L` does.
+ */
 function lines(d: string): [Pt, Pt][] {
-  return subpaths(d).flatMap((s) => s.segments.filter((g) => g.kind === 'L').map((g) => [g.from, g.to] as [Pt, Pt]));
+  return subpaths(d).flatMap((s) => {
+    const out = s.segments.filter((g) => g.kind === 'L').map((g) => [g.from, g.to] as [Pt, Pt]);
+    const last = s.segments[s.segments.length - 1];
+    if (s.closed && last !== undefined && !same(last.to, s.start)) out.push([last.to, s.start]);
+    return out;
+  });
 }
 
 /** True when `p` lies on the segment `a`..`b`. */
@@ -289,22 +297,36 @@ describe('the Fibonacci and Gann constructions', () => {
     }
   });
 
-  it('draws the speed resistance fan in its box: rays from one corner to both far edges', () => {
-    // The tool draws the box the two anchors span and splits both far edges
-    // at the same levels, so the fan opens both ways about the diagonal. The
-    // old glyph drew only the near axes and was the speed fan beside it.
+  it('draws the speed resistance fan as its tool does: the far edges of its box, and rays to both', () => {
+    // The tool marks the box the two anchors span by its two far edges only,
+    // and splits both at the same levels, so the fan opens both ways about
+    // the diagonal. The glyph of 2.5.8 drew the near axes and was the speed
+    // fan beside it; a whole box made it the Gann box and square, which sit
+    // in the same flyout.
     const d = glyph('fib-speed-resistance-fan');
-    const frame = box(d);
-    expect(frame, 'a box').toBeDefined();
-    const { corners, edges } = frame!;
-    const fanned = corners.filter((O) => {
-      const far = edges.filter(([a, b]) => !same(a, O) && !same(b, O));
-      const rays = lines(d).filter(([a, b]) => same(a, O) || same(b, O)).map(([a, b]) => (same(a, O) ? b : a));
-      const opposite = corners.find((k) => far.every(([a, b]) => same(a, k) || same(b, k)))!;
-      const interior = (e: [Pt, Pt]): boolean => rays.some((r) => onSegment(r, e) && !same(r, e[0]) && !same(r, e[1]));
-      return drawn(d, O, opposite) && far.every(interior);
-    });
-    expect(fanned).toHaveLength(1);
+    const segs = lines(d);
+    const axial = (a: Pt, b: Pt): boolean => a[0] === b[0] || a[1] === b[1];
+    const fans: Pt[] = [];
+    for (const s of segs) {
+      for (const t of segs) {
+        if (s === t || !axial(...s) || !axial(...t)) continue;
+        // Two edges of the box meeting square at its far corner B.
+        const B = [s[0], s[1]].find((p) => same(p, t[0]) || same(p, t[1]));
+        if (B === undefined) continue;
+        const E1 = same(s[0], B) ? s[1] : s[0];
+        const E2 = same(t[0], B) ? t[1] : t[0];
+        if (Math.abs(dotp(sub(E1, B), sub(E2, B))) > EPS) continue;
+        const O = sub(add(E1, E2), B);
+        const rays = segs.filter(([a, b]) => same(a, O) || same(b, O)).map(([a, b]) => (same(a, O) ? b : a));
+        const interior = (e: [Pt, Pt]): boolean => rays.some((r) => onSegment(r, e) && !same(r, e[0]) && !same(r, e[1]));
+        const lies = (e: [Pt, Pt]): boolean => segs.some((g) => !same(g[0], g[1]) && onSegment(g[0], e) && onSegment(g[1], e));
+        const far: [Pt, Pt][] = [[B, E1], [B, E2]];
+        const near: [Pt, Pt][] = [[O, E1], [O, E2]];
+        if (drawn(d, O, B) && far.every(interior) && !near.some(lies)) fans.push(O);
+      }
+    }
+    expect(fans.length, 'one corner fanning to the far edges, with no near edge drawn').toBeGreaterThan(0);
+    expect(fans.every((O) => same(O, fans[0]))).toBe(true);
   });
 
   it('draws the Dedekind tessellation as its tool does: arcs standing on the base of a square', () => {
@@ -352,7 +374,11 @@ describe('the supersonic pair are waves inside a Mach cone', () => {
     expect(rings.length).toBeGreaterThanOrEqual(2);
     for (const { c, r } of rings) {
       expect(toLine(c, nose, axis), 'on the axis').toBeLessThan(EPS);
-      for (const side of ends) expect(Math.abs(toLine(c, nose, side) - r), `${id} ring ${r} against its side`).toBeLessThan(0.6);
+      // Whole units put a side's slope a little off the exact one, and the
+      // smallest golden wave sits a third of a unit inside so that the next
+      // wave's line does not fill it; half a unit off would read as a ring
+      // crossing the cone rather than touching it.
+      for (const side of ends) expect(Math.abs(toLine(c, nose, side) - r), `${id} ring ${r} against its side`).toBeLessThan(0.4);
     }
   });
 

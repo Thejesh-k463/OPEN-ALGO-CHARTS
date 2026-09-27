@@ -64,7 +64,9 @@ const allPairs = (ids: readonly string[]): [string, string][] =>
  * construction families were redrawn to their tools in 2.5.9 and are held
  * here too: four pitchforks that share one head and differ in where the
  * median starts, and the harmonics, which share one zigzag and differ in
- * their ratios. The supersonic pair were 0.80 before.
+ * their ratios. The supersonic pair were 0.80 before. The speed resistance
+ * fan sits under the Gann box and square in its flyout, and drawn in a whole
+ * box it was the closest pair of the tier, at 0.71.
  */
 const SIBLINGS: Record<Tier, [string, string][]> = {
   tools: [
@@ -77,7 +79,8 @@ const SIBLINGS: Record<Tier, [string, string][]> = {
     ...allPairs(['pitchfork', 'schiff-pitchfork', 'modified-schiff-pitchfork', 'inside-pitchfork']),
     ...allPairs(['xabcd-pattern', 'gartley', 'bat', 'butterfly', 'crab', 'shark', 'cypher']),
     ['supersonic', 'golden-supersonic'], ['sonic', 'supersonic'], ['golden-sonic', 'golden-supersonic'],
-    ['fib-speed-resistance-fan', 'fib-speed-fan'], ['fib-wedge', 'fib-speed-resistance-arcs'],
+    ['fib-speed-resistance-fan', 'fib-speed-fan'], ['fib-speed-resistance-fan', 'gann-box'],
+    ['fib-speed-resistance-fan', 'gann-square'], ['fib-wedge', 'fib-speed-resistance-arcs'],
     ['fib-wedge', 'fib-fan'], ['fib-circles', 'circle'],
   ],
   chrome: [['lock', 'unlock'], ['cursor', 'plus'], ['trash', 'paste']],
@@ -86,10 +89,10 @@ const SIBLING_CEILING = 0.7;
 
 /**
  * Share of a tier's inked pixels that are solid at native size, as the
- * builders draw them. Measured at 0.62 for the tools and 0.62 for chrome in
+ * builders draw them. Measured at 0.61 for the tools and 0.62 for chrome in
  * all three engines; a floor far under that lets a real loss through. The
- * tools measured 0.59 until the pitchforks, drawn on the diagonal at 0.22,
- * were redrawn upright in 2.5.9.
+ * tools measured 0.59 until the pitchforks, drawn on the diagonal at 0.22
+ * to 0.24, were redrawn upright in 2.5.9.
  */
 const CRISP_FLOOR: Record<Tier, number> = { tools: 0.6, chrome: 0.6 };
 

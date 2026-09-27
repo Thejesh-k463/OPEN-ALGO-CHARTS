@@ -215,10 +215,12 @@ export const DRAWING_TOOL_ICONS: Readonly<Record<string, string>> = {
   'inside-pitchfork': FORK_HEAD + 'M12 2v8M5 10l7 10 7-10' + INSIDE_PIVOT,
 
   'fib-extension-two-point': 'M3 4h18M3 10h18M3 16h18M3 21h18M6 4v12',
-  // The box the two anchors span, with its diagonal and the half levels on
-  // both far edges, as the tool draws it. With only the near axes it was the
-  // speed fan glyph again with one more ray.
-  'fib-speed-resistance-fan': 'M3 3h18v18H3zM3 21 21 3M21 12 3 21 12 3',
+  // The tool marks the box its anchors span by the two far edges alone and
+  // fans out to both from the first anchor: the diagonal, and the half level
+  // on each edge. With the near axes it was the speed fan again with one
+  // more ray; with the whole box it was the Gann box and Gann square beside
+  // it in the same flyout, at 0.68 and 0.71 overlap.
+  'fib-speed-resistance-fan': 'M3 3h18v18M3 21 21 3M21 12 3 21 12 3',
   'icon-stamp': 'M12 3l3 6 6 3-6 3-3 6-3-6-6-3 6-3z',
   // ── shapes ──────────────────────────────────────────────────────────────
   rectangle: 'M3 5h18v14H3z',
@@ -269,8 +271,10 @@ export const DRAWING_TOOL_ICONS: Readonly<Record<string, string>> = {
   // Waves inside the Mach cone, each on its axis and tangent to both sides,
   // as the tool draws them. The two tools differ only in their levels, and
   // so do the glyphs: equal steps for the one, radii 2, 3 and 5 for the
-  // golden one. The half rings across the cone they replaced matched
-  // nothing either tool draws.
+  // golden one. The smallest golden wave sits a third of a unit inside the
+  // cone: exactly tangent, it would be centred where the next wave's line
+  // passes, and that line would fill it solid. The half rings across the
+  // cone they replaced matched nothing either tool draws.
   supersonic: 'M22 3 2 12l20 9' + ring(7, 12, 2) + ring(12, 12, 4),
   'golden-sonic': 'M3 12a9 9 0 0 1 18 0M7 12a5 5 0 0 1 10 0M10 12a2 2 0 0 1 4 0M3 16h18M12 16v5',
   'golden-supersonic': 'M22 5 2 12l20 7' + ring(7, 12, 2) + ring(11, 12, 3) + ring(17, 12, 5),
