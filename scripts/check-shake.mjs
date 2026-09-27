@@ -225,8 +225,10 @@ const BUNDLE = new URL('../dist/openalgo-charts.mjs', import.meta.url).pathname.
 // of detail's column reducer, the per-series draw items and point buffers that
 // keep a frame from allocating per bar, the hit boxes behind the hit-test
 // prefilter, the time index kept across plot writes and the pane-scoped
-// repaint. 85883 bytes (83.87 KiB), up 3074; allow 83.88 KiB.
-const LIMIT_BYTES = 83.88 * 1024;
+// repaint. 85883 bytes (83.87 KiB), up 3074; allow 83.88 KiB. Line-family
+// series carrying the bar beyond each edge of the view (connectsBars), 85954
+// bytes (83.94 KiB), up 71; allow 83.94 KiB.
+const LIMIT_BYTES = 83.94 * 1024;
 
 // Absent from a chart-only build. Each is a string that appears in the adapter
 // source and nowhere in the rendering core.

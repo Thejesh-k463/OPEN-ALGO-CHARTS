@@ -70,9 +70,10 @@ describe('barOffset on a series', () => {
     paint();
     const after = rec.calls[rec.calls.length - 1];
     // Bars 8 and 9 would land past the right edge (slots 14 and 15 of a
-    // viewport that ends at 13), so they are culled; the rest paint six bars
-    // to the right of where they were.
-    expect(after.items.map((it) => it.bar.time)).toEqual(data.slice(0, 8).map((b) => b.time));
+    // viewport that ends at 13). A line keeps bar 8, the nearest bar beyond the
+    // edge, so its last segment runs out to the edge; bar 9 is culled. The rest
+    // paint six bars to the right of where they were.
+    expect(after.items.map((it) => it.bar.time)).toEqual(data.slice(0, 9).map((b) => b.time));
     for (let i = 0; i < after.items.length; i++) {
       expect(after.items[i].x - before.items[i].x).toBeCloseTo(6 * spacing, 6);
     }
