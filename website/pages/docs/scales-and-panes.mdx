@@ -99,7 +99,7 @@ for (const [key, label] of [['panEnabled', 'Pan'], ['zoomEnabled', 'Zoom']]) {
     event.preventDefault();
     button.focus({ preventScroll: true });
   };
-  button.style.cssText = 'padding:5px 9px;border:1px solid #64748b;border-radius:4px;background:#172033;color:#e2e8f0;font:12px sans-serif;cursor:pointer';
+  button.style.cssText = 'padding:5px 9px;border:1px solid light-dark(#e4e4e4,#64748b);border-radius:4px;background:light-dark(#fff,#172033);color:light-dark(#151515,#e2e8f0);font:12px sans-serif;cursor:pointer';
   const refresh = () => {
     const on = chart.navigationOptions()[key] !== false;
     button.textContent = label + (on ? ' on' : ' off');
@@ -396,7 +396,7 @@ chart.addSeries('histogram', { paneIndex: 2 })
 chart.addPriceLine({ price: bars[bars.length - 1].close, color: '#4f8cff', lineWidth: 1, id: 'last' });
 chart.timeScale.fitContent(bars.length);
 const say = document.createElement('span');
-say.style.cssText = 'align-self:center;color:#94a3b8;font:12px system-ui, sans-serif';
+say.style.cssText = 'align-self:center;color:light-dark(#686868,#94a3b8);font:12px system-ui, sans-serif';
 const render = () => { say.textContent = 'Price pane in slot ' + chart.primaryPaneIndex(); };
 for (const [label, run] of [
   ['Price on top', () => chart.setPrimaryPaneIndex(0)],
@@ -406,7 +406,7 @@ for (const [label, run] of [
 ]) {
   const button = document.createElement('button');
   button.textContent = label;
-  button.style.cssText = 'padding:5px 10px;border:1px solid #334155;border-radius:4px;background:#172033;color:#e2e8f0;cursor:pointer';
+  button.style.cssText = 'padding:5px 10px;border:1px solid light-dark(#e4e4e4,#334155);border-radius:4px;background:light-dark(#fff,#172033);color:light-dark(#151515,#e2e8f0);cursor:pointer';
   button.onpointerdown = (event) => event.stopPropagation();
   button.onclick = () => { run(); render(); };
   controls.appendChild(button);

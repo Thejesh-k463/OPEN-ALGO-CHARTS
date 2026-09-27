@@ -15,6 +15,13 @@ assert.ok(selected.length > 0 && selected.every(name => Object.hasOwn(engines, n
 await mkdir(output, { recursive: true });
 const results = [];
 const paint = page => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+// The demo colours its table for the chart's palette, and the chart follows the
+// site theme, so each scenario names the exact colours it must find painted.
+// `ink` classifies a thresholded pixel as belonging to that colour's glyphs.
+const PALETTES = {
+  dark: { backdrop: '#17202e', backdropRgb: [23, 32, 46], border: '#40506a', text: '#e2e8f0', up: '#4ade80', neutral: '#fbbf24' },
+  light: { backdrop: '#f8fafc', backdropRgb: [248, 250, 252], border: '#cbd5e1', text: '#1e293b', up: '#15803d', neutral: '#b45309' },
+};
 
 async function activateControl(target, browser) {
   if (browser !== 'webkit') return target.click();
@@ -32,8 +39,8 @@ async function activateControl(target, browser) {
   await target.press('Space');
 }
 
-async function observeCanvas(page) {
-  await page.addInitScript(() => {
+async function observeCanvas(page, palette) {
+  await page.addInitScript(palette => {
     const frames = new WeakMap();
     window.__tableWebsiteFrames = frames;
     const labels = new Set(['Metric', 'Reading', 'Moving averages', 'Up', 'Momentum', 'Neutral']);
@@ -52,14 +59,14 @@ async function observeCanvas(page) {
     // The demo's backdrop starts a table frame. All original canvas methods
     // still run; the assertions below read their resulting bitmap pixels.
     prototype.fillRect = function (x, y, width, height) {
-      if (this.fillStyle === '#17202e') {
+      if (this.fillStyle === palette.backdrop) {
         frames.set(this.canvas, { bounds: bounds(this, x, y, width, height), cells: [], texts: [] });
       }
       return fillRect.call(this, x, y, width, height);
     };
     prototype.strokeRect = function (x, y, width, height) {
       const frame = frames.get(this.canvas);
-      if (frame && this.strokeStyle === '#40506a') frame.cells.push(bounds(this, x, y, width, height));
+      if (frame && this.strokeStyle === palette.border) frame.cells.push(bounds(this, x, y, width, height));
       return strokeRect.call(this, x, y, width, height);
     };
     prototype.fillText = function (text, x, y, ...rest) {
@@ -75,11 +82,11 @@ async function observeCanvas(page) {
       }
       return fillText.call(this, text, x, y, ...rest);
     };
-  });
+  }, palette);
 }
 
-async function snapshot(demo) {
-  return demo.evaluate(node => {
+async function snapshot(demo, palette) {
+  return demo.evaluate((node, palette) => {
     const canvas = [...node.querySelectorAll('canvas')].find(item => window.__tableWebsiteFrames.get(item)?.texts.length === 6);
     if (!canvas) return null;
     const frame = window.__tableWebsiteFrames.get(canvas);
@@ -95,6 +102,9 @@ async function snapshot(demo) {
       if (alpha < 150) return false;
       if (color === '#4ade80') return green > 145 && green - red > 55 && green - blue > 35;
       if (color === '#fbbf24') return red > 150 && green > 115 && blue < 100 && red - green < 110;
+      if (color === '#15803d') return green > 90 && red < 110 && green - red > 45 && green - blue > 30;
+      if (color === '#b45309') return red > 130 && red - green > 50 && green - blue > 30;
+      if (color === '#1e293b') return red < 120 && green < 130 && blue < 145 && Math.max(red, green, blue) - Math.min(red, green, blue) < 45;
       return red > 135 && green > 145 && blue > 150 && Math.max(red, green, blue) - Math.min(red, green, blue) < 40;
     };
     const mask = (data, box, color) => {
@@ -128,7 +138,7 @@ async function snapshot(demo) {
     };
     const texts = frame.texts.map(text => {
       control.resetTransform();
-      control.fillStyle = '#17202e';
+      control.fillStyle = palette.backdrop;
       control.fillRect(0, 0, canvas.width, canvas.height);
       control.setTransform(...text.transform);
       control.font = text.font;
@@ -146,7 +156,7 @@ async function snapshot(demo) {
         text: text.text, font: text.font, color: text.color, cell: text.cell,
         ink: actualMask.size, fullInk: fullMask.size,
         referenceCoverage: coverage(fullMask, actualMask), paintedCoverage: coverage(actualMask, fullMask),
-        whiteInk: text.color === '#e2e8f0' ? null : mask(pixels, text.cell, '#e2e8f0').size,
+        neutralInk: text.color === palette.text ? null : mask(pixels, text.cell, palette.text).size,
       };
     });
     // Read the backdrop inside the header border, independently of the
@@ -155,7 +165,8 @@ async function snapshot(demo) {
     let left = -1, right = -1;
     for (let x = 0; x < canvas.width; x++) {
       const at = (scanY * canvas.width + x) * 4;
-      if (pixels[at] === 23 && pixels[at + 1] === 32 && pixels[at + 2] === 46 && pixels[at + 3] === 255) {
+      const [red, green, blue] = palette.backdropRgb;
+      if (pixels[at] === red && pixels[at + 1] === green && pixels[at + 2] === blue && pixels[at + 3] === 255) {
         if (left < 0) left = x;
         right = x;
       }
@@ -165,12 +176,17 @@ async function snapshot(demo) {
       insideCanvas: frame.bounds.x >= 0 && frame.bounds.y >= 0
         && frame.bounds.x + frame.bounds.width <= canvas.width && frame.bounds.y + frame.bounds.height <= canvas.height,
       cells: frame.cells.length, texts,
+      colors: Object.fromEntries(frame.texts.map(text => [text.text, text.color])),
     };
-  });
+  }, palette);
 }
 
-function checkPixels(state, mode) {
+function checkPixels(state, mode, palette) {
   assert.ok(state && state.cells === 6 && state.texts.length === 6, `${mode}: all six cells must render`);
+  assert.deepEqual(state.colors, {
+    Metric: palette.text, Reading: palette.text, 'Moving averages': palette.text,
+    Up: palette.up, Momentum: palette.text, Neutral: palette.neutral,
+  }, `${mode}: every label must use the colours of the active palette`);
   assert.ok(state.insideCanvas, `${mode}: the table must fit inside the visible chart`);
   assert.ok(state.paintedWidth > 0 && Math.abs(state.paintedWidth - state.width) <= 4,
     `${mode}: visible backdrop pixels must follow the table width`);
@@ -181,8 +197,8 @@ function checkPixels(state, mode) {
         `${mode}: ${label.text} must retain its glyph shape within one bitmap pixel `
         + `(reference coverage ${label.referenceCoverage}, painted coverage ${label.paintedCoverage})`);
     }
-    if (label.whiteInk !== null) {
-      assert.equal(label.whiteInk, 0, `${mode}: the neighboring label must not overlap ${label.text}`);
+    if (label.neutralInk !== null) {
+      assert.equal(label.neutralInk, 0, `${mode}: the neighboring label must not overlap ${label.text}`);
     }
   }
   if (mode === 'fixed') {
@@ -217,9 +233,10 @@ try {
           }
         });
         const prefix = `table-sizing-${name}-${scenario.name}`;
+        const palette = PALETTES[scenario.theme];
         const shot = suffix => page.screenshot({ path: join(output, `${prefix}-${suffix}.png`), animations: 'disabled' });
         try {
-          await observeCanvas(page);
+          await observeCanvas(page, palette);
           await page.addInitScript(theme => localStorage.setItem('theme', theme), scenario.theme);
           const response = await page.goto(`${base}/examples/#tables-that-fit-their-text`);
           assert.equal(response?.status(), 200, 'The examples page must load');
@@ -241,8 +258,8 @@ try {
             'The demo must fit its container without horizontal scrolling');
           await expect(toggle).toHaveText('Use fixed columns');
           await expect(status).toHaveText('Automatic widths fit each column.');
-          const automatic = await snapshot(demo);
-          checkPixels(automatic, 'auto');
+          const automatic = await snapshot(demo, palette);
+          checkPixels(automatic, 'auto', palette);
           await shot('automatic');
 
           await activateControl(toggle, name);
@@ -250,8 +267,8 @@ try {
           await expect(toggle).toHaveText('Fit columns to text');
           await expect(status).toHaveText('Fixed 64 px columns clip long text.');
           await paint(page);
-          const fixed = await snapshot(demo);
-          checkPixels(fixed, 'fixed');
+          const fixed = await snapshot(demo, palette);
+          checkPixels(fixed, 'fixed', palette);
           assert.equal(fixed.width, 128, 'Fixed mode must retain two declared 64 px columns');
           assert.ok(automatic.width > fixed.width + 1 && automatic.paintedWidth > fixed.paintedWidth + 1,
             'The native toggle must change both table geometry and its visible width');
@@ -262,8 +279,8 @@ try {
           await expect(toggle).toHaveText('Use fixed columns');
           await expect(status).toHaveText('Automatic widths fit each column.');
           await paint(page);
-          const restored = await snapshot(demo);
-          checkPixels(restored, 'auto');
+          const restored = await snapshot(demo, palette);
+          checkPixels(restored, 'auto', palette);
           assert.equal(restored.width, automatic.width, 'Returning to automatic mode must restore the column widths');
           assert.equal(restored.paintedWidth, automatic.paintedWidth, 'Returning to automatic mode must restore the painted width');
           await shot('restored');

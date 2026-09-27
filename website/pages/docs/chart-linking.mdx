@@ -134,7 +134,7 @@ group.add(right);
 // group has already placed the linked crosshair by the time this runs.
 const out = document.createElement('div');
 out.style.cssText = 'position:absolute;left:10px;top:8px;z-index:5;pointer-events:none;'
-  + 'font:12px ui-monospace,monospace;color:#f0b90b';
+  + 'font:12px ui-monospace,monospace;color:light-dark(#a16207,#f0b90b)';
 rightEl.appendChild(out);
 const fmt = function (t) {
   return t === undefined ? '' : new Date(t * 1000).toISOString().slice(0, 16).replace('T', ' ');
