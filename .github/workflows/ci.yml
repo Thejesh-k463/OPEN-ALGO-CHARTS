@@ -36,6 +36,10 @@ jobs:
         # docs/performance-notes.md quotes the bench's budget table; a budget
         # tightened in one place and not the other fails here.
         run: node scripts/check-render-bench-docs.mjs
+      - name: Release benchmarks match the website page
+        # website/pages/benchmarks.mdx quotes benchmarks/releases.json, the
+        # benchmark each release publishes (npm run bench:release).
+        run: node scripts/check-benchmark-page.mjs
       - name: Verify NOTICE ships in the package
         run: npm pack --dry-run 2>&1 | grep -q "NOTICE" || (echo "NOTICE missing from the npm package (add it to package.json files)" && exit 1)
       - name: No third-party product names in source

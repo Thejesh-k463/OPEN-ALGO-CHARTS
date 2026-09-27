@@ -20,6 +20,10 @@ export default {
     type: 'page',
     theme: { layout: 'full', toc: false },
   },
+  benchmarks: {
+    title: 'Benchmarks',
+    type: 'page',
+  },
   api: {
     title: 'API Reference',
     type: 'page',

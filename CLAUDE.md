@@ -115,7 +115,7 @@ called the draw tier 34 tools while `registeredDrawingTools()` returned 43.
 | Indicators, chart types or drawing tools | Their counts in README, `pages/index.mdx` and `theme.config.tsx` meta descriptions, `components/landing.tsx` stats and feature cards, the diagram |
 | Anything that moves a bundle size | README badge and both size tables, `components/landing.tsx` `STATS`, website Getting Started, `theme.config.tsx` footer and meta description, the diagram subtitle and tier legend |
 | A new descriptor hook or capability | `references/indicators.md`, the website docs page, a live example in `website/pages/examples.mdx` |
-| A release | `CHANGELOG.md`, `website/pages/docs/release-notes.mdx`, and drop every "(unreleased)" marker for what just shipped |
+| A release | `CHANGELOG.md`, `website/pages/docs/release-notes.mdx`, drop every "(unreleased)" marker for what just shipped, and the release benchmark (`npm run bench:release`: `benchmarks/releases.json` and `website/pages/benchmarks.mdx`) |
 
 ### Before every npm publish
 
@@ -134,6 +134,24 @@ does not change what a reader of that release sees. Every item is mandatory:
    meets first.
 7. `.github/skills/` for anything a downstream author would now do differently.
 8. `npm run verify`, then the registry counts, then `npm run skills:coverage`.
+9. **The release benchmark, measured on the build that is about to ship.**
+   After the version bump and the final build, on the reference machine with
+   nothing else running, `npm run bench:release` rebuilds the previous release
+   from its tag, runs the render bench five times on each build in one
+   session, and writes the version's entry into `benchmarks/releases.json` and
+   the website's Benchmarks page. Commit both with the release, and link the
+   entry from the release notes (`/benchmarks#<version without dots>`).
+   `tests/release-benchmarks.test.ts` fails a package version with no entry,
+   and CI fails when the page and the data disagree.
+
+**A benchmark is measured, never carried over.** Like a size, it belongs to the
+build that ships and to the machine and session that timed it. Never copy an
+earlier entry's figures, never compare an entry with another entry measured on
+another machine or day, and never run it while agents, test suites or a browser
+session share the machine: load only adds time, and the previous release is
+timed again in the same session precisely so that both columns share one set of
+conditions. A run of the new build that fails its render bench budgets stops the
+script; that is a regression to fix, not a figure to publish.
 
 **Measure the sizes last, and substitute them by row label.** They move by
 hundredths whenever the bundle changes at all, including from the version string
@@ -166,7 +184,8 @@ not reduce the testing needed for changes to loading, drawing, replay or trading
    notes, current-version references, examples, API docs and skills. Follow the
    measured-facts checklist above; preserve historical release facts. Run the full
    package verification, skills coverage, API generation without warnings and the
-   website build before committing.
+   website build before committing. Run `npm run bench:release` last, on an idle
+   machine, and commit the benchmark entry and page with the release.
 6. Review the final diff and commit using Conventional Commits. Push and wait for
    required CI. Publish only within the user's existing authorization; do not ask
    again when the user has already authorized this release. Otherwise prepare the
