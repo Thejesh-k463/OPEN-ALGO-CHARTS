@@ -609,6 +609,11 @@ the drawing phase already precedes alert restoration.
 
 The controller and its layers belong to the chart they were built on, so a rebuild (interval, chart type, or theme swap) needs `const saved = draw.toJSON(); draw.destroy();` before `chart.destroy()`, then `new DrawingController(newChart).fromJSON(saved)`. Anchors are data, so the shapes land on the same bars even at a different interval.
 
+The chart state holds one drawing document, the one on screen. A host that
+loads several symbols into one chart keeps a document per symbol with
+`InstrumentDrawings` (Drawings per instrument, below): without it the drawings stay on
+screen whatever symbol is loaded.
+
 ## Keyboard
 
 ```ts
@@ -970,3 +975,115 @@ drawings but cannot place, move or convert them. `screenPoints` adds the plot's
 left edge and top from that rectangle, so an HTML overlay a host lays against
 `chart.plotRect` lines up with the drawing. Types: `DrawingSpace`,
 `ViewportPoint`, `DrawingPlacementOptions`.
+
+
+## Drawings per instrument (unreleased)
+
+The controller holds one document and the engine has no instrument concept, so
+a host that loads another symbol into the same chart keeps the previous
+symbol's drawings on screen, and a delete there deletes them for every symbol.
+Traders expect the opposite: levels belong to the symbol they were drawn on.
+`InstrumentDrawings` keeps one document per instrument in a store the host
+chooses and swaps them as the chart's data context moves. It is DOM-free and
+ships in the draw tier; the widget uses it by default (see widget.md,
+`drawingScope`).
+
+```ts
+import {
+  DrawingController, InstrumentDrawings, createInstrumentDrawings, instrumentDrawingsKey,
+  memoryDrawingStore, webStorageDrawingStore, migrateUnscopedDrawings,
+} from 'openalgo-charts/draw';
+
+const draw = new DrawingController(chart);
+// localStorage only because the host hands it over; the default is memoryDrawingStore().
+const store = webStorageDrawingStore(localStorage, 'my-app:p0:drawings:');
+// One-off migration: a pane-wide document saved before drawings were per
+// instrument belongs to the symbol the pane was saved with.
+migrateUnscopedDrawings(store, instrumentDrawingsKey({ symbol: savedSymbol, exchange: savedExchange }),
+  JSON.parse(localStorage.getItem('my-app:p0:draw') ?? 'null'));
+const scoped = new InstrumentDrawings(chart, draw, { store, onError: e => console.warn(e.operation, e.key) });
+// or createInstrumentDrawings(chart, draw, { store })
+
+chart.setDataContext({ symbol: 'INFY', exchange: 'NSE', interval: '5m' });  // loads INFY's drawings
+chart.setDataContext({ symbol: 'TCS', exchange: 'NSE', interval: '5m' });   // saves INFY's, loads TCS's
+```
+
+| Export | What it is |
+|---|---|
+| `InstrumentDrawings(chart, controller, options?)` | The helper. `chart` is `InstrumentDrawingsChart`: `on`, and `getDataContext` to read the instrument at the start. |
+| `createInstrumentDrawings(chart, controller, options?)` | The same, as a function. |
+| `instrumentDrawingsKey(instrument)` | The default key: `NSE:INFY`, or `AAPL` with no exchange; each part URI-encoded; null without a symbol. Case is kept. |
+| `memoryDrawingStore()` | The default store, in memory for the life of the page, a copy per entry. |
+| `webStorageDrawingStore(storage, prefix)` | One JSON entry per instrument under `prefix` in any `DrawingTextStorage` (`getItem`, `setItem`, `removeItem`). |
+| `migrateUnscopedDrawings(store, key, document)` | Writes an old pane-wide document (2.0 or a 1.9 array) under `key` only when the store has nothing there and the document has drawings; true when written. A store whose `get` throws is not written over. |
+
+`InstrumentDrawingsOptions`: `store` (a `DrawingDocumentStore`: `get(key)`,
+`set(key, document)` where false or a throw is a failure, `remove(key)`), `key`
+(`(instrument: DrawingInstrument) => string | null`, for one set per data
+variant or a namespace per chart), `prefer` (`'stored'`, the default, or
+`'live'`) and `onError` (an `InstrumentDrawingsError`: `operation` `'read' |
+'write' | 'remove'`, `key`, `error`). Methods: `key()`, `setInstrument(instrument
+| null)` for a host that switches ahead of its data context or publishes none,
+`document(instrument)` (a copy, the live drawings for the current instrument,
+null when there are none), `setDocument(instrument, document)` (the
+controller's `fromJSON` for the current instrument, the store for another),
+`save()` (writes now and retries refused writes; false while one is still
+refused), `destroy()`, `isDestroyed`.
+
+What it decides, and why:
+
+- **When it swaps.** On `data:context` naming another symbol or exchange, in
+  the same turn, before later listeners (an alert controller, a link group)
+  run their own. An interval or a data variant is the same instrument; a
+  context that names none (cleared, or no symbol) changes nothing, and the
+  drawings stay with the last instrument. The store is synchronous for that
+  reason: an answer arriving after the context moved would land on whatever the
+  chart shows by then. A host with drawings on a server keeps a synchronous
+  copy here and syncs it in the background.
+- **When it writes.** On every `drawing:change`, only when the saved document
+  changed; an instrument left with no drawings has its entry removed. Transient
+  drawings (`policy.persistent: false`) are never written and do not survive a
+  swap: a host keeping one per instrument places it again after the swap
+  (`draw:restore` fires on the load). Anything else that replaces the whole
+  document, a host's `fromJSON` or `chart.restoreState`, is the current
+  instrument's new document and is written as such.
+- **At the start.** With a stored document for the current instrument,
+  `prefer: 'stored'` loads it; `prefer: 'live'` keeps what the controller holds
+  (even nothing) and writes it, for a host that has just loaded that
+  instrument's drawings itself (a layout, a chart rebuilt from the one it
+  replaces). With nothing stored, the controller's drawings are adopted as the
+  instrument's. A helper built before the chart names any instrument adopts
+  them for the first one named. That adoption is the migration path for a host
+  that restored its old pane-wide document into the controller.
+- **Undo.** A swap is not an edit: it records no step and, like any `fromJSON`,
+  clears the controller's undo history, so no undo on one instrument restores or
+  removes a drawing of another. The widget's `ChartHistory` drops every drawing
+  step and every drawing a removed pane took with it when the controller loads
+  another document (`draw:restore`); the steps of studies, panes and settings
+  stay, since those belong to the chart.
+- **A gesture in progress.** A drag is put back first (the outgoing document is
+  saved as it was before the drag) and goes no further; anchors placed for an
+  unfinished shape are dropped with the outgoing instrument, and the tool stays
+  armed, so the next click on the new symbol is its first anchor.
+- **Drawings pinned to the viewport** swap with the rest of the document. A
+  group or a stacking order can span both spaces, so splitting the document
+  would break both, and a note pinned to the screen is nearly always about the
+  instrument on it. A host wanting a label on every symbol uses a primitive or
+  the watermark.
+- **Alerts.** An alert anchored to a drawing keeps its drawing id while its
+  instrument is off the chart: `AlertController` removes a drawing alert whose
+  drawing is gone only when the alert's instrument is the one the chart shows,
+  both on `objects:change` and on restore. On another instrument it neither
+  evaluates nor draws (availability says the instrument context differs), even
+  over a drawing there that happens to share its id.
+- **Drawing links.** A swap loads with `fromJSON`, which announces no
+  `draw:add`, so a `DrawingLinkGroup` never broadcasts one instrument's drawings
+  as another's; the group rebinds the loaded document's own shared drawings by
+  their lineage for the new context, as after any restore.
+- **The clipboard** is separate from the document: copy on one symbol and paste
+  on another is the user's own act and lands on the new symbol.
+- **A failing store.** A refused write or removal is reported through `onError`
+  and the document is held in memory, read back from there for the session, and
+  written again with the next change or `save()`. An unreadable entry is
+  reported and shows no drawings; the next change on that instrument writes
+  over it.
