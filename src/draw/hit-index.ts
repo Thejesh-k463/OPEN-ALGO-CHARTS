@@ -20,10 +20,10 @@
  *
  * Boxes are kept, by the drawing's place in the layer's paint order, while a
  * key reads the same: what projects an anchor (the time scale, the bars'
- * times, the price scale), the plot size and pixel ratio, the grab radii, the
- * tool registered under each id the layer uses, and the loaded fonts, which
- * decide the box of a text. A new drawing list lets every box go, since the
- * controller edits drawings in place and hands the list over again.
+ * times, the price scale), the plot size, the grab radii, the tool registered
+ * under each id the layer uses, and the loaded fonts, which decide the box of
+ * a text. A new drawing list lets every box go, since the controller edits
+ * drawings in place and hands the list over again.
  */
 import type { PrimitiveRenderContext } from 'openalgo-charts';
 import type { Drawing, DrawingTool, FibLevel, ScreenPoint } from './types';

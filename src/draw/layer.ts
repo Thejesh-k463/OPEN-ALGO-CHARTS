@@ -483,11 +483,11 @@ export class DrawingLayer implements IPrimitive {
 
   private _hitHandle(x: number, y: number, rc: PrimitiveRenderContext): PrimitiveHit | null {
     const radius = this._handleRadius(rc) + 2;
-    for (const i of this._selectedPositions()) {
-      const sel = this._drawings[i];
+    for (const at of this._selectedPositions()) {
+      const sel = this._drawings[at];
       if (!runnable(sel) || readOnly(sel)) continue;
       // Every handle is an anchor, so none is further out than the anchors reach.
-      if (!inHitBox(this._index.anchors[i] ??= spanOf(this._points(rc, sel), radius), x, y)) continue;
+      if (!inHitBox(this._index.anchors[at] ??= spanOf(this._points(rc, sel), radius), x, y)) continue;
       const pts = this._points(rc, sel);
       for (const i of handleIndices(sel.tool, pts.length)) {
         if (Math.hypot(x - pts[i].x, y - pts[i].y) <= radius) {
