@@ -24,12 +24,18 @@
  *   received moves its window, and broadcasting that to a follower on another
  *   timeframe would squeeze the follower's data into a sliver. Data-driven
  *   moves stay local; linked views converge on the next real pan or zoom.
+ * - **Each chart keeps drawings per instrument, for itself.** A cell's store
+ *   is its own, keyed by its pane id: two cells on one symbol writing one
+ *   shared document would each overwrite the other's lines. The documents of
+ *   the instruments a cell is not showing are saved beside the workspace,
+ *   whose own payload carries only what each chart shows.
  */
 import {
   applyChartSettings, createLinkGroup, isKnownInterval, readChartSettings, registeredChartTypes, registeredIndicators,
   type ChartTheme, type DataFeed, type DataVariant, type LinkChart, type LinkOptions, type ResolvedLinkOptions,
 } from 'openalgo-charts';
 import type { WorkspaceChartState, WorkspacePane, WorkspacePayload } from 'openalgo-charts/workspace';
+import type { DrawingDocumentStore, DrawingsDocument } from 'openalgo-charts/draw';
 import { WidgetBus, WidgetStorage, defaultStorage, h, type StorageLike } from './context';
 import { widgetText } from './localization';
 import { applyTokens, widgetTokens, type WidgetThemeName } from './tokens';
@@ -43,7 +49,7 @@ export const CHART_GRID_PRESETS: Readonly<Record<ChartGridPreset, readonly [rows
   '1x1': [1, 1], '1x2': [1, 2], '1x3': [1, 3], '2x1': [2, 1], '3x1': [3, 1], '2x2': [2, 2],
 };
 
-export interface ChartGridOptions extends Omit<WidgetOptions, 'persist' | 'storage' | 'keyboardRoute' | 'feed'> {
+export interface ChartGridOptions extends Omit<WidgetOptions, 'persist' | 'storage' | 'keyboardRoute' | 'feed' | 'drawingStore'> {
   /**
    * Where the charts load bars: one feed for every chart, or a function that
    * builds each chart's feed from its pane id and the `historyPeriod` its
@@ -161,8 +167,43 @@ const GUTTER = 4;
 /** The smaller of two resized tracks keeps at least this share of the pair. */
 const MIN_SHARE = 0.15;
 const STATE_KEY = 'grid';
+/** The drawings of each chart, per instrument, beside the workspace. */
+const DRAWINGS_KEY = 'grid-drawings';
 const THEME_SETTING = 'widget.theme';
-const GRID_ONLY_KEYS = ['preset', 'links', 'compactWidth', 'persist', 'storage'];
+// `drawingStore` too: each cell gets a store of its own from the grid.
+const GRID_ONLY_KEYS = ['preset', 'links', 'compactWidth', 'persist', 'storage', 'drawingStore'];
+
+/** Each chart's drawing documents, by pane id, then by instrument key. */
+type ChartDrawings = Map<string, Map<string, DrawingsDocument>>;
+
+/**
+ * One cell's store, inside `docs`. The documents are copied on the way in,
+ * so a later change on the chart never edits one the grid is about to save.
+ */
+function cellDrawingStore(id: string, docs: ChartDrawings): DrawingDocumentStore {
+  return {
+    get: key => docs.get(id)?.get(key) ?? null,
+    set: (key, document) => {
+      let mine = docs.get(id);
+      if (mine === undefined) docs.set(id, mine = new Map());
+      mine.set(key, JSON.parse(JSON.stringify(document)) as DrawingsDocument);
+    },
+    remove: key => { docs.get(id)?.delete(key); },
+  };
+}
+
+/** The saved drawings entry, read defensively: anything it cannot use is left out, never thrown. */
+function readChartDrawings(value: unknown): ChartDrawings {
+  const out: ChartDrawings = new Map();
+  if (!isRecord(value) || value.version !== 1 || !isRecord(value.charts)) return out;
+  for (const [id, documents] of Object.entries(value.charts)) {
+    if (!isRecord(documents)) continue;
+    const mine = new Map<string, DrawingsDocument>();
+    for (const [key, document] of Object.entries(documents)) if (isRecord(document)) mine.set(key, document as unknown as DrawingsDocument);
+    out.set(id, mine);
+  }
+  return out;
+}
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const int = (v: unknown, lo: number, hi: number): boolean => Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi;
@@ -265,6 +306,8 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   /** A stored desk this grid refused to restore, kept until the user changes something. */
   let held = false;
   let restored: ChartGridApplyReport | null = null;
+  /** The drawings of the charts on the grid, for the instruments each one is not showing. */
+  let drawings: ChartDrawings = new Map();
 
   const root = h(doc, 'div', 'oac-grid');
   const tabs = h(doc, 'div', 'oac-grid__tabs', { role: 'tablist', 'aria-label': widgetText(options, 'Charts') });
@@ -294,7 +337,15 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   };
   function saveNow(): void {
     if (saveTimer !== 0) { clearTimeout(saveTimer); saveTimer = 0; }
-    if (storage.enabled && !destroyed && !held && active !== null) storage.set(STATE_KEY, grid.getWorkspace());
+    if (!storage.enabled || destroyed || held || active === null) return;
+    storage.set(STATE_KEY, grid.getWorkspace());
+    // Only the charts on the grid: a chart the grid dropped takes its drawings with it.
+    const charts: Record<string, Record<string, DrawingsDocument>> = {};
+    for (const cell of cells) {
+      const mine = drawings.get(cell.id);
+      if (mine !== undefined && mine.size > 0) charts[cell.id] = Object.fromEntries(mine);
+    }
+    storage.set(DRAWINGS_KEY, { version: 1, charts });
   }
   const paintTheme = (): void => {
     const t = resolveTheme(theme);
@@ -463,7 +514,7 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   };
 
   // ── cells ──────────────────────────────────────────────────────────────
-  const makeCell = (id: string, source: Source, parent: HTMLElement, cellTheme: WidgetThemeName | ChartTheme): Cell => {
+  const makeCell = (id: string, source: Source, parent: HTMLElement, cellTheme: WidgetThemeName | ChartTheme, docs: ChartDrawings): Cell => {
     const element = h(doc, 'div', 'oac-grid__cell', { role: 'group' });
     element.dataset.paneId = id;
     parent.appendChild(element);
@@ -473,7 +524,7 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
       cell.widget = createWidget(element, {
         ...cellOptions, theme: cellTheme, symbol: source.symbol, exchange: source.exchange, interval: source.interval,
         variant: source.variant, chartType: source.chartType, keyboardRoute: () => route(cell),
-        feed: typeof feed === 'function' ? feed({ id, historyPeriod }) : feed,
+        feed: typeof feed === 'function' ? feed({ id, historyPeriod }) : feed, drawingStore: cellDrawingStore(id, docs),
       });
     } catch (error) {
       element.remove();
@@ -639,13 +690,13 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
         while (keep.length + made.length < r * c) {
           let id: string;
           do id = `p${nextId++}`; while (cells.some(cell => cell.id === id));
-          made.push(makeCell(id, source, body, theme));
+          made.push(makeCell(id, source, body, theme, drawings));
         }
       } catch (error) {
         made.forEach(drop);
         throw error;
       }
-      cells.slice(r * c).forEach(drop);
+      for (const cell of cells.slice(r * c)) { drop(cell); drawings.delete(cell.id); }
       cells = [...keep, ...made];
       cells.forEach((cell, i) => Object.assign(cell, { row: Math.floor(i / c), column: i % c, rowSpan: 1, columnSpan: 1 }));
       made.forEach(join);
@@ -702,52 +753,7 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
     },
 
     applyWorkspace(payload) {
-      if (destroyed) return { applied: false, reason: 'the grid is destroyed' };
-      const reason = check(payload);
-      if (reason !== '') return { applied: false, reason };
-      const saved = payload.panes.find(p => p.id === payload.activePaneId)?.settings?.[THEME_SETTING];
-      const nextTheme = saved === 'dark' || saved === 'light' ? saved : theme;
-      const staging = doc.createElement('div');
-      const made: Cell[] = [];
-      try {
-        for (const slot of payload.layout.slots.slice().sort((a, b) => a.row - b.row || a.column - b.column)) {
-          const pane = payload.panes.find(p => p.id === slot.paneId) as WorkspacePane;
-          const cell = makeCell(pane.id, pane, staging, nextTheme);
-          made.push(cell);
-          Object.assign(cell, { row: slot.row, column: slot.column, rowSpan: slot.rowSpan ?? 1, columnSpan: slot.columnSpan ?? 1 });
-          const rail = cell.widget.getState().rail;
-          const report = cell.widget.restoreState({ version: 1, symbol: pane.symbol, exchange: pane.exchange, interval: pane.interval,
-            ...(pane.variant ? { variant: pane.variant } : {}), chartType: pane.chartType, chart: pane.chart, ...(rail === null ? {} : { rail: { ...rail, magnet: pane.magnet, stay: pane.stay } }) });
-          if (!report.applied) throw new Error(`${pane.id}: ${report.reason ?? 'the chart state could not be restored'}`);
-        }
-      } catch (error) {
-        made.reverse().forEach(drop);
-        return { applied: false, reason: error instanceof Error ? error.message : String(error) };
-      }
-      cells.forEach(drop);
-      cells = made;
-      const { layout, sync } = payload;
-      rows = layout.rows; cols = layout.columns;
-      rowW = layout.rowWeights?.slice() ?? ones(rows);
-      colW = layout.columnWeights?.slice() ?? ones(cols);
-      preset = layout.preset ?? null;
-      theme = nextTheme;
-      paintTheme();
-      // Every channel off while the charts join, so joining cannot overwrite a
-      // saved chart; the checks above make the final switch-on agree already.
-      links.setOptions({ crosshair: false, viewport: false, symbol: false, interval: false, appearance: false });
-      made.forEach(join);
-      active = made.find(c => c.id === payload.activePaneId) as Cell;
-      // The group still remembers the replaced charts' instrument, and turning a
-      // channel on converges on what it remembers; record the new one first.
-      links.setSymbol(active.member, instrument(active.widget.symbol(), active.widget.exchange()));
-      links.setInterval(active.member, active.widget.interval());
-      links.setOptions({ crosshair: sync.crosshair, viewport: sync.viewport, symbol: sync.symbol, interval: sync.interval, appearance: sync.appearance === true });
-      render();
-      saveSoon();
-      emit('layout', { reason: 'workspace' });
-      emit('active', { id: active.id });
-      return { applied: true };
+      return apply(payload, new Map());
     },
 
     destroy() {
@@ -761,6 +767,62 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
       bus.clear();
     },
   };
+
+  /**
+   * Apply a workspace whose charts start from `docs` for the instruments
+   * they are not showing: the saved ones when the grid restores its own
+   * desk, none for a desk the host hands over, whose payload carries only
+   * the drawings each chart shows.
+   */
+  function apply(payload: WorkspacePayload, docs: ChartDrawings): ChartGridApplyReport {
+    if (destroyed) return { applied: false, reason: 'the grid is destroyed' };
+    const reason = check(payload);
+    if (reason !== '') return { applied: false, reason };
+    const saved = payload.panes.find(p => p.id === payload.activePaneId)?.settings?.[THEME_SETTING];
+    const nextTheme = saved === 'dark' || saved === 'light' ? saved : theme;
+    const staging = doc.createElement('div');
+    const made: Cell[] = [];
+    try {
+      for (const slot of payload.layout.slots.slice().sort((a, b) => a.row - b.row || a.column - b.column)) {
+        const pane = payload.panes.find(p => p.id === slot.paneId) as WorkspacePane;
+        const cell = makeCell(pane.id, pane, staging, nextTheme, docs);
+        made.push(cell);
+        Object.assign(cell, { row: slot.row, column: slot.column, rowSpan: slot.rowSpan ?? 1, columnSpan: slot.columnSpan ?? 1 });
+        const rail = cell.widget.getState().rail;
+        const report = cell.widget.restoreState({ version: 1, symbol: pane.symbol, exchange: pane.exchange, interval: pane.interval,
+          ...(pane.variant ? { variant: pane.variant } : {}), chartType: pane.chartType, chart: pane.chart, ...(rail === null ? {} : { rail: { ...rail, magnet: pane.magnet, stay: pane.stay } }) });
+        if (!report.applied) throw new Error(`${pane.id}: ${report.reason ?? 'the chart state could not be restored'}`);
+      }
+    } catch (error) {
+      made.reverse().forEach(drop);
+      return { applied: false, reason: error instanceof Error ? error.message : String(error) };
+    }
+    cells.forEach(drop);
+    cells = made;
+    drawings = docs;
+    const { layout, sync } = payload;
+    rows = layout.rows; cols = layout.columns;
+    rowW = layout.rowWeights?.slice() ?? ones(rows);
+    colW = layout.columnWeights?.slice() ?? ones(cols);
+    preset = layout.preset ?? null;
+    theme = nextTheme;
+    paintTheme();
+    // Every channel off while the charts join, so joining cannot overwrite a
+    // saved chart; the checks above make the final switch-on agree already.
+    links.setOptions({ crosshair: false, viewport: false, symbol: false, interval: false, appearance: false });
+    made.forEach(join);
+    active = made.find(c => c.id === payload.activePaneId) as Cell;
+    // The group still remembers the replaced charts' instrument, and turning a
+    // channel on converges on what it remembers; record the new one first.
+    links.setSymbol(active.member, instrument(active.widget.symbol(), active.widget.exchange()));
+    links.setInterval(active.member, active.widget.interval());
+    links.setOptions({ crosshair: sync.crosshair, viewport: sync.viewport, symbol: sync.symbol, interval: sync.interval, appearance: sync.appearance === true });
+    render();
+    saveSoon();
+    emit('layout', { reason: 'workspace' });
+    emit('active', { id: active.id });
+    return { applied: true };
+  }
 
   paintTheme();
   container.appendChild(root);
@@ -789,7 +851,7 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   listen(doc, 'visibilitychange', () => { if (doc.visibilityState === 'hidden') saveNow(); });
 
   const saved = storage.get(STATE_KEY);
-  restored = saved === null ? null : grid.applyWorkspace(saved as WorkspacePayload);
+  restored = saved === null ? null : apply(saved as WorkspacePayload, readChartDrawings(storage.get(DRAWINGS_KEY)));
   if (restored?.applied !== true) {
     grid.setPreset(options.preset ?? '1x1');
     if (restored !== null) {
