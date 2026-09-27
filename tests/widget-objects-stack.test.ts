@@ -147,3 +147,31 @@ it('offers a protected study only what its policy allows, and leaves an unlisted
   expect(mountIndicatorSettings(r.ctx, undefined, { instanceId: pinned.id }).isOpen()).toBe(false);
   expect(r.toasts).toContain('RSI settings are protected');
 });
+
+it('moves a row with Alt and an arrow key, the keyboard way to drag it', () => {
+  const r = rig();
+  const a = r.chart.addIndicator('sma');
+  const d = box(r.draw);
+  const A = 'indicator:' + a.id, D = 'drawing:' + d.id;
+  const summary = row(r.root, D).querySelector('.oac-objects__summary') as FakeElement;
+  expect(listed(r.root)).toEqual(['source:primary', A, D]);
+  const up = fire(summary, 'keydown', { key: 'ArrowUp', altKey: true });
+  expect(up.defaultPrevented).toBe(true);
+  expect(listed(r.root)).toEqual(['source:primary', D, A]);
+  fire(summary, 'keydown', { key: 'ArrowDown', altKey: true });
+  expect(listed(r.root)).toEqual(['source:primary', A, D]);
+  // Without Alt the arrow is the list's to scroll, and at the front there is nowhere further to go.
+  expect(fire(summary, 'keydown', { key: 'ArrowUp' }).defaultPrevented).toBe(false);
+  fire(summary, 'keydown', { key: 'ArrowDown', altKey: true });
+  expect(listed(r.root)).toEqual(['source:primary', A, D]);
+  expect(r.toasts).toEqual([]);
+});
+
+it('says how the list reads, and marks the rows that drag with a grip', () => {
+  const r = rig();
+  const d = box(r.draw);
+  expect((r.root.querySelector('.oac-objects__hint') as FakeElement).hidden).toBe(false);
+  expect(r.root.querySelector('.oac-objects__hint')!.textContent).toContain('back to front');
+  expect(row(r.root, 'drawing:' + d.id).querySelector('.oac-objects__grip')!.getAttribute('aria-hidden')).toBe('true');
+  expect((row(r.root, 'drawing:' + d.id) as unknown as { draggable: boolean }).draggable).toBe(true);
+});

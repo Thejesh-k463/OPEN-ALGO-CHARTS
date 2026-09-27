@@ -51,6 +51,9 @@ import { mountDataStatus, type DataStatusHandle } from './data-status';
 import { attachContextMenu, mountIndicatorSettings, mountDrawingProperties, mountAlertsPanel, type OrderRequest, type PanelHandle } from './dialogs/index';
 import { mountObjectsPanel, createObjectsPanelContent } from './objects-panel';
 import { mountMobile, type MobileHandle, type MobileMode } from './mobile';
+import { mountDrawingToolbar, type DrawingToolbarHandle } from './drawing-toolbar';
+import { createDrawingTemplates, type DrawingTemplates } from './drawing-templates';
+import type { DrawingTemplateStore } from 'openalgo-charts/workspace';
 import { widgetText, type WidgetTranslator } from './localization';
 import { EventDetailsPopup, type EventDetailsPopupOptions } from './event-details';
 import type { ChartEventClick } from 'openalgo-charts';
@@ -150,6 +153,10 @@ export interface WidgetOptions extends Omit<ChartOptions, 'theme'> {
    * (`DRAWINGS_KEY_PREFIX`), else in memory for the life of the widget.
    */
   drawingStore?: DrawingDocumentStore;
+  /** Saved drawing looks, a tool's default and named templates: a `DrawingTemplateRepository` from `openalgo-charts/workspace`. */
+  drawingTemplates?: DrawingTemplateStore;
+  /** The floating toolbar over the selected drawings on a desktop layout. Default: shown with the rail. */
+  drawingToolbar?: boolean;
   /** BCP 47 tag for the numbers on the status line. Default: the runtime's. */
   locale?: string;
   /** Host translations for widget chrome and dialogs, with English fallback. */
@@ -225,6 +232,8 @@ export interface Widget {
    * writes them now (`save`).
    */
   readonly instrumentDrawings: InstrumentDrawings | null;
+  /** The template store's catalog as the widget holds it, or null without a `drawingTemplates` store. */
+  readonly drawingTemplates: DrawingTemplates | null;
   readonly alerts: AlertController;
   /** Shared inventory and supported actions for drawings, indicators and registered profiles. */
   readonly objects: ChartObjects;
@@ -309,7 +318,7 @@ const WIDGET_ONLY_KEYS: ReadonlyArray<keyof WidgetOptions> = [
   'mobile', 'loading', 'persist', 'storage', 'drawingScope', 'drawingStore', 'locale', 'translate', 'indicators', 'symbolSearch', 'lookbackBars', 'now', 'onOrder', 'styleNonce',
   'tradingCapabilities', 'tradingMode', 'tradingLocked', 'account',
   'eventDetails',
-  'panels', 'typingNavigation', 'keyboardRoute', 'watchlist', 'news',
+  'panels', 'typingNavigation', 'keyboardRoute', 'watchlist', 'news', 'drawingTemplates', 'drawingToolbar',
 ];
 
 /**
@@ -376,6 +385,7 @@ class WidgetContextImpl implements WidgetContext {
   public readonly objects: ChartObjects | undefined;
   public readonly alerts: AlertController | undefined;
   public readonly history: ChartHistory | undefined;
+  public drawingTemplates: DrawingTemplates | undefined;
   public readonly root: HTMLElement;
   public readonly document: Document;
   public readonly keymap: Keymap;
@@ -426,6 +436,7 @@ class WidgetImpl implements Widget {
   public readonly chart: Chart;
   public readonly draw: DrawingController;
   public readonly instrumentDrawings: InstrumentDrawings | null;
+  public readonly drawingTemplates: DrawingTemplates | null;
   public readonly objects: ChartObjects;
   public readonly alerts: AlertController;
   public readonly history: ChartHistory;
@@ -444,6 +455,7 @@ class WidgetImpl implements Widget {
   private _topbar: TopbarHandle | null = null;
   private _statusline: StatuslineHandle | null = null;
   private _mobile: MobileHandle | null = null;
+  private _drawbar: DrawingToolbarHandle | null = null;
   private _objectsPanel: PanelHandle | null = null;
   private _dock: PanelDockHandle | null = null;
   private _quickEntry: QuickEntryHandle | null = null;
@@ -691,6 +703,9 @@ class WidgetImpl implements Widget {
       const railOpts: RailOptions = { ...(typeof options.rail === 'object' ? options.rail : {}), cursorTarget: chartEl };
       this._rail = mountRail(this.context, railEl, railOpts);
     }
+    this.drawingTemplates = options.drawingTemplates ? createDrawingTemplates(this.context, options.drawingTemplates) : null;
+    (this.context as WidgetContextImpl).drawingTemplates = this.drawingTemplates ?? undefined;
+    if (options.drawingToolbar ?? options.rail !== false) this._drawbar = mountDrawingToolbar(this.context, stage, { chart: chartEl, templates: this.drawingTemplates });
     if (options.statusline !== false) {
       this._statusline = mountStatusline(this.context, statusEl, { locale: options.locale });
       this._statusline.setSymbol(this._symbol, this._exchange, this._interval);
@@ -1268,6 +1283,9 @@ class WidgetImpl implements Widget {
     const active = this._doc.activeElement;
     const routed = this._opts.keyboardRoute?.();
     if (routed === false || (active !== null && this._dataStatus.el.contains(active))) return [];
+    // A control that walks itself with the arrows (the drawing toolbar) names its own scope.
+    const own = active !== null && this.root.contains(active) ? active.closest('[data-key-scope]')?.getAttribute('data-key-scope') : null;
+    if (own) out.push(own);
     if (this._rail !== null && active !== null && this._rail.el.contains(active)) out.push('rail');
     if (routed || this._inChart()) out.push('chart');
     if (routed || this._pointerInside || (active !== null && this.root.contains(active))) out.push('widget');
@@ -1435,6 +1453,8 @@ class WidgetImpl implements Widget {
     this._dataStatus.destroy();
     this._mobile?.destroy();
     this._mobile = null;
+    this._drawbar?.destroy();
+    this.drawingTemplates?.destroy();
     if (this._saveTimer !== 0) { clearTimeout(this._saveTimer); this._saveTimer = 0; }
     for (const c of this._cleanups.splice(0)) c();
     this._topbar?.destroy();
