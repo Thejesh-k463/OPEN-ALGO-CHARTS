@@ -22,7 +22,7 @@
 import type { PlotRect } from 'openalgo-charts';
 import type { Drawing, DrawingPoint, DrawingStyle } from './types';
 import { getDrawingTool, hasDrawingTool } from './tools';
-import type { DrawingGestureOptions } from './controller';
+import type { DrawingGestureOptions } from './controller-types';
 import type { GestureLayer } from './gesture-layer';
 import { boxSamples, normalizeBox, touchesBox, touchesPath } from './hit-geometry';
 

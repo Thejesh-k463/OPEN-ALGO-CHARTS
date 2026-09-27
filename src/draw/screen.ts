@@ -9,7 +9,7 @@
  */
 import type { PlotRect } from 'openalgo-charts';
 import type { Drawing, DrawingPoint, ScreenPoint, ViewportPoint } from './types';
-import type { DrawingChartHost } from './controller';
+import type { DrawingChartHost } from './controller-types';
 import { placeViewportAnchors } from './layer';
 import { getDrawingTool, hasDrawingTool } from './tools';
 import { boundsOf } from './geometry';
