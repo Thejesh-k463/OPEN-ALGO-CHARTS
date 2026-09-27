@@ -1014,10 +1014,10 @@ desktop layout shows `.oac-drawbar` (`role="toolbar"`) over the chart: a colour 
 the line width, the line style, lock, delete and a more menu (Properties..., Duplicate,
 Hide or Show, the four order rows, and the template rows). It sits above the selection's
 highest visible anchor, centred on the part of it in view, below the selection when the
-top has no room, and always inside the chart. It follows a pan, a zoom, a resize and an
-edit, and steps aside while a tool is placing, while a drawing is dragged
-(`draw:preview`), in the narrow layout (which has its own bar) and while the properties
-dialog is open.
+top has no room, and always inside the chart. It follows a pan, a zoom, a resize, an
+edit, a price axis dragged or wheeled, and a tick that moves the autoscale. It steps aside
+while a tool is placing, while a drawing is dragged (`draw:preview`), in the narrow layout
+(which has its own bar) and while the properties dialog is open.
 
 - A control shows only when every selected drawing's settings schema declares its field
   (`style.color`, `style.lineWidth`, `style.lineStyle`), as the properties dialog does.
@@ -1030,9 +1030,10 @@ dialog is open.
   controls disabled with "(read-only)" in the title. Delete is also disabled when every
   selected drawing is locked, as in the context menu.
 - Keyboard: it follows the chart in the tab order, so Tab from the focused chart reaches it,
-  with one tab stop. Inside it, ArrowLeft, ArrowRight, Home and End move between controls
-  (a key scope `drawing-toolbar`, so the arrows never nudge the drawing), and Escape goes
-  back to the chart with the selection kept. Every label is a message key: `Drawing toolbar`,
+  with one tab stop. Inside it, the arrow keys (with or without Shift), Home and End move
+  between controls, and Escape goes back to the chart with the selection kept. Its key scope,
+  `drawing-toolbar`, claims every arrow the widget reads as a nudge, so none of them moves
+  the drawing while the focus is in the bar. Every label is a message key: `Drawing toolbar`,
   `More drawing actions`, `Color: {value}`, `Line width`, `Line width: {value}`,
   `Line style`, `Line style: {style}`, `{value} px`, `Solid`, `Dashed`, `Dotted`, `mixed`,
   `Mixed`.

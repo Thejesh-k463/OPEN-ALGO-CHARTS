@@ -208,6 +208,18 @@ describe('drawing toolbar', () => {
     expect(doc.activeElement).toBe(control(root, 'more'));
     // One tab stop: the control last used.
     expect(root.querySelectorAll('[data-drawbar]').filter((c) => c.tabIndex === 0)).toEqual([control(root, 'more')]);
+    // Every arrow the chart reads as a nudge walks the bar instead, Shift or not.
+    fireKey(doc.activeElement, 'ArrowDown');
+    expect(doc.activeElement).toBe(control(root, 'color'));
+    fireKey(doc.activeElement, 'ArrowUp');
+    expect(doc.activeElement).toBe(control(root, 'more'));
+    fireKey(doc.activeElement, 'ArrowRight', { shiftKey: true });
+    fireKey(doc.activeElement, 'ArrowDown', { shiftKey: true });
+    expect(doc.activeElement).toBe(control(root, 'width'));
+    fireKey(doc.activeElement, 'ArrowUp', { shiftKey: true });
+    fireKey(doc.activeElement, 'ArrowLeft', { shiftKey: true });
+    fireKey(doc.activeElement, 'ArrowLeft');
+    expect(doc.activeElement).toBe(control(root, 'delete'));
     expect(JSON.stringify(w.draw.get(d.id)!.points)).toBe(before);
     fireKey(doc.activeElement, 'Escape');
     expect(doc.activeElement).toBe(root.querySelector('.oac-chart'));
@@ -251,6 +263,41 @@ describe('drawing toolbar', () => {
     const left = parseFloat(bar(root).style.left as string);
     expect(left).toBeLessThanOrEqual(42 + 900 - 6 - 220);
     expect(left).toBeGreaterThanOrEqual(42 + 6);
+  });
+
+  it('follows a price scale that moves with no pan: an axis drag, and a tick that moves the autoscale', () => {
+    const { w, root } = make();
+    const chartEl = root.querySelector('.oac-chart') as FakeElement;
+    const stage = chartEl.parentElement!;
+    stage.rect = { left: 0, top: 40, width: 1000, height: 576 };
+    chartEl.rect = { left: 42, top: 40, width: 900, height: 560 };
+    bar(root).offsetWidth = 220;
+    bar(root).offsetHeight = 36;
+    const d = line(w);
+    w.draw.select(d.id);
+    const barTop = (): number => parseFloat(bar(root).style.top as string);
+    const anchorTop = (): number => Math.min(...w.draw.screenPoints(d.id)!.map((p) => p.y));
+    const scale = w.chart.panes()[0].priceScale;
+    const range = scale.priceRange();
+    expect(barTop()).toBeCloseTo(anchorTop() - 10 - 36, 0);
+    // A press dragging the price axis sets the range directly; the chart says nothing.
+    scale.setAutoScale(false);
+    scale.setPriceRange({ min: range.min - 40, max: range.max + 40 });
+    const moved = anchorTop();
+    fire(chartEl, 'pointermove', { buttons: 1 });
+    expect(barTop()).toBeCloseTo(moved - 10 - 36, 0);
+    // A pointer only passing over the chart is not a rescale, and costs no layout.
+    scale.setPriceRange({ min: range.min + 5, max: range.max + 5 });
+    const stale = barTop();
+    fire(chartEl, 'pointermove', { buttons: 0 });
+    expect(barTop()).toBe(stale);
+    // A tick: a new high widens the autoscale, and the drawing moves under the bar.
+    scale.setAutoScale(true);
+    const last = bars[bars.length - 1];
+    const before = anchorTop();
+    w.series.update({ ...last, high: last.high + 240, close: last.close + 180 });
+    expect(Math.abs(anchorTop() - before)).toBeGreaterThan(20);
+    expect(barTop()).toBeCloseTo(anchorTop() - 10 - 36, 0);
   });
 
   it('translates its words and can be turned off', () => {

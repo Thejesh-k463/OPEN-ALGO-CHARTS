@@ -89,6 +89,24 @@ test('the floating toolbar sits by the selection, edits it in one step and follo
     widget.chart.setVisibleLogicalRange({ from: r.from + 40, to: r.to + 40 });
   });
   await expect.poll(async () => (await bar.boundingBox())!.x).not.toBe(x0);
+
+  // Dragging the price axis rescales it with no pan or zoom: the bar keeps its gap over the line.
+  const gap = () => page.evaluate(() => {
+    const { widget, ids } = window.__drawUi;
+    const box = widget.root.querySelector('.oac-chart')!.getBoundingClientRect();
+    const top = box.top + Math.min(...widget.draw.screenPoints(ids.trend)!.map(p => p.y));
+    return top - widget.root.querySelector('.oac-drawbar')!.getBoundingClientRect().bottom;
+  });
+  expect(await gap()).toBeCloseTo(10, 0);
+  const axisX = chart!.x + chart!.width - 25;
+  const lineTop = await page.evaluate(() => window.__drawUi.widget.draw.screenPoints(window.__drawUi.ids.trend)!.map(p => p.y));
+  await page.mouse.move(axisX, chart!.y + chart!.height * 0.45);
+  await page.mouse.down();
+  await page.mouse.move(axisX, chart!.y + chart!.height * 0.45 + 90, { steps: 8 });
+  await page.mouse.up();
+  expect(await page.evaluate(() => window.__drawUi.widget.draw.screenPoints(window.__drawUi.ids.trend)!.map(p => p.y))).not.toEqual(lineTop);
+  await expect.poll(gap).toBeCloseTo(10, 0);
+  await page.screenshot({ path: info.outputPath('axis-drag.png') });
   expect(errors).toEqual([]);
 });
 
@@ -137,6 +155,16 @@ test('the keyboard reaches the toolbar from the chart and walks it without movin
   await expect(page.getByRole('menuitemradio', { name: '3 px' })).toBeVisible();
   await page.keyboard.press('Escape');
   await page.keyboard.press('ArrowRight');
+  await expect.poll(focused).toBe('style');
+  // Every arrow walks the bar, Shift or not: none of them nudges the line it edits.
+  await page.keyboard.press('ArrowDown');
+  await expect.poll(focused).toBe('lock');
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('Shift+ArrowUp');
+  await expect.poll(focused).toBe('width');
+  await page.keyboard.press('Shift+ArrowDown');
+  await page.keyboard.press('Shift+ArrowRight');
+  await page.keyboard.press('Shift+ArrowLeft');
   await expect.poll(focused).toBe('style');
   expect(JSON.stringify((await style(page, 'trend')).points)).toBe(points);
   await page.keyboard.press('Escape');

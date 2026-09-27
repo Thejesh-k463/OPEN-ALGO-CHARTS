@@ -180,13 +180,23 @@ export function mountDrawingToolbar(ctx: WidgetContext, host: HTMLElement, opts:
     next.focus();
   };
   const position = (): number => controls().indexOf(doc.activeElement as HTMLElement);
+  const scoped = (combo: string, run: () => void, label: string, hidden = false): () => void =>
+    ctx.keymap.register(combo, run, 'drawing-toolbar', { label, group: 'Drawing toolbar', layered: true, hidden });
   const unbind = [
-    ctx.keymap.register('ArrowRight', () => { go(position() + 1); }, 'drawing-toolbar', { label: 'Next control', group: 'Drawing toolbar', layered: true }),
-    ctx.keymap.register('ArrowLeft', () => { go(position() - 1); }, 'drawing-toolbar', { label: 'Previous control', group: 'Drawing toolbar', layered: true }),
-    ctx.keymap.register('Home', () => { go(0); }, 'drawing-toolbar', { label: 'First control', group: 'Drawing toolbar', layered: true }),
-    ctx.keymap.register('End', () => { go(controls().length - 1); }, 'drawing-toolbar', { label: 'Last control', group: 'Drawing toolbar', layered: true }),
+    scoped('ArrowRight', () => { go(position() + 1); }, 'Next control'),
+    scoped('ArrowLeft', () => { go(position() - 1); }, 'Previous control'),
+    scoped('Home', () => { go(0); }, 'First control'),
+    scoped('End', () => { go(controls().length - 1); }, 'Last control'),
+    // Every arrow the widget binds to a nudge is claimed here, so no arrow
+    // pressed in the bar moves the drawing it edits.
+    scoped('ArrowDown', () => { go(position() + 1); }, 'Next control', true),
+    scoped('ArrowUp', () => { go(position() - 1); }, 'Previous control', true),
+    scoped('Shift+ArrowRight', () => { go(position() + 1); }, 'Next control', true),
+    scoped('Shift+ArrowDown', () => { go(position() + 1); }, 'Next control', true),
+    scoped('Shift+ArrowLeft', () => { go(position() - 1); }, 'Previous control', true),
+    scoped('Shift+ArrowUp', () => { go(position() - 1); }, 'Previous control', true),
     // Back to the chart with the selection kept, where the editing keys act on it.
-    ctx.keymap.register('Escape', () => { container()?.focus(); }, 'drawing-toolbar', { label: 'Back to the chart', group: 'Drawing toolbar', layered: true }),
+    scoped('Escape', () => { container()?.focus(); }, 'Back to the chart'),
   ];
 
   // ── menus ──────────────────────────────────────────────────────────────
@@ -352,8 +362,22 @@ export function mountDrawingToolbar(ctx: WidgetContext, host: HTMLElement, opts:
   for (const event of ['draw:select', 'drawing:select', 'draw:update', 'draw:remove', 'draw:add', 'draw:restore', 'drawing:change', 'draw:tool']) {
     offs.push(chart.on(event, refresh));
   }
-  for (const event of ['pan', 'zoom', 'resize', 'paneResized', 'paneMoved', 'paneCollapsed', 'paneMaximized', 'paneAdded', 'paneRemoved']) {
+  // A tick that moves the autoscale, and a scale setter, move the drawing as surely as a pan.
+  for (const event of ['pan', 'zoom', 'resize', 'paneResized', 'paneMoved', 'paneCollapsed', 'paneMaximized', 'paneAdded', 'paneRemoved', 'data:update', 'layout:change']) {
     offs.push(chart.on(event, reposition));
+  }
+  // Dragging or wheeling a price axis rescales it with no chart event at all.
+  // The chart's own listeners on the same element ran first, so the scale has
+  // already moved when these read it.
+  if (anchor !== null) {
+    const pressed = (event: Event): void => { if ((event as PointerEvent).buttons !== 0) reposition(); };
+    const pointerOpts: AddEventListenerOptions = { passive: true };
+    anchor.addEventListener('pointermove', pressed, pointerOpts);
+    for (const type of ['pointerup', 'wheel', 'dblclick']) anchor.addEventListener(type, reposition, pointerOpts);
+    offs.push(() => {
+      anchor.removeEventListener('pointermove', pressed, pointerOpts);
+      for (const type of ['pointerup', 'wheel', 'dblclick']) anchor.removeEventListener(type, reposition, pointerOpts);
+    });
   }
   // A drag moves the drawing under the bar; it comes back where the drawing lands.
   offs.push(chart.on('draw:preview', () => { if (!dragging) { dragging = true; hide(); } }));
