@@ -21,7 +21,11 @@ function validateStudiesAndDrawings(state) {
     try { getIndicator(study.indicatorId); }
     catch { throw new Error(`Unavailable workspace study: ${study.indicatorId}`); }
   }
-  if (state.drawings !== undefined && !Array.isArray(state.drawings) && state.drawings?.version !== DRAWING_STATE_VERSION) {
+  // Any document version this build reads: a save is written as the lowest
+  // version that holds it, so one with no interval range is still version 2.
+  const version = state.drawings?.version;
+  if (state.drawings !== undefined && !Array.isArray(state.drawings)
+    && !(Number.isInteger(version) && version >= 2 && version <= DRAWING_STATE_VERSION)) {
     throw new Error('Unsupported workspace drawing document version');
   }
   const drawings = Array.isArray(state.drawings) ? state.drawings : state.drawings?.drawings || [];

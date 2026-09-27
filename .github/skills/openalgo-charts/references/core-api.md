@@ -335,6 +335,11 @@ drawing out of the list and out of its group's row, `selectable: false` withhold
 `select`, and `editable: false` withholds `visibility`, `lock` and `remove`, for the
 drawing and for any group holding it. A group that holds an unlisted drawing removes
 only its listed members (through `removeMany`, one undo step), and `ungroup` refuses it.
+The optional `hiddenOnInterval()` lists the drawings whose interval range leaves out
+the chart's interval, asked once per refresh; each keeps its row with
+`hiddenOnInterval: true` (a group row too, when every member is left out) and offers no
+`focus`, while `visible` stays the user's switch (see Visibility per interval in
+[drawing tools](drawing-tools.md)).
 
 `ChartObjectSnapshot` is immutable: `{ id, sourceId, kind, name, paneIndex, visible,
 selected, locked?, dataStatus?, capabilities }`. `ChartObjectKind` is

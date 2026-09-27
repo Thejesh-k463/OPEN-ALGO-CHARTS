@@ -38,6 +38,10 @@
  * - **Anything else that replaces the whole document** (a host's `fromJSON`,
  *   a chart layout restored) is the current instrument's new document, and is
  *   written as such.
+ * - **A stored document of an earlier version is read through the migration**
+ *   and written back only when something in it changes, in the version that
+ *   holds it then: a version 2 document stays version 2 until a drawing in it
+ *   is given an interval range, and a version 3 one keeps its ranges.
  *
  * The store is synchronous on purpose: a swap happens inside the context
  * change, and an answer arriving later would land one instrument's drawings
@@ -46,8 +50,8 @@
  */
 import type { DrawingController } from './controller';
 import type { DrawingsDocument } from './types';
-import { DRAWING_STATE_VERSION } from './types';
 import { migrateDrawings } from './migrate';
+import { drawingsDocumentVersion } from './intervals';
 
 /** An instrument as a chart's data context names it. */
 export interface DrawingInstrument {
@@ -116,7 +120,8 @@ export interface InstrumentDrawingsOptions {
   onError?: (error: InstrumentDrawingsError) => void;
 }
 
-const EMPTY: DrawingsDocument = { version: DRAWING_STATE_VERSION, drawings: [] };
+/** As the controller writes an empty chart, so a swap to an instrument with nothing stored compares equal. */
+const EMPTY: DrawingsDocument = { version: drawingsDocumentVersion([]), drawings: [] };
 
 /** A document with nothing in it, which is stored as no entry at all. */
 const isEmpty = (document: DrawingsDocument): boolean => document.drawings.length === 0 && !document.groups?.length;
