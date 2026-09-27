@@ -443,7 +443,7 @@ step nowhere. See
 | `clipboard()` | The `DrawingClipboard` behind them, for reporting failures. |
 | `toJSON()` / `fromJSON(data)` | `{ version, drawings, groups? }` (a `DrawingsDocument`, `version` 3 when a drawing carries an interval range, else 2) out, deep-copied, without transient drawings (`policy.persistent: false`); replace-all in (and clears history + selection, transient drawings included). `fromJSON` accepts a 1.9.x bare `Drawing[]` too and upgrades it. |
 | `migrateDrawings(input)` | The upgrade `fromJSON` runs, exported for a host reading a saved layout on its own: any 1.9.x array or v2 or v3 document in, a current `DrawingsDocument` out (a v2 document comes back unchanged, version and all), never throws. |
-| `interval()` / `shownOnInterval(id)` | The chart interval drawings are shown for (the data context's `interval`, or `null`), and whether a drawing's `intervals` range admits it. See the Visibility per interval section below. |
+| `interval()` / `shownOnInterval(id)` / `hiddenOnInterval()` | The chart interval drawings are shown for (the data context's `interval`, or `null`), whether a drawing's `intervals` range admits it, and the ids of every drawing it hides, in model order. See the Visibility per interval section below. |
 | `destroy()` | Unhooks listeners, removes every pane layer, releases placement mode. |
 
 Events on the chart bus: `draw:tool`, `draw:add`, `draw:update`, `draw:remove`, `draw:select` (the primary id), `draw:copy`, `draw:cut`, `draw:paste`, plus the 2.0 pair `drawing:select` (`{ ids }`, the whole selection) and `drawing:change` (`{ ids, kind: 'add' | 'update' | 'remove' | 'reorder' }`, one per mutation, after the per-drawing `draw:*` events; `ids` is empty for a history step that changed no drawing, a study anchor's drag and its undo or redo), and `drawing:hover` (`{ id: string | null }`, when the unselected drawing under the pointer changes). `DrawingChangeKind` names the `kind` union.
@@ -1259,6 +1259,7 @@ draw.update(level.id, { intervals: null });            // every interval again (
 
 chart.setDataContext({ symbol: 'INFY', exchange: 'NSE', interval: 'D' });
 draw.shownOnInterval(level.id);      // false while the chart is on daily bars
+draw.hiddenOnInterval();             // [level.id]: every drawing the interval hides, in one pass
 drawingShownOnInterval(level, '5m'); // the same test for any interval, no controller needed
 ```
 
@@ -1279,10 +1280,14 @@ How intervals compare:
 **The chart's interval is its data context's.** The controller reads
 `chart.getDataContext()?.interval` (optional on `DrawingChartHost`) when it is
 built, and follows every `data:context`; a host with no `getDataContext` is
-followed through the event's payload. `interval()` reads it. The change applies
-the moment the chart announces it, and the layers are listed again only when
-the set of hidden drawings changed, so a new symbol on the same interval
-repaints nothing.
+followed through the event's payload. `interval()` returns it, or `null` for
+none or a blank one. The change applies the moment the chart announces it, and
+the layers are listed again only when the set of hidden drawings changed, so a
+new symbol on the same interval repaints nothing. The context
+`publishDataContext` passes through on a change of data variant alone, whose
+interval is cleared, is not followed, as the chart's other listeners skip it:
+the interval, the layers and the selection stay as they were until the real
+context arrives within the same call.
 
 **Outside its range a drawing is kept but not on the chart.** It stays in
 `drawings()`, `toJSON()`, the undo history and every link, but no layer lists
@@ -1297,11 +1302,14 @@ it, so:
   `focus`, which would bring into view a place where nothing is drawn. A group
   row is marked when every drawing in it is hidden. The row's `visible` stays
   the user's own switch. The controller answers the inventory through the
-  optional `ChartObjectDrawingSource.shownOnInterval(id)`.
+  optional `ChartObjectDrawingSource.hiddenOnInterval()`, asked once per
+  refresh rather than once per row.
 - `visible` is untouched: the range is not the user's show and hide switch.
   An alert on the drawing keeps firing, since a display choice is not a
   change of the level it watches. `clear()` still takes every drawing the user
-  may delete, hidden ones included.
+  may delete, hidden ones included. A host's "select all" should take
+  `hiddenOnInterval()` out, as the reference host's does, or the delete that
+  follows removes drawings nobody can see on this interval.
 
 A copy carries the range: `duplicate`, Alt+drag and the clipboard keep it.
 **A paste never lands hidden:** a copy whose range leaves out the receiving

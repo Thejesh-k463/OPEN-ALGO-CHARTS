@@ -125,11 +125,13 @@ export interface ChartObjectDrawingSource {
   removeGroup?(id: string, removeDrawings?: boolean): boolean;
   updateMany?(patches: ReadonlyArray<{ id: string; patch: { visible?: boolean; locked?: boolean } }>): void;
   /**
-   * Whether a drawing is on the chart at the chart's interval. False marks
-   * its row `hiddenOnInterval` and withholds focus, which would bring into
-   * view a place where nothing is drawn. Without it every drawing is shown.
+   * The ids of the drawings the chart's interval leaves off the chart. Each
+   * one's row is marked `hiddenOnInterval` and offers no focus, which would
+   * bring into view a place where nothing is drawn. Asked once per refresh,
+   * as a list, so a large inventory costs one pass rather than a lookup per
+   * row. Without it every drawing is shown.
    */
-  shownOnInterval?(id: string): boolean;
+  hiddenOnInterval?(): readonly string[];
 }
 
 export interface ChartObjectsOptions {
@@ -511,7 +513,8 @@ export class ChartObjects {
       // An unlisted drawing is not in the inventory at all, so no row, group
       // or group-wide action reaches it from here.
       const listed = (drawing: ChartObjectDrawing): boolean => drawing.policy?.listed !== false;
-      const offInterval = (drawing: ChartObjectDrawing): boolean => draw.shownOnInterval?.(drawing.id) === false;
+      const hidden = new Set(draw.hiddenOnInterval?.() ?? []);
+      const offInterval = (drawing: ChartObjectDrawing): boolean => hidden.has(drawing.id);
       const membership = new Map<string, string>();
       for (const group of draw.groups?.() ?? []) {
         // A member the source no longer holds is skipped, as it always was.

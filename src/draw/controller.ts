@@ -37,7 +37,8 @@ import { DrawingScreen, within, type PaneProjection, type PointerSample } from '
 import { barAt, magnetModeOf, magnetPoint, type SnapBar } from './snap';
 import { DrawingGestures, type GestureKeys } from './gestures';
 import { GestureLayer } from './gesture-layer';
-import { drawingsDocumentVersion, intervalFilter, readIntervalRange } from './intervals';
+import { contextInterval, drawingsDocumentVersion, intervalFilter, passingContext, readIntervalRange } from './intervals';
+import { changedAnchor, historyPatch } from './patches';
 
 export type {
   DrawingChartHost, DrawingControllerOptions, DrawingGestureOptions, DrawingPlacementOptions,
@@ -123,21 +124,6 @@ const sameIds = (a: readonly string[], b: readonly string[]): boolean =>
 const pinned = (d: Drawing | undefined): boolean => d?.policy?.editable === false;
 
 /**
- * The index of the one anchor that differs between two sets, or null when
- * none or several do. What a tool's constraint is told a points patch moved.
- */
-function changedAnchor(prev: readonly DrawingPoint[], next: readonly DrawingPoint[]): number | null {
-  if (prev.length !== next.length) return null;
-  let found: number | null = null;
-  for (let i = 0; i < next.length; i++) {
-    if (prev[i].time === next[i].time && prev[i].price === next[i].price) continue;
-    if (found !== null) return null;
-    found = i;
-  }
-  return found;
-}
-
-/**
  * Whether a key is held, from either form the payload carries it in. The flat
  * flags on a click are deprecated (removed in 3.0.0): `modifiers` is read
  * first so nothing here depends on them, and they are still read so that a
@@ -169,21 +155,6 @@ interface DrawingHistoryEntry { before: string; after: string; step: number; ext
 
 /** @internal Reserved persistence metadata; a duplicate is a new drawing lineage. */
 export const DRAWING_LINK_METADATA_KEY = 'openalgo-charts/drawing-link';
-
-function historyPatch(current: unknown, before: unknown, after: unknown): unknown {
-  if (JSON.stringify(before) === JSON.stringify(after)) return current;
-  if (before === null || after === null || typeof before !== 'object' || typeof after !== 'object'
-    || Array.isArray(before) || Array.isArray(after)) return after;
-  const left = before as Record<string, unknown>;
-  const right = after as Record<string, unknown>;
-  const result = { ...(current as Record<string, unknown> | undefined) };
-  for (const key of new Set([...Object.keys(left), ...Object.keys(right)])) {
-    if (JSON.stringify(left[key]) === JSON.stringify(right[key])) continue;
-    if (!(key in right)) delete result[key];
-    else result[key] = historyPatch(result[key], left[key], right[key]);
-  }
-  return result;
-}
 
 export class DrawingController {
   private readonly _chart: DrawingChartHost;
@@ -225,8 +196,8 @@ export class DrawingController {
   private _placing = false;
   /** Drawings an eraser drag has touched: still in the model, left unpainted until it lets go. */
   private _hidden: ReadonlySet<string> = new Set();
-  /** The interval the last `data:context` named, for a host that cannot be asked for its context. */
-  private _contextInterval: string | null = null;
+  /** The chart interval drawings are shown for; see `interval()`. */
+  private _interval: string | null = null;
   /** The drawings the chart's interval hid when the layers were last listed; see `_followInterval`. */
   private _offInterval = '';
   /** The device behind the last pointer report, for target sizing. */
@@ -342,6 +313,7 @@ export class DrawingController {
     for (const event of ['objects:change', 'indicatorRemoved']) {
       this._off.push(chart.on(event, () => { if (this._slotKey !== this._slotSignature()) this._syncLayers(); }));
     }
+    this._interval = contextInterval(chart.getDataContext?.());
     this._sync();
     if (options.inputAnchors !== false && typeof (chart as InputAnchorHost).indicators === 'function') {
       this._anchors = new InputAnchors(chart as InputAnchorHost, {
@@ -701,15 +673,13 @@ export class DrawingController {
   }
 
   /**
-   * The chart interval drawings are shown for: the data context's `interval`,
-   * or null when the host names none, and then every drawing shows. Each
-   * drawing's `intervals` range is read against it, and `data:context`
-   * applies a change the moment the chart announces it.
+   * The chart interval drawings are shown for: the data context's `interval`
+   * when the controller was built, then as each `data:context` announces it,
+   * or null when the host names none (or a blank one), and then every drawing
+   * shows. Each drawing's `intervals` range is read against it.
    */
   public interval(): string | null {
-    const read = this._chart.getDataContext;
-    const interval = read === undefined ? this._contextInterval : read.call(this._chart)?.interval;
-    return typeof interval === 'string' ? interval : null;
+    return this._interval;
   }
 
   /**
@@ -722,9 +692,20 @@ export class DrawingController {
     return d !== undefined && this._shownFilter()(d);
   }
 
+  /**
+   * The ids of the drawings the chart's interval leaves off the chart, in
+   * model order. One pass for a caller asking about every drawing, as the
+   * object inventory does on each refresh: `shownOnInterval` per id would
+   * look each one up.
+   */
+  public hiddenOnInterval(): string[] {
+    const shown = this._shownFilter();
+    return this._drawings.filter(d => !shown(d)).map(d => d.id);
+  }
+
   /** The test of whether a drawing is shown at the chart's interval, resolved once for a pass over many. */
   private _shownFilter(): (d: Pick<Drawing, 'intervals'>) => boolean {
-    return intervalFilter(this.interval());
+    return intervalFilter(this._interval);
   }
 
   /**
@@ -734,10 +715,11 @@ export class DrawingController {
    * series a repaint and a new symbol on the same interval changes nothing.
    */
   private _followInterval(context: unknown): void {
-    const interval = (context as { interval?: unknown } | null | undefined)?.interval;
-    this._contextInterval = typeof interval === 'string' ? interval : null;
+    if (this._destroyed || passingContext(context)) return;
+    const read = this._chart.getDataContext;
+    this._interval = contextInterval(read === undefined ? context : read.call(this._chart));
+    if (this.hiddenOnInterval().join('\u0000') === this._offInterval) return;
     const shown = this._shownFilter();
-    if (this._destroyed || this._drawings.filter(d => !shown(d)).map(d => d.id).join('\u0000') === this._offInterval) return;
     this._syncLayers();
     const kept = this._selection.filter(id => { const d = this.get(id); return d !== undefined && shown(d); });
     if (!sameIds(kept, this._selection)) this._setSelection(kept);

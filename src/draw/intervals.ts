@@ -72,6 +72,30 @@ export function intervalLength(code: string | null | undefined): number | null {
 }
 
 /**
+ * The interval a data context names, or null when it names none: no context,
+ * no `interval`, or a blank one.
+ */
+export function contextInterval(context: unknown): string | null {
+  const interval = typeof context === 'object' && context !== null ? (context as { interval?: unknown }).interval : undefined;
+  return typeof interval === 'string' && interval.trim() !== '' ? interval : null;
+}
+
+/**
+ * The marker `publishDataContext` puts on the context it passes through on
+ * the way to a change of data variant alone. That context clears the
+ * interval and the real one follows at once, so following it would show
+ * every drawing and hide them again within one call, dropping from the
+ * selection a hidden drawing picked on purpose. The base tier does not
+ * export its test, so the registered key is read here, as the indicators
+ * tier reads it.
+ */
+const PASSING = Symbol.for('openalgo-charts.data-context.passing');
+
+/** Whether a `data:context` payload is that passing context. */
+export const passingContext = (context: unknown): boolean =>
+  typeof context === 'object' && context !== null && (context as Record<symbol, unknown>)[PASSING] === true;
+
+/**
  * A test of whether a drawing is shown on `interval`, with the interval
  * resolved once: the layers ask it of every drawing on every re-list.
  */

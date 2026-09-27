@@ -349,7 +349,7 @@ chart has a different interval loaded.
 | `untracked(fn)` | Run `fn` as the host's own act: an edit it makes records no undo step and leaves both branches as they are, and every recorded step takes it in, as a forced edit does, so no undo or redo reverses it. It reaches no read-only drawing, and `undo` or `redo` inside it still moves along the branches. [`ChartHistory`](/docs/undo-history) runs its `ignore` and every press through it. |
 | `delegateInputAnchorSteps(record)` | Hand the step each study input anchor move makes (a drag, `moveInputAnchor`) to a timeline of the host's: `record` receives the move's `InputAnchorStep`, its own `undo()` and `redo()`, as the move ends, and this history records nothing for it. The returned function gives the steps back. [`ChartHistory`](/docs/undo-history) takes them, since it records the settings patch the move writes, and one move must be one step. A point written through the study's settings (a settings dialog's Pick point), which this history otherwise holds as a step of its own, is not handed over: the host's timeline sees that write itself. A move inside `untracked` is a step nowhere. |
 | `toJSON()` / `fromJSON(data)` | Explicit serialisation: a `{ version, drawings }` document out, version 3 when a drawing carries an [interval range](#visibility-per-interval) and 2 otherwise; a document or a 1.9.x bare array in, upgraded by `migrateDrawings`. |
-| `interval()` / `shownOnInterval(id)` | The chart interval drawings are shown for, and whether a drawing's range admits it. See [Visibility per interval](#visibility-per-interval). |
+| `interval()` / `shownOnInterval(id)` / `hiddenOnInterval()` | The chart interval drawings are shown for, whether a drawing's range admits it, and every drawing it hides. See [Visibility per interval](#visibility-per-interval). |
 | `setOptions(patch)` | `magnet`, `stayInDrawingMode`, `historyLimit`, `defaultStyle`, `pasteOffsetBars`, `pasteOffsetPixels`, `clipboard`, `gestures` (see [Modifier gestures](#modifier-gestures)). |
 | `cancel()` / `popAnchor()` | Drop the anchors placed so far (the tool disarms unless `stayInDrawingMode` keeps it), or take away a temporary measure; remove the last anchor of a variable-anchor shape still being placed. Escape and Backspace, once the host wires them. |
 | `measuring()` | Whether a [temporary measure](#temporary-measure) is on the chart. |
@@ -922,6 +922,7 @@ drawingShownOnInterval(level, '5m'); // the same test for any interval
 | `DrawingPatch.intervals` | Replaces the range; `null` or `{}` clears it. One undo step, like any edit. |
 | `interval()` | The interval the controller shows drawings for: the data context's `interval`, or `null`. |
 | `shownOnInterval(id)` | Whether a drawing's range admits the chart's interval. |
+| `hiddenOnInterval()` | The ids of every drawing the chart's interval hides, in model order, in one pass. |
 | `drawingShownOnInterval(drawing, interval)` | The same test with no controller, for any interval. |
 | `INTERVAL_FIELDS` | The settings pair `intervals.from` and `intervals.to`, kind `'interval'`, group `'visibility'`. |
 
@@ -937,8 +938,9 @@ How intervals compare:
 
 The chart's interval is its data context's: the controller reads `getDataContext()` when it
 is built and follows every `data:context`, so a new interval applies the moment the chart
-announces it. A drawing outside its range is kept, saved and undone like any other, but it
-is not on the chart:
+announces it. A change of data variant alone, made with `publishDataContext`, leaves the
+drawings as they were. A drawing outside its range is kept, saved and undone like any
+other, but it is not on the chart:
 
 - nothing paints it, and the vector export and screenshots leave it out;
 - a click passes through it, and a box select or an eraser drag does not reach it;
@@ -966,7 +968,9 @@ draw.update(d.id, applyDrawingSettings(d, { 'intervals.to': 'D' }, schema));
 
 The reference host puts the pair under **Visibility** in the properties bar's More
 settings, and the bar says **Hidden on 1D** when the selected drawing is off the interval
-on screen.
+on screen. Its **Select all** takes only the drawings on the chart, from
+`hiddenOnInterval()`, so a delete that follows never takes one nobody can see; **Remove all
+drawings** still counts and removes every drawing.
 
 **Document version 3.** The range is the one field drawing document version 3 added.
 

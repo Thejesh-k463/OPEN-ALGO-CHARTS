@@ -19,6 +19,7 @@ import {
 } from '../src/draw/index';
 import { intervalLength, readIntervalRange } from '../src/draw/intervals';
 import { registerInterval } from '../src/feed/intervals';
+import { publishDataContext } from '../src/feed/data-variant';
 import { DataLayer } from '../src/model/data-layer';
 import { fakeDocument, pointer, type FakeElement } from './helpers/fake-dom';
 import type { Drawing, DrawingInput } from '../src/draw/types';
@@ -200,6 +201,43 @@ describe('on the chart', () => {
     // so its settings can widen the range; it has no handles to show.
     draw.select(ranged.id);
     expect(draw.selection()).toEqual([ranged.id]);
+  });
+
+  it('waits out the context a data variant change passes through, as the chart\'s own listeners do', () => {
+    const { chart, draw, post, interval } = mount();
+    const ranged = post(400, { intervals: HOURLY_AND_BELOW });
+    interval('D');
+    draw.select(ranged.id);                                   // picked on purpose, from an objects panel
+    const objects = new ChartObjects(chart, { drawings: draw });
+    cleanups.push(() => objects.destroy());
+    const marks: (boolean | undefined)[] = [];
+    objects.subscribe((rows) => marks.push(rows.find((r) => r.id === 'drawing:' + ranged.id)?.hiddenOnInterval));
+    const spy = vi.spyOn(DrawingLayer.prototype, 'setDrawings');
+    const seen: (string | null)[] = [];
+    chart.on('data:context', () => seen.push(draw.interval()));
+    // A variant alone is no source change to the chart, so the helper passes
+    // through a context with the interval cleared, then sets the real one.
+    publishDataContext(chart, { symbol: 'INFY', interval: 'D', variant: { session: 'extended' } });
+    expect(chart.getDataContext()?.variant).toEqual({ session: 'extended' });
+    expect(seen).toEqual(['D', 'D']);
+    expect(spy).not.toHaveBeenCalled();
+    expect(draw.selection()).toEqual([ranged.id]);
+    expect(draw.hiddenOnInterval()).toEqual([ranged.id]);
+    expect(marks).toEqual([true]);
+  });
+
+  it('reads a blank interval as none, and lists what the interval hides in model order', () => {
+    const { chart, draw, post, interval } = mount();
+    const a = post(200, { intervals: { to: '1h' } });
+    post(300);
+    const c = post(400, { intervals: { from: '1m', to: '5m' } });
+    interval('D');
+    expect(draw.hiddenOnInterval()).toEqual([a.id, c.id]);
+    interval('30m');
+    expect(draw.hiddenOnInterval()).toEqual([c.id]);
+    chart.setDataContext({ symbol: 'INFY', interval: '  ' });
+    expect(draw.interval()).toBeNull();
+    expect(draw.hiddenOnInterval()).toEqual([]);
   });
 
   it('lists the layers again only when the set of hidden drawings changes', () => {
@@ -435,6 +473,24 @@ describe('the object inventory', () => {
     interval('D');
     interval('5m');
     expect(seen).toEqual([undefined, true, undefined]);
+  });
+
+  it('asks a drawing source once per refresh for what the interval hides, not once per drawing', () => {
+    const { chart } = mount();
+    const at = (i: number) => ({ id: 'd' + i, tool: 'trend-line', paneIndex: 0, zIndex: 0, points: [{ time: BARS[i].time, price: BARS[i].close }] });
+    const drawings = [at(10), at(20), at(30)];
+    const hiddenOnInterval = vi.fn(() => ['d20']);
+    const source = {
+      drawings: () => drawings, get: (id: string) => drawings.find((d) => d.id === id),
+      selection: () => [], select: () => {}, update: () => {}, remove: () => false, hiddenOnInterval,
+    };
+    const objects = new ChartObjects(chart, { drawings: source });
+    cleanups.push(() => objects.destroy());
+    expect(objects.list().filter((r) => r.kind === 'drawing').map((r) => [r.id, r.hiddenOnInterval === true, r.capabilities.focus]))
+      .toEqual([['drawing:d10', false, true], ['drawing:d20', true, false], ['drawing:d30', false, true]]);
+    hiddenOnInterval.mockClear();
+    objects.refresh();
+    expect(hiddenOnInterval).toHaveBeenCalledTimes(1);
   });
 
   it('marks a group only when the interval hides every drawing in it', () => {
