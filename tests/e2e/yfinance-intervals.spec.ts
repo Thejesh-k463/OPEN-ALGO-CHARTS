@@ -53,7 +53,13 @@ async function place(page: Page): Promise<{ line: string; level: string }> {
 /** Two frames: whatever changed lands on the canvases in the next one. */
 const frames = (page: Page) => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 
-/** Pixels of the chart's canvases in a drawing's colour, after the next frame: magenta for the line, cyan for the level. */
+/**
+ * Pixels of the chart's canvases in a drawing's colour, after the next frame:
+ * magenta for the line, cyan for the level. The level is horizontal, so only
+ * cyan pixels in a horizontal run of at least 12 count: on Linux the legend's
+ * anti-aliased text leaves scattered pixels in that colour range, which no
+ * glyph stroke ever runs 12 pixels long.
+ */
 const painted = async (page: Page) => { await frames(page); return page.evaluate(() => {
   let magenta = 0;
   let cyan = 0;
@@ -61,9 +67,16 @@ const painted = async (page: Page) => { await frames(page); return page.evaluate
     const ctx = cv.getContext('2d');
     if (!ctx || cv.width === 0 || cv.height === 0) continue;
     const { data } = ctx.getImageData(0, 0, cv.width, cv.height);
-    for (let i = 0; i < data.length; i += 4) {
-      if (data[i] > 225 && data[i + 1] < 50 && data[i + 2] > 225) magenta++;
-      else if (data[i] < 40 && data[i + 1] > 200 && data[i + 2] > 225) cyan++;
+    for (let y = 0; y < cv.height; y++) {
+      let run = 0;
+      for (let x = 0; x <= cv.width; x++) {
+        const i = (y * cv.width + x) * 4;
+        const isCyan = x < cv.width && data[i] < 40 && data[i + 1] > 200 && data[i + 2] > 225;
+        if (x < cv.width && data[i] > 225 && data[i + 1] < 50 && data[i + 2] > 225) magenta++;
+        if (isCyan) { run++; continue; }
+        if (run >= 12) cyan += run;
+        run = 0;
+      }
     }
   }
   return { magenta, cyan };
