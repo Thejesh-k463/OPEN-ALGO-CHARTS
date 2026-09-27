@@ -586,8 +586,12 @@ A primitive that declares a box promises:
 
 A primitive that declares `hitBounds` is attached with a host object that wraps the
 chart's, so the pane hears its `requestUpdate`; do not compare that host with another
-by identity. The built-in primitives and the draw tier's layers declare no box yet, so
-they are asked on every move as before.
+by identity. The built-in primitives declare no box yet, so they are asked on every move
+as before. The draw tier's layers keep a box per drawing of their own instead: the pane
+asks a layer on every move, and the layer asks only the drawings whose box the pointer
+is in, 4.5 of 500 trend lines per move in `node scripts/bench-pane.mjs`. A host driving
+a `DrawingLayer` itself hands a drawing edited in place over again with `setDrawings`,
+as the controller does, for a hover to see where it now is.
 
 ## `bestHit` helper
 

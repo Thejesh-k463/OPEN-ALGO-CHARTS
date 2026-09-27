@@ -205,7 +205,7 @@ hitBounds(rc) {
 - The pane also stops walking at an exact hit (`distance: 0`) among the primitives painted in front, which nothing after it can outrank. `hitTest` must be free of side effects either way: a primitive can be skipped.
 - **A primitive that declares `hitBounds` is attached with a host that wraps the chart's**, so the pane hears its `requestUpdate`. Do not compare that host with another primitive's by identity.
 
-The hook arrived in 2.5.8. The built-in primitives and the draw tier's layers do not declare boxes yet, so they are asked on every move as before.
+The hook arrived in 2.5.8. The built-in primitives do not declare boxes yet, so they are asked on every move as before. The draw tier's layers keep a box per drawing of their own instead (unreleased): the pane asks a layer on every move, and the layer asks only the drawings whose box the pointer is in, 4.5 of 500 trend lines per move in `node scripts/bench-pane.mjs`. The boxes follow the same scales and plot size, and a new drawing list; a host driving a `DrawingLayer` itself hands a drawing edited in place over again with `setDrawings`, as the controller does, for a hover to see where it now is.
 
 ## `autoscaleInfo`
 

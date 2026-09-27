@@ -237,6 +237,51 @@ is the tighter and more honest budget.
   [browser endurance](browser-endurance.md) workload and the render bench, and
   keeps every report.
 
+## Hit testing
+
+`node scripts/bench-pane.mjs` (part C) moves the pointer over a chart of 50,000
+bars carrying 500 drawings and counts how many of them each move asks for a
+hit, next to the time per move. Three scenes: 500 host primitives that declare
+a hit box, 500 trend lines on the draw tier, and a marked-up chart of 500
+drawings placed on the bars' own swing highs and lows (trend lines, levels and
+rays, boxes over ranges, retracements, notes, markers, positions, channels,
+and ten lines extended both ways). The counts do not depend on the machine, so
+they carry the budget: fewer than 10 of the primitives, fewer than 10 of the
+trend lines and fewer than 30 of the marked-up chart per move.
+
+The pane has kept a box per primitive since 2.5.8, but the draw tier holds all
+of a pane's drawings in one primitive, so that box covered the plot and every
+move still asked every drawing. The drawing layer now keeps a box per drawing
+(`src/draw/hit-index.ts`): the region its tool can report a hit in, worked out
+from the same anchors, style and scales the tool's distance reads, and kept
+until one of those changes. Measured against the previous build (8071693) with
+`node scripts/bench-pane.mjs --compare=dist-baseline`, six runs in one session
+with the two builds taking turns to run first, on a desktop shared with other
+work; the times are the medians:
+
+| Scene | Asked per move | Hit test per move | Whole move |
+| --- | --- | --- | --- |
+| 500 primitives with hit boxes | 4.5 to 4.5 | 4.1 to 4.1 us | 49 to 46 us |
+| 500 trend lines | 500 to 4.5 | 63.8 to 5.8 us | 172 to 112 us |
+| 500 drawings, marked-up chart | 483.4 to 12.3 | 58.6 to 6.5 us | 460 to 412 us |
+
+The marked-up chart still asks its ten extended lines on every move: a line
+extended both ways at a slope crosses the whole plot, and no box short of the
+plot holds it. Tools with no box in the table (the pitchforks, the fans and
+arcs of the advanced set, the studies drawn from the bars, and any host tool)
+are asked on every move, as before.
+
+The whole move changes much less than the hit test (460 to 412 us for the
+marked-up chart). What is left is the overlay repaint every move makes for the
+crosshair: the overlay canvas is repainted whole, with every top-layer
+primitive drawn into it again, and the draw tier's top layer holds every
+drawing over the series. A move over
+500 drawings therefore paints 500 drawings, the difference between the time per
+move and the hit test in the table above. Painting the drawings once into a
+layer of their own, repainted only when a drawing, the hover or the view
+changes, would leave a move the crosshair alone. That is the next cost to take
+on for a heavily drawn chart.
+
 ## Findings not measured yet
 
 ### Markers map the whole history on every paint

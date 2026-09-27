@@ -29,6 +29,11 @@
  * top canvas. The layer that paints them is the one whose `requestUpdate`
  * the chart maps to the cursor tier, which is why the bottom layer of a pair
  * stores that state and asks for nothing.
+ *
+ * A hit test asks a tool for its distance only where the drawing can be: each
+ * layer keeps a box per drawing (src/draw/hit-index.ts) and a pointer outside
+ * it costs four comparisons. The answer is the one a test of every drawing
+ * gives, because a box covers every point its tool would report as a hit.
  */
 import type { IPrimitive, PrimitiveHost, PrimitiveRenderContext, PrimitiveHit, ZOrder } from 'openalgo-charts';
 import type { Drawing, DrawingPoint, ScreenPoint, ViewportPoint } from './types';
@@ -36,6 +41,7 @@ import { getDrawingTool, hasDrawingTool } from './tools';
 import { withDrawingTextMetrics } from './text-metrics';
 import { anchorCount, containInPlot, viewportToPlot } from './viewport';
 import { boundsOf } from './geometry';
+import { createDrawingHitIndex, EVERYWHERE, NOWHERE, inHitBox, spanOf, toolHitBox, type HitBox } from './hit-index';
 
 /** Grab radius for a shape, in media px. */
 const GRAB = 6;
@@ -142,6 +148,10 @@ export class DrawingLayer implements IPrimitive {
   private _above: DrawingLayer | null = null;
   /** Sizes grab targets for the device last seen. */
   private _touch = false;
+  /** Hit boxes per drawing, kept while nothing that places them changes. */
+  private readonly _index = createDrawingHitIndex();
+  /** Paint positions of the selected, unlocked, shown drawings, or null until asked again. */
+  private _selectedAt: number[] | null = null;
 
   public constructor(order: DrawingLayerOrder = 'top') {
     this._order = order;
@@ -155,14 +165,23 @@ export class DrawingLayer implements IPrimitive {
   /** Drawings overlay the price range; they never drive it. */
   public autoscaleInfo(): null { return null; }
 
+  /**
+   * The drawings this layer paints and answers for. The hit boxes kept for
+   * the previous list all go, so a drawing edited in place must be handed
+   * over again, as the controller does after every edit, for a hover to see
+   * where it now is.
+   */
   public setDrawings(drawings: readonly Drawing[]): void {
     this._drawings = sortByZIndex(drawings);
+    this._index.reset(this._drawings);
+    this._selectedAt = null;
     this._host?.requestUpdate();
   }
 
   public setSelected(ids: readonly string[]): void {
     if (ids.length === this._selected.length && ids.every((id, i) => id === this._selected[i])) return;
     this._selected = ids.slice();
+    this._selectedAt = null;
     this._host?.requestUpdate();
   }
 
@@ -416,10 +435,12 @@ export class DrawingLayer implements IPrimitive {
     rc = this._drawingContext(rc);
     // The layer above answers for this one, so two answers never compete.
     if (this._above !== null) return null;
+    const layers = [this, ...this._below];
+    for (const layer of layers) layer._index.check(rc, layer._drawings, layer._grabRadius(rc));
 
     // Handles of every selected drawing win: they sit on top of their own body
     // and grabbing an anchor must beat dragging the whole shape.
-    for (const layer of [this, ...this._below]) {
+    for (const layer of layers) {
       const handle = layer._hitHandle(x, y, rc);
       if (handle !== null) return handle;
     }
@@ -437,10 +458,36 @@ export class DrawingLayer implements IPrimitive {
     return null;
   }
 
+  /**
+   * Paint positions of the drawings `_handled` lists, less the registry check,
+   * which is read live: a tool registered after the list was made makes its
+   * drawings handled from then on, with no new list to say so.
+   */
+  private _selectedPositions(): number[] {
+    if (this._selectedAt !== null) return this._selectedAt;
+    const sel = new Set(this._selected), at: number[] = [];
+    if (sel.size > 0) this._drawings.forEach((d, i) => { if (sel.has(d.id) && d.locked !== true && d.visible !== false) at.push(i); });
+    return this._selectedAt = at;
+  }
+
+  /**
+   * A drawing's body box: none for one that cannot be hit, everywhere for a
+   * tool the box table does not know, else its tool's box at this radius.
+   */
+  private _measure(d: Drawing, rc: PrimitiveRenderContext, grab: number): HitBox {
+    if (d.visible === false || d.locked === true || d.policy?.selectable === false || !runnable(d)) return NOWHERE;
+    const tool = getDrawingTool(d.tool);
+    if (anchorCount(d) < Math.max(1, tool.points)) return NOWHERE;
+    return toolHitBox(tool, this._points(rc, d), d, rc, grab) ?? EVERYWHERE;
+  }
+
   private _hitHandle(x: number, y: number, rc: PrimitiveRenderContext): PrimitiveHit | null {
     const radius = this._handleRadius(rc) + 2;
-    for (const sel of this._handled()) {
-      if (readOnly(sel)) continue;
+    for (const i of this._selectedPositions()) {
+      const sel = this._drawings[i];
+      if (!runnable(sel) || readOnly(sel)) continue;
+      // Every handle is an anchor, so none is further out than the anchors reach.
+      if (!inHitBox(this._index.anchors[i] ??= spanOf(this._points(rc, sel), radius), x, y)) continue;
       const pts = this._points(rc, sel);
       for (const i of handleIndices(sel.tool, pts.length)) {
         if (Math.hypot(x - pts[i].x, y - pts[i].y) <= radius) {
@@ -460,6 +507,7 @@ export class DrawingLayer implements IPrimitive {
     // Reverse paint order, so the shape painted last wins a tie.
     for (let i = this._drawings.length - 1; i >= 0; i--) {
       const d = this._drawings[i];
+      if (!inHitBox(this._index.bodies[i] ??= this._measure(d, rc, grab), x, y)) continue;
       // An unselectable drawing is not there to the pointer: the click goes
       // through to whatever lies under it.
       if (d.visible === false || d.locked === true || d.policy?.selectable === false || !runnable(d)) continue;

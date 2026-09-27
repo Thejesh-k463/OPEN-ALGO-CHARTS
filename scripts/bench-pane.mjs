@@ -25,10 +25,12 @@
  *   C. hit testing       microseconds per hover move across the plot with 500
  *                        drawings, for the whole move (overlay repaint
  *                        included) and for the hit test alone: 500 host
- *                        primitives that declare their hit bounds, and 500
- *                        shapes on the draw tier's layers. The budget is on
- *                        how many primitives a move asks to hit-test, a count
- *                        that does not depend on the machine.
+ *                        primitives that declare their hit bounds, 500 trend
+ *                        lines on the draw tier's layers, and 500 drawings of
+ *                        the tools a chart is marked up with, placed on the
+ *                        bars' own swings. The budgets are on how many
+ *                        primitives, and how many drawings, a move asks to
+ *                        hit-test: counts that do not depend on the machine.
  *
  * Budgets are for the build under test. `--compare=<dir>` measures a second
  * build (dist-baseline/ is the previous release) with the same scenes and
@@ -346,15 +348,97 @@ function scatter(bars, count, fn) {
   }
 }
 
+/**
+ * The swing highs and lows of the bars in view: a bar whose high (or low) is
+ * the extreme of the three bars either side. Drawings are placed on these,
+ * as a trader places them, rather than at random prices.
+ */
+function swings(bars, from) {
+  const out = [];
+  for (let i = from + 3; i < bars.length - 3; i++) {
+    const w = bars.slice(i - 3, i + 4);
+    if (bars[i].high === Math.max(...w.map((b) => b.high))) out.push({ i, high: true, time: bars[i].time, price: bars[i].high });
+    if (bars[i].low === Math.min(...w.map((b) => b.low))) out.push({ i, high: false, time: bars[i].time, price: bars[i].low });
+  }
+  return out;
+}
+
+/**
+ * 500 drawings of the tools a marked-up chart carries, in about the mix one
+ * does: trend lines joining swing lows and swing highs, levels and rays off
+ * swings, boxes over ranges, retracements between swings, notes and markers
+ * on them, positions, channels, and a few lines extended both ways, which no
+ * box can hold and every move asks.
+ */
+function markedUp(bars, count) {
+  const first = bars.length - 150;
+  const sw = swings(bars, first);
+  const lows = sw.filter((s) => !s.high), highs = sw.filter((s) => s.high);
+  const at = (list, k) => list[k % list.length];
+  const pt = (s) => ({ time: s.time, price: s.price });
+  const mix = [
+    [150, (k) => {
+      const list = k % 2 ? highs : lows;
+      return { tool: 'trend-line', points: [pt(at(list, k)), pt(at(list, k + 1 + (k % 3)))] };
+    }],
+    [80, (k) => ({ tool: 'horizontal-line', points: [pt(at(sw, k))] })],
+    [40, (k) => ({ tool: 'horizontal-ray', points: [pt(at(sw, k * 3))] })],
+    [60, (k) => {
+      const a = at(sw, k), j = Math.min(bars.length - 1, a.i + 4 + (k % 9)), span = bars.slice(a.i, j + 1);
+      return { tool: 'rectangle', style: { fill: k % 2 === 0 }, points: [
+        { time: a.time, price: Math.max(...span.map((b) => b.high)) },
+        { time: bars[j].time, price: Math.min(...span.map((b) => b.low)) },
+      ] };
+    }],
+    [30, (k) => ({ tool: 'fib-retracement', points: [pt(at(lows, k)), pt(at(highs, k + 2))] })],
+    [40, (k) => ({ tool: 'text', text: { value: k % 2 ? 'Swing high' : 'Swing low' }, points: [pt(at(sw, k * 5))] })],
+    [40, (k) => {
+      const s = at(sw, k * 7);
+      return { tool: s.high ? 'arrow-down' : 'arrow-up', points: [pt(s)] };
+    }],
+    [20, (k) => {
+      const s = at(lows, k), risk = (bars[s.i].high - bars[s.i].low) || 1, end = s.time + 60 * 20;
+      return { tool: 'long-position', points: [pt(s), { time: end, price: s.price + 2 * risk }, { time: end, price: s.price - risk }] };
+    }],
+    [20, (k) => ({ tool: 'parallel-channel', points: [pt(at(lows, k)), pt(at(lows, k + 2)), pt(at(highs, k + 1))] })],
+    [10, (k) => ({ tool: 'ray', points: [pt(at(lows, k)), pt(at(lows, k + 1))] })],
+    [10, (k) => ({ tool: 'extended-line', points: [pt(at(highs, k)), pt(at(highs, k + 2))] })],
+  ];
+  const out = [];
+  for (const [n, make] of mix) for (let k = 0; k < n && out.length < count; k++) out.push({ paneIndex: 0, style: {}, ...make(k) });
+  return out;
+}
+
+/**
+ * Count the draw tier's distance calls. Each tool's `distance` is wrapped on
+ * the registered object itself, so every drawing still resolves to the tool
+ * object the build registered.
+ */
+function countDistances(build, ids, tally) {
+  const undo = [];
+  for (const id of new Set(ids)) {
+    const tool = build.draw.getDrawingTool(id), own = tool.distance;
+    tool.distance = function (...args) { tally.asked++; return own.apply(this, args); };
+    undo.push(() => { tool.distance = own; });
+  }
+  return () => { for (const fn of undo) fn(); };
+}
+
 function hoverCost(build, bars, kind, count) {
   const { chart, flush, container } = makeChart(build);
   chart.addSeries('candlestick').setData(bars);
-  const tally = { tests: 0 };
+  const tally = { tests: 0, asked: 0 };
+  let restore = () => {};
   if (kind === 'primitives') {
     scatter(bars, count, (t0, p0, t1, p1) => chart.addPrimitive(segmentPrimitive(tally, t0, p0, t1, p1), 0));
   } else {
     const draw = new build.draw.DrawingController(chart);
-    scatter(bars, count, (t0, p0, t1, p1) => draw.add({ tool: 'trend-line', paneIndex: 0, style: {}, points: [{ time: t0, price: p0 }, { time: t1, price: p1 }] }));
+    const list = [];
+    if (kind === 'drawings') {
+      scatter(bars, count, (t0, p0, t1, p1) => list.push({ tool: 'trend-line', paneIndex: 0, style: {}, points: [{ time: t0, price: p0 }, { time: t1, price: p1 }] }));
+    } else list.push(...markedUp(bars, count));
+    for (const d of list) draw.add(d);
+    restore = countDistances(build, list.map((d) => d.tool), tally);
   }
   flush();
   const moves = [];
@@ -365,10 +449,11 @@ function hoverCost(build, bars, kind, count) {
   };
   for (const m of moves) move(m); // warm up
   tally.tests = 0;
+  tally.asked = 0;
   const t0 = performance.now();
   for (let r = 0; r < 5; r++) for (const m of moves) move(m);
   const us = ((performance.now() - t0) * 1000) / (moves.length * 5);
-  const testsPerMove = tally.tests / (moves.length * 5);
+  const testsPerMove = (kind === 'primitives' ? tally.tests : tally.asked) / (moves.length * 5);
   // The hit test alone, without the overlay repaint every move also asks
   // for: the part a prefilter can change. Through the chart's own internals,
   // as the drawing-catalog e2e spec reaches them.
@@ -379,11 +464,9 @@ function hoverCost(build, bars, kind, count) {
   const t1 = performance.now();
   for (let r = 0; r < 5; r++) hitOnce();
   const hitUs = ((performance.now() - t1) * 1000) / (moves.length * 5);
+  restore();
   chart.destroy();
-  return {
-    kind, count, usPerMove: +us.toFixed(1), usPerHitTest: +hitUs.toFixed(1),
-    testsPerMove: kind === 'primitives' ? +testsPerMove.toFixed(1) : null,
-  };
+  return { kind, count, usPerMove: +us.toFixed(1), usPerHitTest: +hitUs.toFixed(1), testsPerMove: +testsPerMove.toFixed(1) };
 }
 
 // ── run ─────────────────────────────────────────────────────────────────────
@@ -400,7 +483,7 @@ async function measure(dir) {
     ],
     pan: [panAllocation(build, mid, 6, 200, false), panAllocation(build, mid, 1.2, 200, false)],
     panFixed: [panAllocation(build, mid, 6, 200, true), panAllocation(build, mid, 1.2, 200, true)],
-    hover: [hoverCost(build, mid, 'primitives', 500), hoverCost(build, mid, 'drawings', 500)],
+    hover: [hoverCost(build, mid, 'primitives', 500), hoverCost(build, mid, 'drawings', 500), hoverCost(build, mid, 'marked-up', 500)],
   };
 }
 
@@ -426,12 +509,17 @@ const slope = (pan) => {
 //     per series and a point object per bar in the line renderers; 620 and 950
 //     with only the first of those gone. The budgets sit between the last
 //     figures and these; tests/pane-draw-items.test.ts pins the reuse itself.
-//  C: a hover move asks fewer than ten of the 500 bounded primitives.
+//  C: a hover move asks fewer than ten of the 500 bounded primitives, and of
+//     the draw tier's 500 drawings fewer than ten trend lines, and fewer than
+//     thirty of the marked-up chart: its ten lines extended both ways are
+//     asked on every move, and the rest only near the pointer. Asking every
+//     drawing was 500 per move.
 const LOD_PER_COLUMN = 4;
 const LOD_CHROME = 600;
 const BYTES_PER_BAR_FIXED = 400;
 const BYTES_PER_BAR = 800;
 const TESTS_PER_MOVE = 10;
+const DRAWINGS_ASKED = { drawings: 10, 'marked-up': 30 };
 
 const results = [await measure(DIST)];
 if (COMPARE !== null) results.push(await measure(COMPARE));
@@ -449,6 +537,10 @@ const failures = [];
   }
   const hover = r.hover[0];
   if (hover.testsPerMove >= TESTS_PER_MOVE) failures.push(`C: ${hover.testsPerMove} hit tests per move exceeds ${TESTS_PER_MOVE}`);
+  for (const h of r.hover.slice(1)) {
+    const limit = DRAWINGS_ASKED[h.kind];
+    if (!(h.testsPerMove < limit)) failures.push(`C (${h.kind}): ${h.testsPerMove} drawings asked per move exceeds ${limit}`);
+  }
 }
 
 if (JSON_OUT) {
@@ -470,7 +562,7 @@ if (JSON_OUT) {
     }
     console.log(`   bytes per visible bar per frame: ${slope(r.panFixed) ?? 'n/a'} with fixed scales, ${slope(r.pan) ?? 'n/a'} autoscaled`);
     console.log('\nC. hover move with 500 drawings\n');
-    console.log('   scene      | us/move | us/hit test | hit tests/move');
+    console.log('   scene      | us/move | us/hit test | asked/move');
     for (const h of r.hover) {
       console.log(`   ${h.kind.padEnd(10)} | ${String(h.usPerMove).padStart(7)} | ${String(h.usPerHitTest).padStart(11)} | ${h.testsPerMove ?? 'n/a'}`);
     }
