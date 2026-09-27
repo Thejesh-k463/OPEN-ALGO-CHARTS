@@ -26,11 +26,11 @@ Pick the shape from what you find:
 |---|---|
 | `next` | client-only component, `'use client'`, create in `useEffect` |
 | `react` without `next` | component with `useRef` + `useEffect` |
-| `vue` | `onMounted` / `onBeforeUnmount` |
+| `vue` | a composable: chart in a `shallowRef`, `onMounted` / `onBeforeUnmount` |
 | a bundler, no framework | plain module |
 | no bundler, HTML only | `dist/openalgo-charts.standalone.js` and the `OpenAlgoCharts` global |
 
-Read [react-integration](../openalgo-charts/references/react-integration.md) for the framework shapes and [bundling-and-tiers](../openalgo-charts/references/bundling-and-tiers.md) for the no-bundler shape.
+Read [react-integration](../openalgo-charts/references/react-integration.md) for the React and Next.js shapes, [vue-integration](../openalgo-charts/references/vue-integration.md) for Vue 3 and Nuxt, and [bundling-and-tiers](../openalgo-charts/references/bundling-and-tiers.md) for the no-bundler shape.
 
 ## Step 2 - install
 
@@ -57,7 +57,7 @@ Requirements the scaffold must satisfy:
 1. The container has an explicit non-zero height. A chart in a zero-height box renders nothing and this is the most common setup failure.
 2. Time values are **UTC seconds**.
 3. The chart is created once and destroyed in cleanup with `chart.destroy()`.
-4. The chart instance lives in a ref or module scope, never in component state.
+4. The chart instance lives in a ref or module scope, never in component state. In Vue that ref is a `shallowRef`: `ref()` and `reactive()` hand back a proxy of the chart.
 5. Real data if the project has a source; `generateBars` only as an explicit placeholder, clearly marked.
 6. No emojis or icons anywhere in the code.
 

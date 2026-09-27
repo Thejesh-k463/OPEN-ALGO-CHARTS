@@ -138,34 +138,42 @@ and hydrate it on the client only.
 
 ## Vue 3
 
-Use a template ref with `onMounted` to create and `onUnmounted` to destroy.
+Hold the chart in a `shallowRef` or a plain variable, create it in `onMounted`, and
+destroy it in `onBeforeUnmount`. Never hold it in `ref()` or `reactive()`: both hand
+back a deep proxy instead of the chart, and the library, which keys its replay, pick
+and comparison state on the chart's identity, does not recognise the proxy as the
+same chart.
 
 ```vue
 <template>
-  <div ref="containerRef" style="width: 100%; height: 400px;" />
+  <div ref="container" style="width: 100%; height: 400px;" />
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
-import { createChart, generateBars } from 'openalgo-charts';
-import type { Chart } from 'openalgo-charts';
+import { onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
+import { createChart, generateBars, type Chart } from 'openalgo-charts';
 
-const containerRef = ref<HTMLDivElement | null>(null);
-let chart: Chart | null = null;
+const container = ref<HTMLDivElement | null>(null);
+// shallowRef: `.value` is the chart itself, never a proxy of it.
+const chart = shallowRef<Chart | null>(null);
 
 onMounted(() => {
-  if (!containerRef.value) return;
-  chart = createChart(containerRef.value);
-  const series = chart.addSeries('candlestick');
-  series.setData(generateBars(1700000000, 120, 3600));
+  if (!container.value) return;
+  chart.value = createChart(container.value);
+  chart.value.addSeries('candlestick').setData(generateBars(1700000000, 120, 3600));
 });
 
-onUnmounted(() => {
-  chart?.destroy();
-  chart = null;
+onBeforeUnmount(() => {
+  chart.value?.destroy();
+  chart.value = null;
 });
 </script>
 ```
+
+The [Vue 3 guide](/docs/vue) has the reusable composable and a component that takes
+symbol, interval and theme props: props that feed the same chart, resize, theme
+switching, the widget, cleanup, `KeepAlive` and Nuxt, with the browser tests behind
+each of them.
 
 ## Angular
 
@@ -227,5 +235,6 @@ Svelte will invoke it when the component is removed from the DOM.
 
 ## Related pages
 
+- [Vue 3](/docs/vue) - the composable, the component, reactivity, KeepAlive and Nuxt.
 - [Getting Started](/docs/getting-started) - install, your first chart, and live updates.
 - [Core Concepts](/docs/core-concepts) - the data model, gapless time axis, and panes.
