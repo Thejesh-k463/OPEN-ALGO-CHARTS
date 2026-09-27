@@ -133,6 +133,50 @@ test('a range set from the properties bar shows and hides each drawing as the in
   expect(errors).toEqual([]);
 });
 
+test('Select all leaves out what the interval hides, and the hidden note follows the interval', async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const s = await place(page);
+  await page.evaluate(id => (window as any).__oac.app.draw.update(id, { intervals: { from: '1wk' } }), s.line);
+  const shown = await page.evaluate(() => {
+    const { draw } = (window as any).__oac.app;
+    return draw.drawings().filter((d: { id: string }) => draw.shownOnInterval(d.id)).map((d: { id: string }) => d.id);
+  });
+  expect(shown).toContain(s.level);
+  expect(shown).not.toContain(s.line);
+
+  // The trash menu: Select all counts and takes only what is on the chart.
+  // With nothing selected the button reads as off for a press, but a right
+  // click still opens its menu, so the check of actionability is skipped.
+  await page.locator('#rail .rail__btn--danger').first().click({ button: 'right', force: true });
+  const rows = page.locator('.rail-menu button');
+  await expect(rows.first()).toHaveText(`Select all (${shown.length})`);
+  await page.screenshot({ path: info.outputPath('select-all-leaves-hidden-out.png') });
+  await rows.first().click();
+  expect(await page.evaluate(() => [...(window as any).__oac.app.draw.selection()])).toEqual(shown);
+
+  // Picked on purpose, as an objects panel does: the note names the interval
+  // on screen. This page rebuilds its chart on a pill, which drops the
+  // selection, so the context is changed on the chart in place, as a host
+  // that keeps its chart across intervals does.
+  await page.evaluate(id => (window as any).__oac.app.draw.select(id), s.line);
+  const note = page.locator('#propbar [data-note="interval"]');
+  await expect(note).toHaveText(/hidden on 1d/i);
+  const context = (interval: string) => page.evaluate((iv) => {
+    const { chart } = (window as any).__oac.app;
+    chart.setDataContext({ ...chart.getDataContext(), interval: iv });
+  }, interval);
+  await context('1h');
+  expect(await page.evaluate(() => [...(window as any).__oac.app.draw.selection()])).toEqual([s.line]);
+  await expect(note).toHaveText(/hidden on 1h/i);
+  await page.screenshot({ path: info.outputPath('note-follows-interval.png') });
+  await context('1wk');
+  expect(await page.evaluate(() => [...(window as any).__oac.app.draw.selection()])).toEqual([s.line]);
+  await expect(note).toBeHidden();
+  expect((await painted(page)).magenta).toBeGreaterThan(40);
+  expect(errors).toEqual([]);
+});
+
 test('a click where a hidden drawing lies selects nothing, and the same click selects it where it is shown', async ({ page }) => {
   const s = await place(page);
   const box = await page.locator('#chart').boundingBox();
