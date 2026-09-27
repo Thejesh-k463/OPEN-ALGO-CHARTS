@@ -485,6 +485,20 @@ describe('applying a layout', () => {
     expect(syncComparisons).not.toHaveBeenCalled();
   });
 
+  it('keeps the drawings of a layout captured on another symbol for that symbol', () => {
+    const doc = { ...upgradeLayout(V1_DOC), request: { symbol: 'MSFT', interval: '1d', period: '1y' } };
+    const live = { version: 2, drawings: [{ id: 'mine' }] };
+    app.draw.toJSON = () => live;
+    app.instrumentDrawings = { setDocument: vi.fn() };
+    expect(applyLayout(doc).applied).toBe(true);
+    expect(app.instrumentDrawings.setDocument).toHaveBeenCalledWith({ symbol: 'MSFT' }, doc.drawings);
+    expect(app.chart.restored[0].drawings).toBe(live);
+    // Captured on the symbol on screen, the layout's drawings are this chart's.
+    applyLayout({ ...doc, request: { ...doc.request, symbol: 'AAPL' } });
+    expect(app.instrumentDrawings.setDocument).toHaveBeenCalledTimes(1);
+    expect(app.chart.restored[1].drawings).toBe(doc.drawings);
+  });
+
   it('reports a refused state through the toast and leaves the rest alone', () => {
     app.chart.restoreState = () => ({ applied: false, series: [], indicators: 0, reason: 'nope' });
     const report = applyLayout(upgradeLayout(V1_DOC));
