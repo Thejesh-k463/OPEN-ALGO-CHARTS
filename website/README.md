@@ -83,6 +83,8 @@ public data endpoint; the feed unit tests run without external requests.
 The depth demo uses simulated updates and the published tick-grouping API.
 The drawing playground exercises the same controller used by applications.
 The homepage, guides and API reference share the site's dark and light palettes.
+A first visit opens in the light theme; the navbar toggle saves the reader's
+choice for later visits.
 Intro animations respect the visitor's reduced-motion preference.
 
 The homepage chart uses public BTC/USD exchange candles through
