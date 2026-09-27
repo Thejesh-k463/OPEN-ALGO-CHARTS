@@ -236,6 +236,8 @@ export class DataLayer {
   private readonly _series = new Map<SeriesId, SeriesEntry>();
   private _sortedTimes: number[] = [];
   private readonly _indexByTime = new Map<number, number>();
+  /** How many series hold each time on the axis; a time leaves the axis at zero. */
+  private readonly _timeRefs = new Map<number, number>();
   private _nextId: SeriesId = 1;
   /** Bumped whenever the time axis changes, so the future plan knows to look again. */
   private _version = 0;
@@ -275,58 +277,27 @@ export class DataLayer {
   }
 
   public removeSeries(id: SeriesId): void {
+    const entry = this._series.get(id);
+    if (entry === undefined) return;
+    this._replaceBars(entry, []);
     this._series.delete(id);
-    this._rebuild();
   }
 
   /**
    * Bulk-load (full replace) one series' data. Input is sorted and
    * de-duplicated by time by a private `sortedUniqueByTime`.
    *
-   * The shared index is rebuilt only when the set of times changes. A rebuild
-   * re-merges every series on the chart, and most whole writes do not change
-   * the set: a study's plots carry the source's own times, which the source
-   * put in the index before any study recomputed, and a colour overlay on the
-   * source keeps its times. Ten studies on a long history used to pay for the
-   * index two dozen times per tick while it came out unchanged.
+   * The shared index is rebuilt only when the set of times changes, and then
+   * only where it changed. Most whole writes do not change the set: a study's
+   * plots carry the source's own times, which the source put in the index
+   * before any study recomputed, and a colour overlay on the source keeps its
+   * times. Ten studies on a long history used to pay for the index two dozen
+   * times per tick while it came out unchanged.
    */
   public setSeriesData(id: SeriesId, bars: readonly Bar[]): void {
     const entry = this._series.get(id);
     if (entry === undefined) throw new Error(`openalgo-charts: unknown series ${id}`);
-    const previous = entry.bars;
-    entry.bars = sortedUniqueByTime(bars);
-    if (!this._extendIndex(previous, entry.bars)) this._rebuild();
-  }
-
-  /**
-   * Bring the index up to date without a rebuild for a series whose bars went
-   * from `previous` to `next`, when the set of times cannot have changed but
-   * for times past the right edge: every time of `previous` is still in
-   * `next`, and every time of `next` is in the index already or later than all
-   * of it. False when a time went away (another series may or may not still
-   * hold it) or a new one lands inside the axis, and the caller rebuilds.
-   */
-  private _extendIndex(previous: readonly Bar[], next: readonly Bar[]): boolean {
-    const m = previous.length;
-    const n = next.length;
-    // The common case, the same times or the same with more after them, is a
-    // plain walk; only what follows the shared run needs searching.
-    let k = 0;
-    while (k < m && k < n && previous[k].time === next[k].time) k++;
-    for (let i = k, j = k; i < m; i++) {
-      const time = previous[i].time;
-      while (j < n && next[j].time < time) j++;
-      if (j === n || next[j].time !== time) return false;
-    }
-    // Checked before anything is appended, so a false answer leaves the index
-    // exactly as it was for the rebuild that follows.
-    const edge = this._sortedTimes.length > 0 ? this._sortedTimes[this._sortedTimes.length - 1] : -Infinity;
-    for (let i = k; i < n; i++) {
-      const time = next[i].time;
-      if (!(time > edge) && !this._indexByTime.has(time)) return false;
-    }
-    for (let i = k; i < n; i++) this._appendTime(next[i].time);
-    return true;
+    this._replaceBars(entry, sortedUniqueByTime(bars));
   }
 
   /**
@@ -345,8 +316,7 @@ export class DataLayer {
     const byTime = new Map<number, Bar>();
     for (const b of entry.bars) byTime.set(b.time, b);
     for (const b of bars) byTime.set(b.time, b);
-    entry.bars = Array.from(byTime.values()).sort((a, b) => a.time - b.time);
-    this._rebuild();
+    this._replaceBars(entry, Array.from(byTime.values()).sort((a, b) => a.time - b.time));
   }
 
   /**
@@ -366,6 +336,7 @@ export class DataLayer {
       bars.push(bar);
       const n = this._sortedTimes.length;
       const globalLast = n > 0 ? this._sortedTimes[n - 1] : undefined;
+      const isNew = this._retain(bar.time);
       if (globalLast === undefined || bar.time > globalLast) {
         this._appendTime(bar.time); // genuine global right-edge append
         return 'append';
@@ -373,8 +344,8 @@ export class DataLayer {
       // Series-local append but NOT the global newest: the time belongs mid-axis.
       // If it already exists globally (another series has it) no new index is
       // added; otherwise reindex so _sortedTimes stays ordered.
-      if (this._indexByTime.has(bar.time)) return 'replace';
-      this._rebuild();
+      if (!isNew) return 'replace';
+      this._rebuild([bar.time], false);
       return 'insert';
     }
     if (bar.time === last.time) {
@@ -557,16 +528,77 @@ export class DataLayer {
     return index === undefined ? null : { index, bar };
   }
 
-  private _rebuild(): void {
-    const times = new Set<number>();
-    for (const entry of this._series.values()) {
-      for (const bar of entry.bars) times.add(bar.time);
+  /** Count one more series holding `time`; true when no series held it before. */
+  private _retain(time: number): boolean {
+    const n = this._timeRefs.get(time) ?? 0;
+    this._timeRefs.set(time, n + 1);
+    return n === 0;
+  }
+
+  /**
+   * Swap a series' bars and bring the time axis along. The counts say which
+   * times entered or left the union, so the work is the series' own change,
+   * never every series the chart holds: re-sending the same times touches no
+   * index at all, times past the right edge are appended, and anything else
+   * is merged in by `_rebuild`.
+   */
+  private _replaceBars(entry: SeriesEntry, next: Bar[]): void {
+    const prev = entry.bars;
+    entry.bars = next;
+    // Both are sorted, so the times they share from the start are the same set
+    // and their counts stand. A refresh, or a refresh with a bar appended,
+    // leaves nothing or one bar past it.
+    let p = 0;
+    while (p < prev.length && p < next.length && prev[p].time === next[p].time) p++;
+    // Count the new bars before releasing the old, so a time both hold never
+    // passes through zero. `next` is sorted, so `added` comes out sorted.
+    let added: number[] | null = null;
+    for (let i = p; i < next.length; i++) if (this._retain(next[i].time)) (added ??= []).push(next[i].time);
+    let removed = false;
+    for (let i = p; i < prev.length; i++) {
+      const t = prev[i].time, n = this._timeRefs.get(t) ?? 0;
+      if (n <= 1) { this._timeRefs.delete(t); removed = true; } else this._timeRefs.set(t, n - 1);
     }
-    this._sortedTimes = Array.from(times).sort((a, b) => a - b);
+    if (added === null && !removed) return;
+    const edge = this._sortedTimes.length > 0 ? this._sortedTimes[this._sortedTimes.length - 1] : -Infinity;
+    if (!removed && added !== null && added[0] > edge) {
+      for (const t of added) this._appendTime(t);
+      return;
+    }
+    this._rebuild(added ?? [], removed);
+  }
+
+  /**
+   * Merge `added` (sorted, new to the axis) into it and drop the times no
+   * series holds any longer. Indices before the first change keep their value,
+   * so a change near the right edge reindexes only what moved. A time that
+   * does not order (NaN) cannot be merged, and the union is sorted afresh.
+   */
+  private _rebuild(added: readonly number[] = [], removed = true): void {
+    const old = this._sortedTimes;
+    if (added.some(Number.isNaN) || old.some(Number.isNaN)) {
+      const all = Array.from(this._timeRefs.keys()).sort((a, b) => a - b);
+      this._indexByTime.clear();
+      for (let k = 0; k < all.length; k++) this._indexByTime.set(all[k], k);
+      this._sortedTimes = all;
+      this._version++;
+      return;
+    }
+    const merged: number[] = [];
+    let i = 0, j = 0;
+    while (i < old.length || j < added.length) {
+      if (j >= added.length || (i < old.length && old[i] < added[j])) {
+        const t = old[i++];
+        if (!removed || this._timeRefs.has(t)) merged.push(t);
+        else this._indexByTime.delete(t);
+      } else {
+        merged.push(added[j++]);
+      }
+    }
+    let first = 0;
+    while (first < merged.length && first < old.length && merged[first] === old[first]) first++;
+    for (let k = first; k < merged.length; k++) this._indexByTime.set(merged[k], k);
+    this._sortedTimes = merged;
     this._version++;
-    this._indexByTime.clear();
-    for (let i = 0; i < this._sortedTimes.length; i++) {
-      this._indexByTime.set(this._sortedTimes[i], i);
-    }
   }
 }
