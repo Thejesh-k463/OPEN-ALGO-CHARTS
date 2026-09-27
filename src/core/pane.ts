@@ -1279,11 +1279,13 @@ export class Pane {
     // level's tag (AXIS_LABEL_PRIORITY), so a price line crossing it, a
     // study's 70 or an order at the touch, does not cover the one number that
     // moves.
-    if (last !== null) for (const slot of slots) inSlot(slot, (scale, columnLayout) => {
-      if (lastTagOn(scale)) {
-        drawLastPriceLabel(g, scale, last.close, last.up, columnLayout, dpr, axisStyle, colors, false, true, countdown, slot.side);
-      }
-    });
+    // Only the strip that carries the tag is clipped again: a pane with a
+    // strip on each side, or with its tag turned off, pays for no second pass.
+    for (const slot of slots) {
+      if (last === null || !lastTagOn(this._scaleFor(slot.scaleId))) continue;
+      inSlot(slot, (scale, columnLayout) => drawLastPriceLabel(g, scale, last.close, last.up, columnLayout, dpr,
+        axisStyle, colors, false, true, countdown, slot.side));
+    }
 
     if (ctx.showTimeAxis) {
       // The zone goes to the axis rather than being pre-baked into a formatter

@@ -14,6 +14,7 @@ import { Chart, type AxisChromeOptions } from '../src/core/chart';
 import { darkTheme } from '../src/theme';
 import { fakeDocument } from './helpers/fake-dom';
 import type { Op, RecordingContext } from './helpers/fake-ctx';
+import type { SeriesStyle } from '../src/render/series-style';
 
 const charts: Chart[] = [];
 afterEach(() => { charts.splice(0).forEach((chart) => chart.destroy()); });
@@ -33,7 +34,7 @@ function bars(count: number): { time: number; open: number; high: number; low: n
 const BARS = bars(220);
 const LAST = BARS[BARS.length - 1];
 
-function mount(axisChrome?: AxisChromeOptions): Chart {
+function mount(axisChrome?: AxisChromeOptions, style?: Partial<SeriesStyle>): Chart {
   const doc = fakeDocument();
   const el = doc.createElement('div') as unknown as HTMLElement;
   const chart = new Chart(el, {
@@ -43,7 +44,7 @@ function mount(axisChrome?: AxisChromeOptions): Chart {
   });
   charts.push(chart);
   chart.applySize(900, 640);
-  chart.addSeries('candlestick').setData(BARS);
+  chart.addSeries('candlestick', style === undefined ? {} : { style }).setData(BARS);
   return chart;
 }
 
@@ -113,5 +114,27 @@ describe('the readout tag where a level tag meets it', () => {
     expect(value).toBeDefined();
     expect(tagAt('70.00')).toBeGreaterThanOrEqual(0);
     expect(tagAt(value!)).toBeGreaterThan(tagAt('70.00'));
+  });
+});
+
+describe('the second pass that paints the readout tag', () => {
+  /** Clips in one frame of the price pane: one per strip for its ladder, then the tag's own. */
+  const clips = (chart: Chart): number => {
+    repaint(chart);
+    return ops(chart, 0).filter((o) => o.type === 'clip').length;
+  };
+
+  it('clips only the strip that carries the tag', () => {
+    const right = mount();
+    const both = mount();
+    both.addSeries('line', { priceScaleId: 'left' }).setData(BARS.map((b) => ({ time: b.time, value: b.close * 0.52 })));
+    // The left strip adds its ladder's clip and nothing more: the tag is on the right.
+    expect(clips(both) - clips(right)).toBe(1);
+  });
+
+  it('is skipped when the price series shows no tag', () => {
+    const shown = mount();
+    const hidden = mount(undefined, { lastValueVisible: false });
+    expect(clips(shown) - clips(hidden)).toBe(1);
   });
 });
