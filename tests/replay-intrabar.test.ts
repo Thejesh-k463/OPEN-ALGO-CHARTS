@@ -58,9 +58,10 @@ function session(n: number): { display: Bar[]; sub: Bar[] } {
     const base = 100 + d * 10;
     const mins: Bar[] = [];
     for (let m = 0; m < 5; m++) {
-      // A rising bucket, so open/high/low/close are all distinguishable.
+      // A rising bucket, so open/high/low/close are all distinguishable, and each
+      // minute a real one: its close inside its own high and low.
       const o = base + m;
-      mins.push({ time: T0 + d * FIVE + m * MIN, open: o, high: o + 0.5, low: o - 0.5, close: o + 1, volume: 10 });
+      mins.push({ time: T0 + d * FIVE + m * MIN, open: o, high: o + 1.5, low: o - 0.5, close: o + 1, volume: 10 });
     }
     sub.push(...mins);
     display.push({
@@ -244,5 +245,79 @@ describe('a 5-minute bar over 1-minute data takes five steps', () => {
     r.step();
     expect(r.state()).toMatchObject({ index: 3, subIndex: 0 });
     expect(series.getData()[3]).toEqual(display[3]);
+  });
+});
+
+/**
+ * The finer feed disagreeing with the displayed one the way real feeds do: the
+ * displayed open is the exchange's official open while the first minute opened a
+ * little higher, the minutes run past the displayed extremes, and their volumes
+ * sum to more than the displayed bar's.
+ */
+function disagreeing(n: number): { display: Bar[]; sub: Bar[] } {
+  const { display, sub } = session(n);
+  return { display, sub: sub.map((b) => ({ ...b, open: b.open + 0.3, high: b.high + 0.8, low: b.low - 0.8, volume: 15 })) };
+}
+
+/** Every bar shown for bucket 1, one per step from its first to its close. */
+function formation(display: Bar[], sub: Bar[]): { shown: Bar[]; reported: Bar[] } {
+  const series = stubSeries(display);
+  const r = new ReplayController(host(), { series, bars: display, subBars: sub, startIndex: 0 });
+  const shown: Bar[] = [];
+  const reported: Bar[] = [];
+  try {
+    for (let s = 0; s < 5; s++) {
+      r.step();
+      shown.push(series.getData()[1]);
+      reported.push(r.state().bar as Bar);
+    }
+  } finally { r.stop(); }
+  return { shown, reported };
+}
+
+describe('a forming bar grows the way a live one does when the feeds disagree', () => {
+  it('keeps the open it closes with, from the first step', () => {
+    // A candle's open is its first trade and never moves. Taking it from the
+    // first minute made it jump to the displayed open when the bucket closed,
+    // on every bar where the two feeds disagree.
+    const { display, sub } = disagreeing(4);
+    const { shown, reported } = formation(display, sub);
+    for (const bar of [...shown, ...reported]) expect(bar.open).toBe(display[1].open);
+    expect(shown[4]).toEqual(display[1]);
+  });
+
+  it('never lowers a high, raises a low or takes back volume on the way to the close', () => {
+    const { display, sub } = disagreeing(4);
+    const { shown, reported } = formation(display, sub);
+    const final = display[1];
+    expect(reported).toEqual(shown);
+    shown.forEach((b, k) => {
+      // Every step is a bar that could still grow into the closed one.
+      expect(b.high).toBeLessThanOrEqual(final.high);
+      expect(b.low).toBeGreaterThanOrEqual(final.low);
+      expect(b.volume).toBeLessThanOrEqual(final.volume as number);
+      expect(Math.max(b.open, b.close)).toBeLessThanOrEqual(b.high);
+      expect(Math.min(b.open, b.close)).toBeGreaterThanOrEqual(b.low);
+      if (k === 0) return;
+      expect(b.high).toBeGreaterThanOrEqual(shown[k - 1].high);
+      expect(b.low).toBeLessThanOrEqual(shown[k - 1].low);
+      expect(b.volume).toBeGreaterThanOrEqual(shown[k - 1].volume as number);
+    });
+  });
+
+  it('still follows the finer feed wherever it lies inside the displayed bar', () => {
+    // Holding the forming bar inside the closed one must not flatten it: with
+    // feeds that agree, every step is exactly the aggregate of the minutes so far.
+    const { display, sub } = session(4);
+    const { shown } = formation(display, sub);
+    const minutes = sub.slice(5, 10);
+    shown.slice(0, 4).forEach((b, k) => {
+      const seen = minutes.slice(0, k + 1);
+      expect(b).toEqual({
+        time: display[1].time, open: minutes[0].open,
+        high: Math.max(...seen.map((m) => m.high)), low: Math.min(...seen.map((m) => m.low)),
+        close: seen[k].close, volume: 10 * (k + 1),
+      });
+    });
   });
 });

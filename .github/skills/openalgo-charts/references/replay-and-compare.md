@@ -141,11 +141,16 @@ const replay = new ReplayController(chart, {
 });
 ```
 
-Four things are worth knowing before wiring it up:
+Worth knowing before wiring it up:
 
 - **A bucket closes on the displayed bar verbatim**, not on the aggregate. Two
   feeds that disagree mid-bar therefore still agree on every close, so nothing
   drifts and a replayed session ends where the plain one does.
+- **A forming bar stays inside the bar it closes on.** It carries the displayed
+  bar's open from the first step, its high and low never pass the displayed
+  bar's, and its volume never exceeds it. The official open and the first
+  minute's open differ on most days, and without this the open jumped when the
+  bucket closed and a high could fall back: a price no live candle shows.
 - **`state().bar` is the partial bar**, not the completed one, which is what
   makes it the right thing to drive a host's OHLC readout or its own forming
   volume bar from.

@@ -46,10 +46,11 @@ describe('ReplayGroup', () => {
 
   it('shares partial observation times without summing open interest or revealing final candles', () => {
     const a = member('a', 60, 5), b = member('b', 300, 1);
-    b.input.options.subBars = a.data.map((bar, index) => ({ ...bar, oi: index * 10 }));
+    // Minute volumes that fit inside the five-minute bar's, as one feed's would.
+    b.input.options.subBars = a.data.map((bar, index) => ({ ...bar, volume: 3, oi: index * 10 }));
     b.input.options.timing.subBarEndTime = bar => bar.time + 60;
     const group = new ReplayGroup([a.input, b.input], { scope: 'all', startTime: T + 180 });
-    expect(b.series.getData()[0]).toMatchObject({ close: 107, volume: 33, oi: 20 });
+    expect(b.series.getData()[0]).toMatchObject({ close: 107, volume: 9, oi: 20 });
     expect(group.state().total).toBe(5);
     group.seekTime(T + 300);
     expect(b.series.getData()).toEqual(b.data);

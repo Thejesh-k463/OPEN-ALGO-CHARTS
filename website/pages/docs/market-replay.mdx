@@ -61,7 +61,12 @@ Before the first available observation, the chart is empty and `state()` returns
 `index: -1` and `bar: null`. Finer bars build a partial candle only while they
 cover a contiguous prefix. A missing or straddling finer bar leaves the last
 known prefix until the full candle becomes available. At its declared end, the
-original candle replaces the aggregate exactly. OI retains the last available
+original candle replaces the aggregate exactly. Until then the partial candle is
+held inside the one it closes on, as a live candle grows: it carries that
+candle's open from the first observation, its high and low stay within that
+candle's range, and its volume never exceeds that candle's. A feed whose first
+minute opened away from the official open, or whose minutes ran past the day's
+high, never makes the open jump or the high fall back at the close. OI retains the last available
 reading and is never summed or copied early from the final candle. Comparisons
 and independent followers withhold forming closes.
 

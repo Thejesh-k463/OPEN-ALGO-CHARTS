@@ -92,7 +92,9 @@ describe('display-aligned CSV', () => {
   });
 
   it('exports the installed forming observation and frozen replay clock without completed future prices', () => {
-    const { chart, primary, study, data } = setup([1], [bar(0, 999), bar(300, 1000)]);
+    // The displayed bar holds its finer bars, as one feed's would, so the export
+    // sees the forming observation itself rather than one held inside it.
+    const { chart, primary, study, data } = setup([1], [{ time: 0, open: 4, high: 6, low: 3, close: 5 }, bar(300, 1000)]);
     const replay = new ReplayController(chart, { series: primary, bars: data, startTime: 60,
       timing: { barEndTime: b => b.time + 300, subBarEndTime: b => b.time + 60 }, subBars: [bar(0, 4), bar(60, 5)] });
     cleanup.push(() => replay.stop());
