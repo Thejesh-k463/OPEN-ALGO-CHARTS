@@ -120,7 +120,7 @@ describe('Ctrl+drag on empty space selects what the box touches', () => {
     move(420, 340, { ctrl: true }, true);
     const rect = chart.plotRect(0)!;
     expect(top().box()).toEqual({ x0: 300 - rect.left, y0: 250 - rect.top, x1: 420 - rect.left, y1: 340 - rect.top });
-    // Painted as a dashed rim over a translucent fill, on the overlay.
+    // Painted as a solid rim over a translucent fill, on the overlay.
     const { ctx, rec } = makeCtx();
     top().draw(ctx, top().context()!);
     const rim = rec.ops.find((op) => op.type === 'strokeRect');

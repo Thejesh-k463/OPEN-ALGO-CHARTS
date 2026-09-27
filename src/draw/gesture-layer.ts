@@ -99,25 +99,29 @@ export class GestureLayer extends DrawingLayer {
     ctx.restore();
   }
 
-  /** A translucent box with a dashed rim, in the crosshair's colour, clipped to the plot. */
+  /**
+   * A translucent box with a thin solid rim in the drawing colour of the
+   * theme, clipped to the plot: solid so it never reads as the crosshair,
+   * whose lines are dashed and grey.
+   */
   private _drawBox(ctx: CanvasRenderingContext2D, rc: PrimitiveRenderContext, box: GestureBox): void {
     const d = rc.dpr;
     const x = Math.round(Math.min(box.x0, box.x1) * d) + 0.5;
     const y = Math.round(Math.min(box.y0, box.y1) * d) + 0.5;
     const w = Math.round(Math.abs(box.x1 - box.x0) * d);
     const h = Math.round(Math.abs(box.y1 - box.y0) * d);
-    const color = rc.theme.crosshair;
+    const color = rc.theme.lineColor;
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, 0, Math.round(rc.plotWidth * d), Math.round(rc.plotHeight * d));
     ctx.clip();
-    ctx.globalAlpha = 0.1;
+    ctx.globalAlpha = 0.12;
     ctx.fillStyle = color;
     ctx.fillRect(x, y, w, h);
     ctx.globalAlpha = 0.9;
     ctx.strokeStyle = color;
     ctx.lineWidth = Math.max(1, Math.round(d));
-    ctx.setLineDash([4 * d, 3 * d]);
+    ctx.setLineDash([]);
     ctx.strokeRect(x, y, w, h);
     ctx.restore();
   }

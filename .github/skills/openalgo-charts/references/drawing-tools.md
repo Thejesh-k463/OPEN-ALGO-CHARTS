@@ -1190,8 +1190,9 @@ before the press still pans; moving the pointer once with Ctrl held is enough.
 A Ctrl+click on empty space that
 never becomes a drag is the click it always was, and Ctrl+drag that starts on a
 drawing drags it (with the strong magnet). The box is painted by the pane's top
-layer (a `DrawingLayer` subclass), a dashed rim over a translucent fill in the
-theme's crosshair colour, and is gone on release.
+layer (a `DrawingLayer` subclass), a thin solid rim over a translucent fill in
+the theme's `lineColor` (solid, so it never reads as the dashed crosshair), and
+is gone on release.
 
 ### Drag to copy (unreleased)
 
