@@ -195,14 +195,14 @@ try {
   light.on('pageerror', error => errors.push(error.message));
   await light.goto(`${base}/docs/market-profile-examples/`);
   await expect(light.locator('html')).toHaveClass(/(?:^|\s)light(?:\s|$)/);
-  await expect(light.getByRole('link', { name: 'Open full-size demo ↗' })).toHaveAttribute('href', /[?&]theme=ivory(?:&|$)/);
+  await expect(light.getByRole('link', { name: /^Open full-size demo/ })).toHaveAttribute('href', /[?&]theme=ivory(?:&|$)/);
   const lightProfile = light.locator('iframe[title="Interactive compact market profile demo"]');
   await lightProfile.scrollIntoViewIfNeeded();
   const lightProfileFrame = await (await lightProfile.elementHandle()).contentFrame();
   assert.ok(lightProfileFrame);
   await expect(lightProfileFrame.locator('#theme')).toHaveValue('ivory');
   await light.goto(`${base}/docs/profiles-and-orderflow/`);
-  await expect(light.getByRole('link', { name: 'Open full-size order-flow demo ↗' })).toHaveAttribute('href', /[?&]theme=ivory&paused=1$/);
+  await expect(light.getByRole('link', { name: /^Open full-size order-flow demo/ })).toHaveAttribute('href', /[?&]theme=ivory&paused=1$/);
   const lightOrderflow = light.locator('iframe[title="Interactive footprint chart with profile, cluster ladder and heatmap styles"]');
   await lightOrderflow.scrollIntoViewIfNeeded();
   const lightOrderflowFrame = await (await lightOrderflow.elementHandle()).contentFrame();
