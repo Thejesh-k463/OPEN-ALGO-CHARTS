@@ -12,7 +12,7 @@ with no runtime dependencies.
 [![npm version](https://img.shields.io/npm/v/openalgo-charts.svg?color=cb3837&label=npm)](https://www.npmjs.com/package/openalgo-charts)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![npm downloads](https://img.shields.io/npm/dm/openalgo-charts.svg?color=0ea5e9&label=npm%20downloads)](https://www.npmjs.com/package/openalgo-charts)
-[![tests](https://img.shields.io/badge/engine%20tests-9377%20passing-brightgreen.svg)](#develop)
+[![tests](https://img.shields.io/badge/engine%20tests-9382%20passing-brightgreen.svg)](#develop)
 [![dependencies](https://img.shields.io/badge/runtime%20deps-0-brightgreen.svg)](#principles)
 
 [**Documentation**](https://marketcalls.github.io/openalgo-charts/) &nbsp;·&nbsp; [**Live examples**](https://marketcalls.github.io/openalgo-charts/examples) &nbsp;·&nbsp; [**Getting started**](./docs/getting-started.md) &nbsp;·&nbsp; [**Migrating to 2.0**](./docs/migrating-to-2.md) &nbsp;·&nbsp; [**Architecture**](./ARCHITECTURE.md)
@@ -53,6 +53,13 @@ chart.fitContent();
 Bar timestamps use UTC seconds. See [getting started](./docs/getting-started.md)
 for setup, [data feeds](https://marketcalls.github.io/openalgo-charts/docs/data-feeds/)
 for live data, or [the widget example](#the-whole-terminal-in-one-call) for chart controls.
+
+In a framework, create the chart when the component mounts and call `chart.destroy()`
+when it unmounts. [Framework integration](https://marketcalls.github.io/openalgo-charts/docs/frameworks/)
+covers React, Next.js, Angular and Svelte. The [Vue 3 guide](https://marketcalls.github.io/openalgo-charts/docs/vue/)
+has a composable and a component tested in Chromium, Firefox and WebKit, with a
+no-build example in [`examples/vue`](./examples/vue). In Vue, hold the chart in a
+`shallowRef`, never in `ref()` or `reactive()`.
 
 ## Architecture
 
@@ -536,7 +543,7 @@ Teach your AI coding assistant this library:
 npx skills add https://github.com/marketcalls/openalgo-charts
 ```
 
-Installs six skills from [`.github/skills/`](./.github/skills) - a reference hub with 22 deep-dive files covering the whole API surface and its foot-guns, plus task skills for scaffolding a chart, adding indicators, building a terminal, writing a plugin, and debugging. Works with Claude Code, Cursor, Codex, Copilot, Gemini CLI and the rest of the `skills` CLI's supported agents.
+Installs six skills from [`.github/skills/`](./.github/skills) - a reference hub with 26 deep-dive files covering the whole API surface and its foot-guns, plus task skills for scaffolding a chart, adding indicators, building a terminal, writing a plugin, and debugging. Works with Claude Code, Cursor, Codex, Copilot, Gemini CLI and the rest of the `skills` CLI's supported agents.
 
 ## Examples
 
@@ -549,6 +556,12 @@ cd examples/yfinance && pip install -r requirements.txt && python server.py
 python server.py --fixture   # no yfinance, no network: deterministic synthetic bars
 ```
 
+A **Vue 3 example** ([`examples/vue`](./examples/vue)) runs with no build step from Vue's
+browser build: a composable, a component with symbol, interval and theme props, a bare
+chart and the widget under one `KeepAlive`, and a switch that unmounts both. Serve the
+repository root after `npm run build` (for example `node tests/e2e/serve.cjs`) and open
+`/examples/vue/index.html`.
+
 ## Develop
 
 See [Contributing](./CONTRIBUTING.md) for setup, targeted checks, documentation updates and the release workflow.
@@ -556,7 +569,7 @@ See [Contributing](./CONTRIBUTING.md) for setup, targeted checks, documentation 
 ```bash
 npm install        # install dev toolchain
 npm run typecheck  # strict TypeScript check
-npm test           # engine unit tests (Vitest): 9377 across 419 files
+npm test           # engine unit tests (Vitest): 9382 across 420 files
 npm run test:demo  # reference-host tests: 653 across 62 files
 npm run test:endurance # node endurance-harness tests: 7 cases
 npm run build      # Rollup -> dist/ (minified ESM per tier + types)

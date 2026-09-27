@@ -206,7 +206,7 @@ The container needs a resolved height. A parent with `position: absolute; inset:
 
 ## Vue and plain JS hosts
 
-Same two-step contract, different hook names. Vue 3: `createChart` in `onMounted` with a template ref, `chart.destroy()` in `onUnmounted`, chart held in a plain `let`, **not** in `ref()` or `reactive()`, which would deep-proxy the instance. Svelte: `onMount` returning the destroy function. Angular: `ngAfterViewInit` / `ngOnDestroy` with `@ViewChild`. Plain JS: call `createChart(el)` once and `chart.destroy()` when you remove the node. Full snippets in `website/pages/docs/frameworks.mdx`.
+Same two-step contract, different hook names. Vue 3: `createChart` in `onMounted` with a template ref, `chart.destroy()` in `onBeforeUnmount`, chart held in a `shallowRef` or a plain `let`, **not** in `ref()` or `reactive()`, which hand back a deep proxy the library does not recognise as its chart; the composable, the component and the failure modes are in [vue-integration](vue-integration.md). Svelte: `onMount` returning the destroy function. Angular: `ngAfterViewInit` / `ngOnDestroy` with `@ViewChild`. Plain JS: call `createChart(el)` once and `chart.destroy()` when you remove the node. Full snippets in `website/pages/docs/frameworks.mdx`.
 
 The orchestration-class pattern is framework-independent and is the recommended shape for any host beyond a single static series.
 

@@ -662,7 +662,10 @@ downloads none of it, and the base engine's own budget is unchanged.
 Create the widget in a mount effect, hold it in a ref, and `destroy()` it on cleanup, the
 same lifecycle as a bare chart in [Framework Integration](/docs/frameworks). The widget
 instance is never framework state: it owns DOM of its own and re-rendering around it is
-wasted work.
+wasted work. In Vue that means a `shallowRef` or `markRaw`, never `ref()`: a widget held
+in `ref()` is a proxy, and replay started through its chart is invisible to the widget's
+own order menu. The [Vue 3 guide](/docs/vue) has a component that hosts the widget and
+binds its symbol, interval and theme with `v-model`.
 
 ## Managed loading (2.1.6)
 

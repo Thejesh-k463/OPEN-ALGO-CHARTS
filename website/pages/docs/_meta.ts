@@ -9,6 +9,7 @@ export default {
   architecture: 'Architecture',
   widget: 'The Widget Tier',
   frameworks: 'Framework Integration',
+  vue: 'Vue 3',
 
   '-- guides': { type: 'separator', title: 'Guides' },
   'chart-types': 'Chart Types',

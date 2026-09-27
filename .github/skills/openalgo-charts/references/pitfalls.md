@@ -299,7 +299,9 @@ See [trading](./trading.md), [trade-tier](./trade-tier.md).
 
 **The browser's native right-click "Save image as…" captures the clicked pane only.** Use `chart.takeScreenshot()` / `chart.downloadScreenshot()` for the full multi-pane composite; `downloadScreenshot` swallows failures (tainted canvas, no DOM) silently.
 
-See [react-integration](./react-integration.md), [core-api](./core-api.md), [themes-and-styling](./themes-and-styling.md).
+**A chart held in Vue's `ref()` or `reactive()` is a proxy, not the chart.** Registries keyed on the chart (replay window, picks, comparisons, alert and replay-group owners) see two different objects, and methods called through the proxy write wrapped objects into the chart's own records: replay started through a `ref()`-held widget leaves its order menu enabled, and a series added through the proxy answers `seriesType(series) === null` on the chart itself. Hold it in a `shallowRef` or `markRaw` it; the same goes for bar arrays, which `setData` stores as given. See [vue-integration](./vue-integration.md).
+
+See [react-integration](./react-integration.md), [vue-integration](./vue-integration.md), [core-api](./core-api.md), [themes-and-styling](./themes-and-styling.md).
 
 ## Verify before answering
 

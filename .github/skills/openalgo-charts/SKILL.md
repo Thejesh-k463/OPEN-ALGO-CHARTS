@@ -136,6 +136,7 @@ Detailed reference for each topic is in `references/`. Read the one that matches
 | [trade-tier](references/trade-tier.md) | `OrderEngine`, order state machine, validation, analyzer mode, DOM ladder, broker adapters |
 | [profiles-and-orderflow](references/profiles-and-orderflow.md) | Volume Profile, Market Profile (TPO), Footprint, cumulative delta, the trade-data dependency |
 | [react-integration](references/react-integration.md) | React and Next.js lifecycle, keeping orchestration out of React, SSR, resize |
+| [vue-integration](references/vue-integration.md) | Vue 3 composable and component, keeping the chart out of `ref()`/`reactive()`, props to data, KeepAlive, Nuxt |
 | [bundling-and-tiers](references/bundling-and-tiers.md) | Entry points, registry identity, tree-shaking, script/ESM/import-map loading, size budget |
 | [widget](references/widget.md) | `createWidget` and the widget tier: options, the handle, events, the context every dialog is handed, the keymap scopes, the tokens, every exported mount and helper, packaging |
 | [workspaces](references/workspaces.md) | Portable multi-chart workspaces, indicator templates, async catalog transactions, account namespaces and atomic browser storage |
@@ -188,6 +189,7 @@ Detailed reference for each topic is in `references/`. Read the one that matches
 | Named multi-chart layouts and templates | [workspaces](references/workspaces.md) | `WorkspaceRepository` plus a storage adapter; each pane carries `getState()` | treating a single chart snapshot as the whole host workspace |
 | Watchlists with live prices, or symbol news | [widget](references/widget.md#watchlist-and-news-panels-255), [workspaces](references/workspaces.md#named-watchlists-255) | `WatchlistRepository` plus a `QuoteFeed` and a `NewsFeed`, as the widget's `watchlist` and `news` options | pricing a row from the last candle, or rendering provider text as HTML |
 | React lifecycle | where the chart instance lives | create in an effect, hold in a ref, `chart.destroy()` on cleanup | chart instance in state |
+| Vue lifecycle, or replay and picks misbehaving in a Vue app | is the chart in `ref()` or `reactive()` | `shallowRef` or `markRaw`, create in `onMounted`, `destroy()` in `onBeforeUnmount`; see [vue-integration](references/vue-integration.md) | `ref(chart)`, which hands back a proxy the library does not recognise as its chart |
 | Bundle size | which tiers are imported | drop the unused tier import | code-splitting the base |
 
 ## Core API cheat sheet
@@ -286,7 +288,7 @@ computePriceLevels({ bars, anchorTime });   // the same numbers, pure, no canvas
 - **Verify option names against local typings before writing them.** Many similarly named options exist at chart, series, pane and scale level. Confirm which level owns the option.
 - **Minimal snippets.** One feature per code block. Combining an indicator, a drawing tool and a trading line in one snippet hides which API does what.
 - **Import from the package entry or a published tier specifier.** Never a deep path.
-- **Match the user's host.** A React user wants the effect lifecycle; a vanilla user does not; a no-bundler user needs the standalone build.
+- **Match the user's host.** A React user wants the effect lifecycle; a Vue user wants the composable with a `shallowRef`; a vanilla user wants neither; a no-bundler user needs the standalone build.
 - **State which tier a feature needs** whenever the answer uses one.
 - **Do not invent.** If a name does not appear in the installed typings or upstream source, it does not exist.
 

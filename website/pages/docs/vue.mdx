@@ -1,0 +1,418 @@
+---
+title: Vue 3
+description: Use OpenAlgo Charts in a Vue 3 app with a composable and a component, keep the chart out of reactivity, follow props, resize and theme, host the widget, and run under KeepAlive and Nuxt.
+---
+
+import { Callout } from 'nextra/components'
+
+# Vue 3
+
+OpenAlgo Charts has no Vue dependency and needs no plugin. A Vue app uses it through
+one composable that owns the chart for the lifetime of a component, and one component
+that turns props into calls on that chart. Both are below, and both run in the
+repository: [`examples/vue`](https://github.com/marketcalls/openalgo-charts/tree/master/examples/vue)
+is the same code without a build step, and
+`tests/e2e/vue-integration.spec.ts` drives it in Chromium, Firefox and WebKit.
+
+<Callout type="warning">
+**Never put the chart in `ref()` or `reactive()`.** Hold it in a `shallowRef`, a plain
+variable, or pass it through `markRaw` before it goes anywhere reactive. The same
+applies to a widget, a series handle, a feed, a controller and an array of bars.
+The next section shows what breaks.
+</Callout>
+
+## Keep the chart out of reactivity
+
+`ref(x)` and `reactive(x)` do not store `x`. They hand back a deep `Proxy` of it, and
+every object read through that proxy comes back wrapped as well. That is what makes
+Vue state reactive, and it is the wrong thing for a chart:
+
+- **Identity.** The chart is one object with one identity. Replay, picks, comparisons,
+  alerts and the replay group keep registries keyed on that identity, and the widget,
+  the drawing controller and the chart's own callbacks hold the chart itself. A call
+  made through the proxy registers the proxy, a different key. Replay started through
+  a `ref()`-held widget is invisible to the widget, so its right-click menu keeps
+  offering live orders during replay. A pick armed through the proxy survives the
+  drawing tool that should cancel it.
+- **`this` is the proxy.** A method called on the proxy runs with `this` bound to the
+  proxy, so the records it writes point at wrapped objects. A series added through a
+  `ref()`-held chart is unknown to the chart that owns it: `chart.seriesType(series)`
+  answers `null` and `chart.setSeriesType(series, 'line')` refuses.
+- **Cost.** Every field read inside every call goes through a proxy trap, and a series
+  created through the proxy keeps paying it for as long as it lives. Bars read from a
+  `ref([])` are stored inside the chart as proxies, so every frame reads every visible
+  bar through a trap.
+
+`tests/vue-reactivity.test.ts` holds each of these with Vue's own reactivity: the
+`ref()` form fails, and the same steps pass with each form below.
+
+| Holding | Use | Not |
+| --- | --- | --- |
+| The chart or the widget | `shallowRef<Chart \| null>(null)`, or a plain `let` | `ref(chart)`, `reactive({ chart })` |
+| Inside reactive state (a store, `data()`) | `markRaw(chart)` before it goes in | the chart as it is |
+| Bars | a plain array, `shallowRef(bars)`, or `toRaw(bars)` when they came from a `ref` | `series.setData(barsRef.value)` from a `ref([])` |
+| A feed, a `ReplayController`, a `DrawingController` | a plain `const`, or `markRaw` | a reactive property |
+| The container element | an ordinary template `ref` (Vue never proxies a DOM element) | |
+
+A `shallowRef` still tells watchers when the chart itself is replaced, which is all a
+template needs. Nothing inside it is tracked, and nothing should be: a chart repaints
+itself on its own frame loop.
+
+## The composable
+
+`useOpenAlgoChart` creates the chart when the component mounts, holds it in a
+`shallowRef`, and destroys it before the component unmounts. With `widget` it loads
+the widget tier on first use and builds the whole terminal instead.
+
+```ts
+// composables/useOpenAlgoChart.ts
+import { onBeforeUnmount, onMounted, shallowRef, type Ref, type ShallowRef } from 'vue';
+import { createChart, type Chart, type ChartOptions, type SeriesApi, type SeriesType } from 'openalgo-charts';
+import type { Widget, WidgetOptions } from 'openalgo-charts/widget';
+
+export interface OpenAlgoChartSetup {
+  /** Build the widget (top bar, drawing rail, dialogs) instead of a bare chart. */
+  widget?: WidgetOptions;
+  chart?: ChartOptions;
+  seriesType?: SeriesType;
+}
+
+export interface OpenAlgoChartHandles {
+  chart: ShallowRef<Chart | null>;
+  widget: ShallowRef<Widget | null>;
+  series: ShallowRef<SeriesApi | null>;
+}
+
+export function useOpenAlgoChart(
+  container: Readonly<Ref<HTMLElement | null>>,
+  setup: () => OpenAlgoChartSetup = () => ({}),
+): OpenAlgoChartHandles {
+  // shallowRef: `.value` is the chart itself, never a proxy of it.
+  const chart = shallowRef<Chart | null>(null);
+  const widget = shallowRef<Widget | null>(null);
+  const series = shallowRef<SeriesApi | null>(null);
+  let disposed = false;
+
+  onMounted(async () => {
+    const el = container.value;
+    if (el === null) return;
+    const options = setup();
+    if (options.widget) {
+      // Loaded on first use: a page with only bare charts never downloads it.
+      const { createWidget } = await import('openalgo-charts/widget');
+      // The component can unmount while the tier loads.
+      if (disposed) return;
+      const w = createWidget(el, options.widget);
+      widget.value = w;
+      chart.value = w.chart;
+      series.value = w.series;
+    } else {
+      const c = createChart(el, options.chart);
+      chart.value = c;
+      series.value = c.addSeries(options.seriesType ?? 'candlestick');
+    }
+  });
+
+  // Before unmount, while the container is still in the document.
+  onBeforeUnmount(() => {
+    disposed = true;
+    // The widget owns its chart and destroys it with its own chrome.
+    if (widget.value !== null) widget.value.destroy();
+    else chart.value?.destroy();
+    widget.value = null;
+    chart.value = null;
+    series.value = null;
+  });
+
+  return { chart, widget, series };
+}
+```
+
+## The component
+
+`<OpenAlgoChart>` takes the instrument, the interval and the theme as props, and a
+`DataFeed` to load bars from. The chart is created once; every prop change after that
+is a call on the same chart.
+
+```vue
+<!-- components/OpenAlgoChart.vue -->
+<script setup lang="ts">
+import { ref, watch } from 'vue';
+import { darkTheme, intervalToSeconds, lightTheme, type Chart, type DataFeed, type SeriesApi } from 'openalgo-charts';
+import type { Widget, WidgetOptions, WidgetThemeName } from 'openalgo-charts/widget';
+import { useOpenAlgoChart } from '../composables/useOpenAlgoChart';
+
+const props = withDefaults(defineProps<{
+  symbol: string;
+  exchange?: string;
+  interval?: string;
+  theme?: WidgetThemeName;
+  /** Keep it out of deep reactive state, or pass it through markRaw. */
+  feed: DataFeed;
+  /** Host the widget. Read on mount; change it with a new `key`. */
+  widget?: boolean;
+  lookback?: number;
+  /** More options for the chart or the widget, read on mount. */
+  options?: Omit<WidgetOptions, 'feed' | 'symbol' | 'exchange' | 'interval' | 'theme'>;
+}>(), { exchange: 'NSE', interval: '5m', theme: 'dark', widget: false, lookback: 300, options: () => ({}) });
+
+const emit = defineEmits<{
+  ready: [handles: { chart: Chart; widget: Widget | null; series: SeriesApi | null }];
+  loaded: [info: { symbol: string; interval: string; bars: number; error?: string }];
+  'update:symbol': [symbol: string];
+  'update:interval': [interval: string];
+  'update:theme': [theme: WidgetThemeName];
+}>();
+
+const container = ref<HTMLDivElement | null>(null);
+const { chart, widget, series } = useOpenAlgoChart(container, () => props.widget
+  ? {
+      widget: {
+        persist: false, ...props.options,
+        feed: props.feed, symbol: props.symbol, exchange: props.exchange, interval: props.interval,
+        theme: props.theme, lookbackBars: props.lookback,
+      },
+    }
+  : { chart: { ...props.options, theme: props.theme === 'light' ? lightTheme : darkTheme } });
+
+// Once the chart exists. The widget's own controls change the symbol, interval
+// and theme too; reporting them back is what makes v-model work.
+watch(chart, (c) => {
+  if (c === null) return;
+  const w = widget.value;
+  if (w !== null) {
+    // widget.destroy() drops these subscriptions.
+    w.on('symbol', ({ symbol }) => emit('update:symbol', symbol));
+    w.on('interval', ({ interval }) => emit('update:interval', interval));
+    w.on('theme', ({ theme }) => emit('update:theme', theme));
+    w.on('data', (info) => emit('loaded', info));
+  }
+  emit('ready', { chart: c, widget: w, series: series.value });
+});
+
+// Props to data: the same series takes new bars.
+let generation = 0;
+async function load(): Promise<void> {
+  const c = chart.value, s = series.value;
+  if (c === null || s === null) return;
+  const w = widget.value;
+  if (w !== null) {
+    // The widget loads through its feed; no-ops when its own controls made the change.
+    w.setSymbol(props.symbol, props.exchange);
+    w.setInterval(props.interval);
+    return;
+  }
+  const ticket = ++generation;
+  const { symbol, exchange, interval } = props;
+  const to = Math.floor(Date.now() / 1000);
+  const from = to - props.lookback * intervalToSeconds(interval);
+  // Clear the old instrument before the context moves.
+  s.setData([]);
+  c.setDataContext({ symbol, exchange, interval });
+  try {
+    const bars = await props.feed.getBars({ symbol, exchange, interval, from, to });
+    // A newer prop change, or an unmount, won while this was in flight.
+    if (ticket !== generation || c.isDestroyed) return;
+    s.setData(bars);
+    c.resetScale();
+    emit('loaded', { symbol, interval, bars: bars.length });
+  } catch (error) {
+    if (ticket !== generation || c.isDestroyed) return;
+    emit('loaded', { symbol, interval, bars: 0, error: error instanceof Error ? error.message : String(error) });
+  }
+}
+watch([series, () => props.symbol, () => props.exchange, () => props.interval], load);
+
+watch(() => props.theme, (theme) => {
+  const w = widget.value;
+  if (w !== null) { if (w.theme() !== theme) w.setTheme(theme); }
+  else chart.value?.setTheme(theme === 'light' ? lightTheme : darkTheme);
+});
+
+// A parent's template ref on this component reads these, unwrapped to the chart itself.
+defineExpose({ chart, widget, series });
+</script>
+
+<template>
+  <div ref="container" class="openalgo-chart" />
+</template>
+
+<style scoped>
+/* The chart fills this element, so the element needs a real height. */
+.openalgo-chart { width: 100%; height: 100%; }
+</style>
+```
+
+Using it:
+
+```vue
+<script setup lang="ts">
+import { markRaw, ref } from 'vue';
+import OpenAlgoChart from './components/OpenAlgoChart.vue';
+import { createFeed } from './feed'; // any DataFeed, OpenAlgoLiveDataFeed included
+
+// markRaw: the feed may end up in reactive state, and must stay itself there.
+const feed = markRaw(createFeed());
+const symbol = ref('NIFTY');
+const interval = ref('5m');
+const theme = ref<'dark' | 'light'>('dark');
+</script>
+
+<template>
+  <div style="height: 480px">
+    <OpenAlgoChart v-model:symbol="symbol" v-model:interval="interval" v-model:theme="theme"
+      :feed="feed" exchange="NSE_INDEX" widget />
+  </div>
+</template>
+```
+
+`symbol`, `interval` and `theme` are ordinary refs: they are strings. Only the objects
+the library owns stay out of reactivity.
+
+## Props to data
+
+A prop change is a call on the chart that already exists, never a new chart. A new
+chart per change would drop the viewport, every study and every drawing, and repaint
+from nothing.
+
+- **New instrument or interval:** clear the old bars with `series.setData([])`, move
+  `chart.setDataContext({ symbol, exchange, interval })` so studies and alerts scope to
+  the new source, load, then `series.setData(bars)` and `chart.resetScale()` for the
+  default view.
+- **A live tick:** `series.update(bar)`, from the feed's subscription, not from a prop.
+- **Out-of-order answers:** each load takes a ticket, and an answer whose ticket is no
+  longer the latest is dropped. Without it, a slow answer for the previous symbol lands
+  after the new one and the chart shows the wrong instrument's prices under the new
+  name. The browser test holds a request and answers the older one last to prove it.
+
+With the widget, the widget loads through its feed: the component forwards props to
+`widget.setSymbol` and `widget.setInterval`, and both are no-ops when the value is
+already current, so a change the widget's own top bar made does not loop back.
+
+## Resize
+
+Nothing to write. The chart observes its container with a `ResizeObserver` from the
+moment it is created, and repaints in the same frame the size changes. Give the
+container a real height (a sized parent, a flex item that grows, or `position:
+absolute; inset: 0` inside a positioned parent) and let CSS do the rest. Do not add a
+window resize listener, and do not pass width and height props.
+
+A chart hidden with `v-show` or created in a hidden tab has no size until it is shown;
+it fits its data on its first measurable layout.
+
+## Theme
+
+`chart.setTheme(darkTheme | lightTheme | yourTheme)` repaints in place, and
+`widget.setTheme('dark' | 'light')` restyles the widget's chrome with it. The
+component watches its `theme` prop and calls whichever applies. A full `ChartTheme`
+object works for both.
+
+## The widget
+
+`openalgo-charts/widget` is imported inside the composable, on first use, so it stays
+out of the bundle for pages that only show bare charts. The widget owns its chart:
+read it as `widget.chart`, add studies or drawings through it, and destroy the widget,
+not the chart. Its `symbol`, `interval` and `theme` events are what the component
+turns into `update:` events for `v-model`. Import `openalgo-charts/indicators` once
+(anywhere in the client bundle) if the widget's indicator picker should list the
+built-in studies.
+
+## Cleanup
+
+`onBeforeUnmount` destroys the chart, or the widget, while its container is still in
+the document. `chart.destroy()` stops the frame loop, disconnects the resize and
+device-pixel observers, removes every listener it added to the container, the
+document and the window, and removes its canvases. `widget.destroy()` does the same
+for the widget's own chrome and then its chart.
+
+The browser test unmounts a bare chart and a widget together and checks the page
+against a ledger taken before either existed: the same listeners, the same observed
+elements, the same interval timers, no animation frames requested, and both
+containers empty.
+
+Two cases the composable handles for you:
+
+- **Unmount during creation.** The widget tier is loaded with `await import(...)`. If
+  the component unmounts first, the `disposed` flag stops the widget being built into
+  a container Vue has already discarded.
+- **Async work after unmount.** A load that finishes after unmount finds
+  `chart.isDestroyed` and writes nothing.
+
+`destroy()` leaves the container's inline styles (`position`, `display: flex`,
+`background`, `touch-action`) and ARIA attributes in place. Creating a new chart in the
+same element later is safe.
+
+## KeepAlive
+
+Inside `<KeepAlive>` a component is deactivated, not unmounted, when it is switched
+away, so the chart is not destroyed and comes back as it was:
+
+```vue
+<KeepAlive>
+  <OpenAlgoChart v-if="view === 'chart'" key="chart" :symbol="symbol" :feed="feed" />
+  <OpenAlgoChart v-else key="widget" widget v-model:symbol="symbol" :feed="feed" />
+</KeepAlive>
+```
+
+- While parked, the component's element is out of the document. The chart sees a
+  zero size, and on its return it lays out at the real size again with the same
+  visible range. The browser test moves the view, parks the chart and checks the range
+  it comes back with.
+- Watchers keep running while parked, so a prop that changed in the meantime has
+  already reached the chart: it comes back showing the current symbol, interval and
+  theme.
+- A live subscription keeps streaming into a parked chart. That is usually what you
+  want (it is current the moment it returns). To stop it, unsubscribe in
+  `onDeactivated` and subscribe again in `onActivated`.
+- Removing the `<KeepAlive>` itself (a `v-if` around it) unmounts every cached
+  instance, and each destroys its chart.
+
+## Nuxt and server rendering
+
+`createChart` needs a real element, so it must only run in the browser. The composable
+already guarantees that: `onMounted` never runs on the server, so a page that uses
+`<OpenAlgoChart>` renders on the server with an empty container and builds the chart
+during hydration.
+
+- **Importing is safe on the server.** Evaluating `openalgo-charts` or any of its tiers
+  touches no DOM (`npm run skills:coverage` imports every tier in Node to hold that), so
+  a top-level `import { createChart } from 'openalgo-charts'` in a component is fine.
+  Only calling it on the server is not.
+- **Skip the server render entirely** when the chart is the whole page, or the empty
+  container's height would shift the layout: wrap it in `<ClientOnly>`, or name the
+  component `OpenAlgoChart.client.vue`, and Nuxt renders it in the browser only.
+- **Give the server-rendered container its height** in CSS, so the page does not jump
+  when the chart arrives.
+- **Tiers with side effects** (`openalgo-charts/indicators`, `openalgo-charts/draw`)
+  can be imported at the top of a client-only module or loaded with `await import(...)`
+  inside `onMounted`, as the composable does for the widget.
+
+## Options API
+
+The same rule holds. Anything declared in `data()` is deep reactive, so do not declare
+the chart there. Create it in `mounted()` and keep it on `this` without declaring it,
+or wrap it with `markRaw` if it has to live in `data()`. Destroy it in
+`beforeUnmount()`.
+
+## Run the example
+
+```bash
+npm install
+npm run build
+node tests/e2e/serve.cjs      # serves the repository root on port 4173
+```
+
+Then open `http://127.0.0.1:4173/examples/vue/index.html`. The page uses Vue's browser
+build from `node_modules` through an import map, with no build step:
+`use-openalgo-chart.js` is the composable, `openalgo-chart.js` the component, and
+`app.js` the page around them, with a symbol and an interval picker, a theme button, a
+bare chart and a widget under one `<KeepAlive>`, and a switch that unmounts both. Vue
+is a development dependency of this repository only; the published package has no
+dependencies.
+
+## Related pages
+
+- [Framework Integration](/docs/frameworks) - React, Next.js, Angular, Svelte and plain JavaScript.
+- [The Widget Tier](/docs/widget) - everything `createWidget` builds and its options.
+- [Data Loading](/docs/data-loading) - the shared loading controller, paging and recovery.
+- [Themes](/docs/themes) - `ChartTheme` and runtime theme changes.
