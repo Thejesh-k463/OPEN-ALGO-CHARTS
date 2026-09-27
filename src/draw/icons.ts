@@ -106,6 +106,22 @@ function dot(x: number, y: number, r = 1): string {
   return `M${x - r} ${y}a${r} ${r} 0 0 0 ${2 * r} 0a${r} ${r} 0 0 0 ${-2 * r} 0z`;
 }
 
+/**
+ * A circle that stays open: the same two half turns as `dot`, at a radius the
+ * line cannot fill. Named apart because a ring is part of a drawing (a level,
+ * a wave) and never a mark an accent paints solid.
+ */
+const ring = (x: number, y: number, r: number): string => dot(x, y, r);
+
+/**
+ * A harmonic pattern through X, A, B, C and D, given as heights on five
+ * evenly spaced columns, then the bases XB and BD of the two triangles its
+ * tool fills. Price runs up the grid, so a smaller number is a higher price.
+ */
+function harmonic(x: number, a: number, b: number, c: number, d: number): string {
+  return `M2 ${x} 7 ${a} 12 ${b} 17 ${c} 22 ${d}M2 ${x} 12 ${b} 22 ${d}`;
+}
+
 /*
  * The closed marks of the tool glyphs, written once: each is drawn in its
  * glyph's path and repeated in `DRAWING_TOOL_ACCENTS` for the fill.
@@ -121,6 +137,12 @@ const PATH_HEAD = 'M20 8l-6 2 4 4z';
 const POLYLINE_VERTICES = dot(4, 19, 2) + dot(9, 7, 2) + dot(14, 16, 2);
 const LONG_DIRECTION = 'M10 11l3-4 3 4z';
 const SHORT_DIRECTION = 'M10 13l3 4 3-4z';
+const FORK_PIVOT = dot(12, 21);
+const SCHIFF_PIVOT = dot(19, 14);
+const MODIFIED_PIVOT = dot(19, 20);
+const INSIDE_PIVOT = dot(12, 20);
+/** A pitchfork's head: two outer tines and the crossbar between them. */
+const FORK_HEAD = 'M5 2v8h14V2';
 
 /**
  * Path data by tool id, plus a few keys a host toolbar needs that are not
@@ -173,12 +195,30 @@ export const DRAWING_TOOL_ICONS: Readonly<Record<string, string>> = {
 
   'flat-top-bottom': 'M3 6h18M3 20 21 12M3 6v14',
   'regression-channel': 'M3 18 19 6M5 21 21 9M3 12 17 2M10 16h4',
-  'pitchfork': 'M4 21 16 9M4 9 16 21M10 15 22 3M4 9 10 3M16 21l6-6',
-  'schiff-pitchfork': 'M4 19 18 5M4 11 12 19M8 15 20 3M4 11l6-6M12 19l8-8',
-  'modified-schiff-pitchfork': 'M4 20 20 4M4 12 12 20M8 16 20 4M4 12l8-8M12 20l8-8',
-  'inside-pitchfork': 'M4 20 20 4M6 10 14 18M6 10l6-6M14 18l6-6',
+
+  // ── pitchforks ──────────────────────────────────────────────────────────
+  // One trident, upright so it reads as one, and a pivot dot. The four tools
+  // differ only in where the median starts, so that is what the glyphs show,
+  // each as its tool constructs it, turned so the tines point up: time runs
+  // up the glyph and price across it. The standard median starts at the
+  // pivot. The Schiff median starts at the pivot's time and halfway to the
+  // second anchor's price, so the handle stops short and turns square to
+  // the pivot. The modified one also moves halfway in time, to the middle of
+  // the swing from the pivot to the second anchor, and draws that swing. The
+  // inside median starts on the crossbar itself; the swing from the pivot to
+  // both crossbar ends stands for the lines that tool draws below it. Drawn
+  // diagonally through 2.5.8, the four crossed their tines through the
+  // handle and read as an X.
+  pitchfork: FORK_HEAD + 'M12 2v19' + FORK_PIVOT,
+  'schiff-pitchfork': FORK_HEAD + 'M12 2v12h7' + SCHIFF_PIVOT,
+  'modified-schiff-pitchfork': FORK_HEAD + 'M12 2v13M5 10l14 10' + MODIFIED_PIVOT,
+  'inside-pitchfork': FORK_HEAD + 'M12 2v8M5 10l7 10 7-10' + INSIDE_PIVOT,
+
   'fib-extension-two-point': 'M3 4h18M3 10h18M3 16h18M3 21h18M6 4v12',
-  'fib-speed-resistance-fan': 'M3 21V3M3 21h18M3 21 21 3M3 21 12 3M3 21 21 12',
+  // The box the two anchors span, with its diagonal and the half levels on
+  // both far edges, as the tool draws it. With only the near axes it was the
+  // speed fan glyph again with one more ray.
+  'fib-speed-resistance-fan': 'M3 3h18v18H3zM3 21 21 3M21 12 3 21 12 3',
   'icon-stamp': 'M12 3l3 6 6 3-6 3-3 6-3-6-6-3 6-3z',
   // ── shapes ──────────────────────────────────────────────────────────────
   rectangle: 'M3 5h18v14H3z',
@@ -197,32 +237,64 @@ export const DRAWING_TOOL_ICONS: Readonly<Record<string, string>> = {
   'fib-extension': 'M3 5h18M3 12h18M3 19h18M8 5v14',
   'fib-fan': 'M3 20 21 4M3 20 21 10M3 20 21 16M3 20h18',
   'fib-time-zone': 'M4 3v18M8 3v18M14 3v18M22 3v18',
-  'fib-circles': 'M12 20A5 5 0 0 1 12 10M12 20A9 9 0 0 1 12 2M10 20h4',
-  'fib-spiral': 'M12 13A3 3 0 1 1 15 10A7 7 0 1 1 8 3A9 9 0 1 1 21 12',
-  'fib-wedge': 'M3 20 21 4M3 20 21 12M3 20a12 12 0 0 0 10-6',
+  // The tool rings one centre at each level.
+  'fib-circles': ring(12, 12, 3) + ring(12, 12, 6) + ring(12, 12, 9),
+  // Quarter turns of radius 2, 3, 5, 8 and 13, each leaving where the last
+  // ended and heading the same way: the golden spiral the tool draws, in
+  // whole units. The last, radius 13, turns 67 degrees rather than 90 and
+  // ends on a 5, 12, 13 triangle, which keeps it on the grid and inside the
+  // box. The arcs it replaced did not meet, and the last one, too short a
+  // chord for its radius, bulged out past the edge as a tail.
+  'fib-spiral': 'M8 10A2 2 0 0 0 10 8 3 3 0 0 0 7 5 5 5 0 0 0 2 10 8 8 0 0 0 10 18 13 13 0 0 0 22 10',
+  // A sector: the two radii and its levels between them. A 3, 4, 5 edge
+  // puts every level on whole units.
+  'fib-wedge': 'M20 18H5l9-12M10 18A5 5 0 0 0 8 14M15 18A10 10 0 0 0 11 10M20 18A15 15 0 0 0 14 6',
   'fib-speed-fan': 'M3 20V4M3 20h18M3 20 21 4M3 20 13 4',
   'gann-fan': 'M3 20 21 2M3 20 21 9M3 20 21 15M3 20h18',
   'gann-box': 'M3 3h18v18H3zM3 3l18 18M3 21 21 3',
   'trend-fib-time': 'M3 20 8 8 12 15M12 3v18M16 3v18M22 3v18',
-  'fib-speed-resistance-arcs': 'M3 21a6 6 0 0 0 6-6M3 21a12 12 0 0 0 12-12M3 21a18 18 0 0 0 18-18M3 21 21 3',
+  // Half circles about the trend's first anchor, turned to face along it,
+  // with the trend through their crowns. Each arc's radius is written short
+  // of its chord on purpose: SVG scales such a radius up to half the chord,
+  // which makes the arc an exact half turn on a diagonal whose true radius
+  // is not a whole number.
+  'fib-speed-resistance-arcs': 'M10 14 22 2M2 6a8 8 0 0 1 16 16M6 10a4 4 0 0 1 8 8',
   'gann-square': 'M3 3h18v18H3zM9 3v18M15 3v18M3 9h18M3 15h18M3 21 21 3',
-  'dedekind-tessellation': 'M3 21a9 9 0 0 1 18 0M3 21a4 4 0 0 1 8 0M13 21a4 4 0 0 1 8 0M12 3v18',
+  // The tool's own figure: a square as tall as the unit arcs, which stand on
+  // its bottom corners, arcs a third as high on the same base, and the wall
+  // at half. The half rings under a pole it replaced read as an umbrella.
+  'dedekind-tessellation': 'M3 3h18v18H3zM3 3A18 18 0 0 1 21 21M21 3A18 18 0 0 0 3 21'
+    + 'M3 21a6 6 0 0 1 12 0M9 21a6 6 0 0 1 12 0M12 3 12 21',
   sonic: 'M3 12a9 9 0 0 1 18 0M6 12a6 6 0 0 1 12 0M9 12a3 3 0 0 1 6 0M3 12h18',
-  supersonic: 'M3 12 21 3M3 12l18 9M7 12a5 5 0 0 1 10 0M10 12a3 3 0 0 1 6 0',
+  // Waves inside the Mach cone, each on its axis and tangent to both sides,
+  // as the tool draws them. The two tools differ only in their levels, and
+  // so do the glyphs: equal steps for the one, radii 2, 3 and 5 for the
+  // golden one. The half rings across the cone they replaced matched
+  // nothing either tool draws.
+  supersonic: 'M22 3 2 12l20 9' + ring(7, 12, 2) + ring(12, 12, 4),
   'golden-sonic': 'M3 12a9 9 0 0 1 18 0M7 12a5 5 0 0 1 10 0M10 12a2 2 0 0 1 4 0M3 16h18M12 16v5',
-  'golden-supersonic': 'M3 12 21 3M3 12l18 9M6 12a6 6 0 0 1 12 0M10 12a2 2 0 0 1 4 0M18 11v2',
+  'golden-supersonic': 'M22 5 2 12l20 7' + ring(7, 12, 2) + ring(11, 12, 3) + ring(17, 12, 5),
 
+  // ── patterns ────────────────────────────────────────────────────────────
   'xabcd-pattern': 'M3 19 7 4 12 16 16 8 21 20M3 19 12 16 21 20M7 4 16 8',
   'abcd-pattern': 'M3 18 9 4 15 15 21 3M3 18 15 15M9 4 21 3',
   'elliott-impulse': 'M2 21 6 12 9 17 13 5 17 11 22 2',
   'elliott-correction': 'M3 4 9 18 15 8 21 21M3 4h4M17 21h4',
   'head-shoulders': 'M2 20 5 10 8 17 12 3 16 17 19 10 22 20M3 17h18',
-  gartley: 'M3 20 7 3 12 13 16 7 21 17M3 20 12 13 21 17',
-  bat: 'M3 21 7 3 12 11 16 6 21 19M7 3 16 6M3 21 21 19',
-  butterfly: 'M3 16 7 3 12 14 16 7 21 21M3 16 12 14 21 21',
-  crab: 'M3 12 7 3 12 10 16 5 21 22M3 12 12 10 21 22',
-  shark: 'M3 17 7 10 12 20 16 3 21 18M3 17 21 18M7 10 16 3',
-  cypher: 'M3 20 7 9 12 16 16 3 21 18M3 20 12 16M7 9 16 3',
+  // The six harmonics are one zigzag and differ only in where B and D fall
+  // against XA, so each is drawn to its own ratios, and its tool accepts it
+  // as a valid instance of itself and of no other harmonic. Gartley: B at
+  // 0.61 of XA, D at 0.78. Bat: a shallow B at 0.44, a deep D at 0.89.
+  // Butterfly: D beyond X, at 1.38. Crab: D far beyond X, at 1.58, after a
+  // leg 3.4 times BC. Shark: C above A, D back at X. Cypher: C above A, D at
+  // 0.79 of XC. Drawn by eye, as before, five of the six failed their own
+  // tool's check.
+  gartley: harmonic(21, 3, 14, 7, 17),
+  bat: harmonic(21, 3, 11, 5, 19),
+  butterfly: harmonic(16, 3, 13, 6, 21),
+  crab: harmonic(14, 2, 9, 4, 21),
+  shark: harmonic(22, 5, 13, 2, 22),
+  cypher: harmonic(21, 7, 14, 2, 17),
 
   // ── measure and range ───────────────────────────────────────────────────
   measure: 'M4 16h16M4 12v8M20 12v8M8 4h8M12 4v6',
@@ -294,6 +366,10 @@ export const DRAWING_TOOL_ACCENTS: Readonly<Record<string, string>> = {
   polyline: POLYLINE_VERTICES,
   'long-position': LONG_DIRECTION,
   'short-position': SHORT_DIRECTION,
+  pitchfork: FORK_PIVOT,
+  'schiff-pitchfork': SCHIFF_PIVOT,
+  'modified-schiff-pitchfork': MODIFIED_PIVOT,
+  'inside-pitchfork': INSIDE_PIVOT,
 };
 
 /**
