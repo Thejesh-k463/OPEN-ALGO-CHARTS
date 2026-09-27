@@ -52,11 +52,21 @@ const CEILING = 0.85;
  */
 const STATE_PAIRS = new Set(['star~star-filled', 'eye~eye-off', 'link~unlink']);
 
+/** Every pair among one family's ids. */
+const allPairs = (ids: readonly string[]): [string, string][] =>
+  ids.flatMap((a, i) => ids.slice(i + 1).map((b) => [a, b] as [string, string]));
+
 /**
  * Siblings that sit next to each other in one flyout or menu and were
  * measured too close, held to a tighter ceiling than the rest: same family,
  * told apart by their ends, their direction or their marks. The horizontal
- * pair, the three bubbles and trash beside paste were 0.72 to 0.86.
+ * pair, the three bubbles and trash beside paste were 0.72 to 0.86. The
+ * construction families were redrawn to their tools in 2.5.9 and are held
+ * here too: four pitchforks that share one head and differ in where the
+ * median starts, and the harmonics, which share one zigzag and differ in
+ * their ratios. The supersonic pair were 0.80 before. The speed resistance
+ * fan sits under the Gann box and square in its flyout, and drawn in a whole
+ * box it was the closest pair of the tier, at 0.71.
  */
 const SIBLINGS: Record<Tier, [string, string][]> = {
   tools: [
@@ -66,6 +76,12 @@ const SIBLINGS: Record<Tier, [string, string][]> = {
     ['trend-line', 'ray'], ['trend-line', 'extended-line'], ['trend-line', 'info-line'], ['trend-line', 'arrow'],
     ['ray', 'extended-line'], ['ray', 'info-line'], ['extended-line', 'info-line'],
     ['horizontal-line', 'horizontal-ray'], ['callout', 'balloon'], ['callout', 'comment'], ['balloon', 'comment'],
+    ...allPairs(['pitchfork', 'schiff-pitchfork', 'modified-schiff-pitchfork', 'inside-pitchfork']),
+    ...allPairs(['xabcd-pattern', 'gartley', 'bat', 'butterfly', 'crab', 'shark', 'cypher']),
+    ['supersonic', 'golden-supersonic'], ['sonic', 'supersonic'], ['golden-sonic', 'golden-supersonic'],
+    ['fib-speed-resistance-fan', 'fib-speed-fan'], ['fib-speed-resistance-fan', 'gann-box'],
+    ['fib-speed-resistance-fan', 'gann-square'], ['fib-wedge', 'fib-speed-resistance-arcs'],
+    ['fib-wedge', 'fib-fan'], ['fib-circles', 'circle'],
   ],
   chrome: [['lock', 'unlock'], ['cursor', 'plus'], ['trash', 'paste']],
 };
@@ -73,10 +89,12 @@ const SIBLING_CEILING = 0.7;
 
 /**
  * Share of a tier's inked pixels that are solid at native size, as the
- * builders draw them. Measured at 0.59 for the tools and 0.62 for chrome in
- * all three engines; a floor far under that lets a real loss through.
+ * builders draw them. Measured at 0.61 for the tools and 0.62 for chrome in
+ * all three engines; a floor far under that lets a real loss through. The
+ * tools measured 0.59 until the pitchforks, drawn on the diagonal at 0.22
+ * to 0.24, were redrawn upright in 2.5.9.
  */
-const CRISP_FLOOR: Record<Tier, number> = { tools: 0.59, chrome: 0.6 };
+const CRISP_FLOOR: Record<Tier, number> = { tools: 0.6, chrome: 0.6 };
 
 async function mount(page: Page, theme: 'dark' | 'light' = 'dark'): Promise<string[]> {
   const errors: string[] = [];
@@ -186,9 +204,10 @@ test('the widget shows the glyphs as the tier ships them, in the rail, a flyout 
     await rail.screenshot({ path: info.outputPath(`rail-${theme}.png`) });
     await page.locator('.oac-topbar').screenshot({ path: info.outputPath(`topbar-${theme}.png`) });
 
-    // The three flyouts that hold the redrawn siblings: the line family,
-    // path and polyline, and the two positions.
-    for (const group of ['lines', 'shapes', 'forecast']) {
+    // The flyouts that hold the redrawn siblings: the line family, path and
+    // polyline, the two positions, the pitchforks, the Fibonacci
+    // constructions, the harmonics and the geometric studies.
+    for (const group of ['lines', 'shapes', 'forecast', 'channels', 'fib', 'patterns', 'geometry']) {
       const button = page.locator(`.oac-rail [data-group="${group}"]`);
       await expect(button).toHaveCount(1);
       await button.click({ button: 'right' });
