@@ -397,12 +397,8 @@ type ControllerOptions = Required<Omit<DrawingControllerOptions, 'defaultStyle' 
   & { defaultStyle: DrawingStyle; magnet: MagnetMode; gestures: Required<DrawingGestureOptions> };
 
 /** Every gesture on, and a host's choice over it. */
-const gesturesOf = (base: Required<DrawingGestureOptions>, patch: DrawingGestureOptions = {}): Required<DrawingGestureOptions> => ({
-  snapModifier: patch.snapModifier ?? base.snapModifier,
-  measure: patch.measure ?? base.measure,
-  boxSelect: patch.boxSelect ?? base.boxSelect,
-  dragCopy: patch.dragCopy ?? base.dragCopy,
-});
+const gesturesOf = (base: Required<DrawingGestureOptions>, patch: DrawingGestureOptions = {}): Required<DrawingGestureOptions> =>
+  ({ ...base, ...Object.fromEntries(Object.entries(patch).filter(([key, on]) => key in base && typeof on === 'boolean')) });
 const ALL_GESTURES: Required<DrawingGestureOptions> = { snapModifier: true, measure: true, boxSelect: true, dragCopy: true };
 
 // `external` is a step of the history that is not a drawing edit, a study
@@ -637,9 +633,13 @@ export class DrawingController {
     chart.setPlacementMode?.(active);
   }
 
-  /** Placement mode is the armed tool's, and a gesture's that needs the press. */
+  /**
+   * The armed tool's placement mode, or a gesture's. The gestures are asked even with a tool
+   * armed: their answer is also how they read the next press, and a stale one would take it.
+   */
   private _placementWanted(): boolean {
-    return this._tool !== null || this._gestures.wantsPlacement();
+    const gesture = this._gestures.wantsPlacement();
+    return this._tool !== null || gesture;
   }
 
   public activeTool(): string | null {

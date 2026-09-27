@@ -348,7 +348,7 @@ export class DrawingGestures {
       return;
     }
     if (p.pressed) {
-      if (this._ready && p.point !== null && p.paneIndex !== null) this._startBox(p.paneIndex, p.point);
+      if (this._ready && this._host.tool() === null && p.point !== null && p.paneIndex !== null) this._startBox(p.paneIndex, p.point);
       return;
     }
     this._over = p.point === null || p.paneIndex === null ? null : { pane: p.paneIndex, x: p.point.x, y: p.point.y };

@@ -182,6 +182,18 @@ describe('Ctrl+drag on empty space selects what the box touches', () => {
     expect(spy).toHaveBeenCalledTimes(2);
   });
 
+  it('never takes the press of a tool armed while Ctrl was held over empty space', () => {
+    const { draw, el, move, top } = mount();
+    move(300, 250, { ctrl: true });
+    draw.setTool('trend-line');
+    el.dispatch('pointerdown', pointer('down', 300, 250, { ctrlKey: true }));
+    move(360, 290, { ctrl: true }, true);
+    move(420, 340, { ctrl: true }, true);
+    expect(top()?.box() ?? null).toBeNull();
+    el.dispatch('pointerup', pointer('up', 420, 340, { ctrlKey: true }));
+    expect(draw.drawings().map((d) => d.tool)).toEqual(['trend-line']);
+  });
+
   it('does nothing when the host turns the gesture off', () => {
     const { draw, drag, line, chart } = mount({ gestures: { boxSelect: false } });
     line([320, 280], [360, 300]);
