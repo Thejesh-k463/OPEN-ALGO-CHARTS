@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { darkTheme, lightTheme, registerInterval, type Bar, type DataFeed, type BarsRequest } from '../src/index';
 import {
   createWidget, registerWidgetDialog, unregisterWidgetDialog, widgetDialog, stripView, loadWindow, resolveTheme,
-  SAVE_DEBOUNCE_MS, STATE_KEY, STORAGE_PREFIX, WIDGET_STYLE_ID, TOKEN_PREFIX, themeMode, injectWidgetStyles,
+  SAVE_DEBOUNCE_MS, STATE_KEY, DRAWINGS_KEY_PREFIX, STORAGE_PREFIX, WIDGET_STYLE_ID, TOKEN_PREFIX, themeMode, injectWidgetStyles,
   type Widget, type WidgetOptions, type WidgetContext, type StorageLike,
 } from '../src/widget/index';
 import { fakeWidgetDocument, fakeContainer, fireKey, fire, ensureWindowGlobal, type FakeDocument, type FakeElement } from './helpers/fake-dom-widget';
@@ -434,7 +434,8 @@ describe('state and persistence', () => {
       a.w.series.setData(bars(20));
       a.w.draw.add({ tool: 'horizontal-line', points: [{ time: T0 + 5 * DAY, price: 100 }], style: {}, paneIndex: 0 });
       a.w.setTheme('light');
-      expect(store.map.size).toBe(0);
+      // The drawing is written at once, under its instrument; the layout waits for the debounce.
+      expect([...store.map.keys()]).toEqual([`${STORAGE_PREFIX}desk:${DRAWINGS_KEY_PREFIX}A`]);
       vi.advanceTimersByTime(SAVE_DEBOUNCE_MS + 1);
       const key = `${STORAGE_PREFIX}desk:${STATE_KEY}`;
       expect(store.map.has(key)).toBe(true);
@@ -446,17 +447,19 @@ describe('state and persistence', () => {
       expect(b.w.interval()).toBe('15m');
       expect(b.w.theme()).toBe('light');
       expect(b.w.draw.drawings()).toHaveLength(1);
-      // An explicit option outranks the saved fact, and the layout still applies.
+      // An explicit option outranks the saved fact, and the layout still
+      // applies, all but its drawings: those are A's, kept for A.
       const c = make({ persist: 'desk', storage: store, symbol: 'Z' });
       expect(c.w.symbol()).toBe('Z');
-      expect(c.w.draw.drawings()).toHaveLength(1);
+      expect(c.w.draw.drawings()).toHaveLength(0);
+      expect(c.w.instrumentDrawings?.document({ symbol: 'A', exchange: '' })?.drawings).toHaveLength(1);
       // Nothing persists without the option.
       const d = make({ storage: store });
       expect(d.w.context.storage.enabled).toBe(false);
       d.w.setTheme('light');
       vi.advanceTimersByTime(SAVE_DEBOUNCE_MS + 1);
       expect(JSON.parse(store.map.get(key) as string).theme).toBe('light');
-      expect(store.map.size).toBe(2);
+      expect(store.map.size).toBe(3);
     } finally {
       vi.useRealTimers();
     }

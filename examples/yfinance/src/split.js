@@ -25,6 +25,7 @@ import { axisMinMove, sessionCalendarFor, tickScheduleFor } from './ticks.js';
 import { attachReplay, exitReplay, syncReplayAlertPause } from './replay.js';
 import { attachTimeline } from './timeline.js';
 import { attachHistory, historyFor, withoutHistory } from './history.js';
+import { scopeDrawings } from './drawing-scope.js';
 
 // 1.3 surfaces: chart linking, the bar cache and the interval registry.
 // Same namespace read for the same reason: this page must still draw
@@ -196,6 +197,7 @@ export function closeSplit() {
     detachInspection(app, 2);
     detachAlerts(app, 2);
     if (app.linkGroup) app.linkGroup.remove(app.chart2);
+    if (app.instrumentDrawings2) { app.instrumentDrawings2.destroy(); app.instrumentDrawings2 = null; }
     if (app.draw2) { app.draw2.destroy(); app.draw2 = null; }
     app.chart2.destroy();
     // A split opened again is a new second chart, with nothing to take back yet.
@@ -273,6 +275,7 @@ export function buildChart2({ keepView = true, typeChanged = false, state } = {}
   detachInspection(app, 2);
   detachAlerts(app, 2);
   const dataContext = referenceDataContext(app.p2, app.chart2?.getDataContext());
+  if (app.instrumentDrawings2) { app.instrumentDrawings2.destroy(); app.instrumentDrawings2 = null; }
   if (app.chart2) { if (app.linkGroup) app.linkGroup.remove(app.chart2); app.chart2.destroy(); }
   if (app.draw2) { app.draw2.destroy(); app.draw2 = null; }
   el('chart2').innerHTML = '';
@@ -329,6 +332,8 @@ export function buildChart2({ keepView = true, typeChanged = false, state } = {}
     const report = app.chart2.restoreState(typeChanged ? { ...saved, series: [] } : saved);
     if (state && !report.applied) throw new Error('The second chart state could not be restored');
   }
+  // As on the main chart: a rebuild or a layout brings this symbol's drawings.
+  app.instrumentDrawings2 = scopeDrawings(app.chart2, app.draw2, 2, saved ? 'live' : 'stored');
   restorePrimaryStyle(app.chart2, saved);
   refreshVolume(2);
   for (const spec of comparisonState(2).items) attachComparison(spec, 2);

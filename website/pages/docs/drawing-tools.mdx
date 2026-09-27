@@ -728,6 +728,61 @@ restore drops it; re-add it afterwards.
 
 See [Chart State](/docs/state) for the rest of the payload.
 
+## Drawings per instrument
+
+<Callout type="info">Unreleased: on the main branch, not in 2.5.8.</Callout>
+
+The chart state holds one drawing document: the drawings on screen. The engine has no
+instrument concept, so a host that loads another symbol into the same chart would keep
+the previous symbol's lines on screen, and a delete there would delete them for every
+symbol. Traders expect the opposite: a level belongs to the symbol it was drawn on.
+`InstrumentDrawings` keeps one document per instrument and swaps them as the chart's
+data context moves. The [widget](/docs/widget) does this by default.
+
+```ts
+import {
+  DrawingController, InstrumentDrawings, instrumentDrawingsKey,
+  webStorageDrawingStore, migrateUnscopedDrawings,
+} from 'openalgo-charts/draw';
+
+const draw = new DrawingController(chart);
+// Where the documents live is your choice; the default is memory for the page's life.
+const store = webStorageDrawingStore(localStorage, 'my-app:chart-1:drawings:');
+// Once: drawings saved before they were per instrument belong to the saved symbol.
+migrateUnscopedDrawings(store, instrumentDrawingsKey({ symbol: 'INFY', exchange: 'NSE' }), oldDocument);
+const scoped = new InstrumentDrawings(chart, draw, { store });
+
+chart.setDataContext({ symbol: 'INFY', exchange: 'NSE', interval: '5m' });  // INFY's drawings
+chart.setDataContext({ symbol: 'TCS', exchange: 'NSE', interval: '5m' });   // INFY's saved, TCS's shown
+```
+
+| Export | What it does |
+|---|---|
+| `InstrumentDrawings(chart, draw, options?)`, `createInstrumentDrawings(...)` | Follows the chart's `data:context`. Options: `store`, `key`, `prefer` (`'stored'` or `'live'`), `onError`. Methods: `key()`, `setInstrument()`, `document()`, `setDocument()`, `save()`, `destroy()`. |
+| `instrumentDrawingsKey(instrument)` | The default key, `NSE:INFY`, or `AAPL` with no exchange; null without a symbol. |
+| `memoryDrawingStore()` | The default store: memory, for the life of the page. |
+| `webStorageDrawingStore(storage, prefix)` | One JSON entry per instrument in any storage with `getItem`, `setItem` and `removeItem`. |
+| `migrateUnscopedDrawings(store, key, document)` | Attaches an old chart-wide document to an instrument that has none yet. |
+
+How it behaves:
+
+- **An instrument is a symbol and an exchange.** A new interval or data variant keeps the
+  drawings; a context that names no instrument changes nothing. A `key` function changes
+  the rule, for one set per session variant, say.
+- **Every committed change is written**, and only when the saved document changed. An
+  instrument left with no drawings has its entry removed.
+- **A swap is not an undo step.** It clears the drawing undo history, so no undo on one
+  symbol restores or removes a line of another. A drag in progress is put back first, and
+  anchors placed for an unfinished shape are dropped, with the tool left armed.
+- **Drawings pinned to the screen swap too**, with the rest of the document: groups and
+  stacking can span both kinds, and a pinned note is nearly always about the symbol on screen.
+- **Alerts stay with their drawing's symbol.** An alert on a line of INFY keeps waiting while
+  TCS is on screen, without evaluating, even over a TCS drawing that shares its id.
+- **Copy and paste cross symbols** as the user asks: the clipboard is not the document.
+- **A store that fails loses nothing for the session.** `onError` hears it, the document is
+  held in memory, and the next change tries again. The store is synchronous: a swap happens
+  inside the context change, so an answer arriving later would land on the wrong symbol.
+
 ## Building your own tool
 
 A tool is a descriptor, like a chart type or an indicator. `draw` receives anchors already
