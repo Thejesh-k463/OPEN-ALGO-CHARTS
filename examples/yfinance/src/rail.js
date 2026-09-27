@@ -546,13 +546,18 @@ function controlsBlock() {
     onContext: () => {
       if (!app.draw) return;
       // Each count is what its row reaches: an unselectable drawing never
-      // joins a selection, and a read-only one survives a clear.
+      // joins a selection, and a read-only one survives a clear. Select all
+      // takes only what is on the chart: a drawing whose interval range hides
+      // it here would otherwise go with the delete that follows, unseen.
+      // Remove all is every drawing, as its count says.
       const all = app.draw.drawings();
-      const picked = all.filter((d) => d.policy?.selectable !== false).length;
+      const off = new Set(app.draw.hiddenOnInterval?.() ?? []);
+      const onChart = all.filter((d) => !off.has(d.id));
+      const picked = onChart.filter((d) => d.policy?.selectable !== false).length;
       const n = all.filter(isEditable).length;
       openRailMenu(ctl.trash, [
         { label: `Select all (${picked})`, icon: 'cursor', disabled: picked === 0, onSelect: () => {
-          app.draw.select(all.map((d) => d.id));
+          app.draw.select(onChart.map((d) => d.id));
           refreshControls();
         } },
         { label: `Remove all drawings (${n})`, icon: 'trash', danger: true, disabled: n === 0, onSelect: () => {

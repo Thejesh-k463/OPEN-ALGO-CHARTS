@@ -455,6 +455,20 @@ describe('selection controls', () => {
     expect(page.status.textContent).toBe('removed 2 drawings');
   });
 
+  it('selects only the drawings on the chart at its interval, and still removes them all', () => {
+    const d = setup();
+    d.state.drawings = [{ id: 'a' }, { id: 'intraday', intervals: { to: '1h' } }, { id: 'c' }];
+    // On daily bars the intraday level is not drawn: Select all must not
+    // pick it, or the delete that follows would take a drawing no one sees.
+    d.hiddenOnInterval = () => ['intraday'];
+    const trash = byLabel('Delete drawing');
+    trash.dispatchEvent(new FakeEvent('contextmenu'));
+    const rows = page.doc.body.querySelectorAll('.rail-menu button');
+    expect(rows.map((r) => r.textContent)).toEqual(['Select all (2)', 'Remove all drawings (3)']);
+    rows[0].dispatchEvent(new FakeEvent('click'));
+    expect(names(d.calls, 'select').pop()).toEqual(['select', ['a', 'c']]);
+  });
+
   it('counts only what the trash deletes in a selection that mixes read-only and editable drawings', () => {
     const d = setup();
     d.state.drawings = [{ id: 'fixed', policy: { editable: false } }, { id: 'a' }, { id: 'b' }];
