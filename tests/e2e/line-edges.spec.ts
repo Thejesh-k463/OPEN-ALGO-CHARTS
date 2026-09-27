@@ -11,6 +11,9 @@ import { test, expect, type Page } from '@playwright/test';
 //  - The dash phase: a dashed or dotted line paints the same pixels from its
 //    first bar in view on as the same line with nothing beyond the view, so
 //    drawing the edge segment moved no dash of the visible line.
+//  - A gap at the edge: when the bar on either side of an edge has no value,
+//    a line, area, baseline or band paints exactly what it paints with
+//    nothing beyond the view; no fill reaches out from the plot edge.
 //  - The cost of a neighbour millions of pixels away: the GPU backend walked
 //    a dashed segment's pattern over its whole length in script, frame after
 //    frame, and uploaded a quad for every dash.
@@ -289,6 +292,101 @@ for (const dpr of [1, 2]) {
     await context.close();
   });
 }
+
+test('a gap at the edge of the view is never bridged, by a line or by a fill', async ({ page }) => {
+  test.setTimeout(180_000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto('/');
+  await page.setViewportSize({ width: W + 40, height: H + 40 });
+  const gl = await webgl2(page);
+  await install(page);
+
+  const report = await page.evaluate(async ({ w, h, renderers }) => {
+    type Chart = {
+      addSeries: (t: string, o?: unknown) => { setData: (b: unknown[]) => void };
+      applySize: (w: number, h: number) => void; destroy: () => void; readonly rendererKind: string;
+      timeScale: { setBarSpacing: (n: number) => void; setRightOffset: (n: number) => void; visibleRange: () => { from: number; to: number } };
+      panes: () => { priceScale: { setAutoScale: (on: boolean) => void; setPriceRange: (r: { min: number; max: number }) => void } }[];
+    };
+    const g = window as unknown as { oacBase: { createChart: (el: HTMLElement, o?: unknown) => Chart }; oacBars: (n: number, s: number) => { time: number; close: number; high: number; low: number }[] };
+    const bars = g.oacBars(3_000, 19);
+    // A one-minute study on five-second bars, a point every twelfth bar, so
+    // the first and last points in view sit well inside the plot and a
+    // bridge from the plot edge would cross open ground.
+    const EVERY = 12;
+    const RIGHT = 1_905;
+    const frame = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 1_500; i < 2_000; i++) { lo = Math.min(lo, bars[i].low); hi = Math.max(hi, bars[i].high); }
+    const shoot = async (renderer: string, type: string, points: unknown[]) => {
+      const host = document.createElement('div');
+      host.style.cssText = `position:fixed;left:0;top:0;width:${w}px;height:${h}px;z-index:9999`;
+      document.body.appendChild(host);
+      const chart = g.oacBase.createChart(host, { priceAxisWidth: 64, renderer });
+      chart.applySize(w, h);
+      chart.addSeries('line', { style: { visible: false } }).setData(bars);
+      chart.addSeries(type, {
+        style: { lineWidth: 2, color: '#40a0ff', baseValue: (lo + hi) / 2, priceLineVisible: false, lastValueVisible: false },
+      }).setData(points);
+      chart.timeScale.setBarSpacing(7);
+      chart.timeScale.setRightOffset(RIGHT - (bars.length - 1));
+      const scale = chart.panes()[0].priceScale;
+      scale.setAutoScale(false);
+      scale.setPriceRange({ min: lo - 20, max: hi + 20 });
+      await frame();
+      const range = chart.timeScale.visibleRange();
+      const canvas = host.querySelector('canvas') as HTMLCanvasElement;
+      const shot = {
+        kind: chart.rendererKind, range, width: canvas.width, height: canvas.height,
+        data: (canvas.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D).getImageData(0, 0, canvas.width, canvas.height).data,
+      };
+      chart.destroy();
+      host.remove();
+      return shot;
+    };
+    // Where the study's first and last points in view fall at this zoom.
+    const probe = await shoot('canvas2d', 'line', []);
+    const first = Math.ceil(Math.floor(probe.range.from) / EVERY) * EVERY;
+    const last = Math.floor(Math.ceil(probe.range.to) / EVERY) * EVERY;
+    // A point with no value is written the way a study writes one: whitespace, a NaN bar.
+    const point = (i: number, gap: boolean): unknown => (gap ? { time: bars[i].time }
+      : { time: bars[i].time, open: bars[i].close, high: bars[i].high, low: bars[i].low, close: bars[i].close });
+    const out: { label: string; kind: string; moved: number; ink: number }[] = [];
+    for (const renderer of renderers) {
+      // The chart with nothing on it, to tell what the study painted.
+      const empty = (await shoot(renderer, 'line', [])).data;
+      for (const type of ['line', 'area', 'baseline', 'hlc-area']) {
+        for (const [where, gapAt] of [
+          // The neighbours beyond both edges have no value.
+          ['beyond', (i: number) => i === first - EVERY || i === last + EVERY],
+          // The first and last points in view have none; the neighbours do.
+          ['within', (i: number) => i === first || i === last],
+        ] as const) {
+          const points = bars.map((_, i) => i).filter((i) => i % EVERY === 0);
+          const full = await shoot(renderer, type, points.map((i) => point(i, gapAt(i))));
+          // The same study with nothing beyond the view: what 2.5.8 drew.
+          const alone = await shoot(renderer, type, points.filter((i) => i >= first && i <= last).map((i) => point(i, gapAt(i))));
+          let moved = 0, ink = 0;
+          const a = full.data, b = alone.data;
+          for (let i = 0; i < a.length; i += 4) {
+            if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2]) moved++;
+            if (a[i] !== empty[i] || a[i + 1] !== empty[i + 1] || a[i + 2] !== empty[i + 2]) ink++;
+          }
+          out.push({ label: `${renderer} ${type}, gap ${where} the view`, kind: full.kind, moved, ink });
+        }
+      }
+    }
+    return out;
+  }, { w: W, h: H, renderers: gl ? ['canvas2d', 'webgl2'] : ['canvas2d'] });
+
+  for (const r of report) {
+    expect(r.kind, r.label).toBe(r.label.split(' ')[0]);
+    expect(r.ink, `${r.label}: nothing painted`).toBeGreaterThan(200);
+    expect(r.moved, `${r.label}: ${r.moved} pixels differ from the study with nothing beyond the view`).toBe(0);
+  }
+  expect(errors).toEqual([]);
+});
 
 test('the GPU backend uploads a bounded batch for a dashed line whose neighbours are millions of pixels away', async ({ page }) => {
   test.setTimeout(120_000);

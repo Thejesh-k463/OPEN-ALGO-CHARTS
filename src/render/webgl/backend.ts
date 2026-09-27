@@ -664,7 +664,8 @@ function emitHlcArea(
   const pad = EDGE_PAD + (style.lineWidth ?? 1.5);
   project(highs, items, toY, HIGH);
   project(lows, items, toY, LOW);
-  // Cut on x alone, so both edges keep the same points and pair up below.
+  // Both edges are cut at the same x, and a gap at the view edge empties the
+  // dropped point, so they still pair up by index below.
   trimToView(highs, items, false, 0, pad);
   trimToView(lows, items, false, 0, pad);
   const band = color(style.areaTopColor ?? 'rgba(79,140,255,0.15)');

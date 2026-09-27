@@ -56,9 +56,10 @@ export interface Polyline {
   s: number;
   n: number;
   /**
-   * Where the bars in view start after a leg in from beyond the view, and
-   * where they end before a leg out to beyond it: -1 when there is none.
-   * A dashed stroke keeps those legs off the bars' own path (strokePolyline).
+   * Where a leg in from beyond the view ends (the first bar in view, or the
+   * corner under it on a step whose first bar is a gap), and where the bars
+   * in view end before a leg out to beyond it: -1 when there is none. A
+   * dashed stroke keeps those legs off the bars' own path (strokePolyline).
    */
   a: number;
   b: number;
@@ -141,7 +142,11 @@ export function dashPeriod(dash: readonly number[], dpr: number): number {
  * always further from the plot. A step's leading leg is horizontal at the
  * neighbour's level and then vertical at the first bar, and both count.
  *
- * Only x decides what is dropped, so a high and a low line cut the same way.
+ * A leg with no value at either end (a study's plot stores a bar without one
+ * as NaN) is dropped as well, and its outer point emptied: a gap is never
+ * bridged, and an area, baseline or band fill would otherwise shade from the
+ * plot edge to the first value, or across the gap to the next one. A step
+ * still holds its level up to a bar that is a gap, as it does in view.
  */
 export function trimToView(
   line: Polyline, items: readonly LineDrawItem[], step: boolean, period: number, pad: number,
@@ -158,27 +163,28 @@ export function trimToView(
     // The leg runs from the neighbour to its inner end: the first bar, or
     // the corner under it on a step.
     const ix = xs[1], iy = ys[1], ox = xs[0], oy = ys[0];
-    if (ix < lo) {
-      // The first bar is itself past the margin (zoomed in): the leg is out
-      // of sight and the path starts at the bar, as it did before.
+    if (ix < lo || !Number.isFinite(oy) || !Number.isFinite(iy)) {
+      // Out of sight (zoomed in so far that the first bar is past the
+      // margin itself) or a gap: the path starts at the first bar, as it did
+      // before. The emptied point keeps a band, which pairs its two edges by
+      // index, from reaching for it.
       line.s = step ? 2 : 1;
-    } else if (Number.isFinite(oy) && Number.isFinite(iy)) {
+      ys[0] = NaN;
+    } else {
       const len = Math.hypot(ox - ix, oy - iy);
       let reach = ox < lo ? len * (ix - lo) / (ix - ox) : len;
       // The dash phase is anchored to the first bar's own value, which on a
-      // step is the vertical leg further on.
-      // NaN when that value is a gap: the path breaks there, and no phase
-      // carries past it to keep.
-      const lead = step ? Math.abs(ys[2] - iy) : 0;
-      if (period > 0 && lead === lead) reach = Math.ceil((reach + lead) / period) * period - lead;
+      // step is the vertical leg further on; when that value is a gap, to the
+      // corner under it, where the step's hold ends.
+      const on = step && Number.isFinite(ys[2]);
+      const lead = on ? Math.abs(ys[2] - iy) : 0;
+      if (period > 0) reach = Math.ceil((reach + lead) / period) * period - lead;
       if (reach !== len) {
         const f = reach / len;
         xs[0] = ix + (ox - ix) * f;
         ys[0] = iy + (oy - iy) * f;
       }
-      line.a = step ? 2 : 1;
-    } else if (ox < lo) {
-      xs[0] = lo;
+      line.a = on ? 2 : 1;
     }
   }
   if (tail !== undefined) {
@@ -186,12 +192,13 @@ export function trimToView(
     // A step's last bar is two points (the horizontal leg's end, then the
     // vertical one); its leg starts at the bar before.
     const k = step ? line.n - 2 : line.n - 1;
-    const ix = xs[k - 1], iy = ys[k - 1], ox = xs[k];
-    if (ix > hi) {
+    const ix = xs[k - 1], iy = ys[k - 1], ox = xs[k], oy = ys[k];
+    if (ix > hi || !Number.isFinite(iy) || !Number.isFinite(oy)) {
       line.n = k;
+      ys[k] = NaN;
     } else {
       if (ox > hi) {
-        ys[k] = iy + (ys[k] - iy) * ((hi - ix) / (ox - ix));
+        ys[k] = iy + (oy - iy) * ((hi - ix) / (ox - ix));
         xs[k] = hi;
         line.n = k + 1;
       }
@@ -458,12 +465,13 @@ export function drawHlcArea(
   trimToView(highs, items, false, 0, pad);
   trimToView(lows, items, false, 0, pad);
   const s = highs.s, n = highs.n;
-  // fill between high and low
+  // fill between high and low; each edge runs over its own points, since a
+  // gap at the view edge drops the leg of whichever edge has no value there
   ctx.save();
   ctx.beginPath();
   if (n > s) ctx.moveTo(highs.xs[s] * dpr, highs.ys[s] * dpr);
   for (let i = s; i < n; i++) ctx.lineTo(highs.xs[i] * dpr, highs.ys[i] * dpr);
-  for (let i = n - 1; i >= s; i--) ctx.lineTo(lows.xs[i] * dpr, lows.ys[i] * dpr);
+  for (let i = lows.n - 1; i >= lows.s; i--) ctx.lineTo(lows.xs[i] * dpr, lows.ys[i] * dpr);
   ctx.closePath();
   ctx.fillStyle = style.areaTopColor ?? 'rgba(79,140,255,0.15)';
   ctx.fill();

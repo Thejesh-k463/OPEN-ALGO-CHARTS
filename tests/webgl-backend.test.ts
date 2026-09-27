@@ -728,6 +728,30 @@ describe('lines joining a neighbour beyond the view', () => {
       }
     }
   });
+
+  it('never bridges a gap at the edge of the view: a line or a fill is what the bars in view make alone', () => {
+    // A study's plot stores a bar with no value as NaN, so the neighbour, or
+    // the bar in view next to it, can be a gap. Uncut, a fill joined the
+    // neighbour's value across the gap to the next value in view.
+    const gap = (b: Bar): Bar => ({ time: b.time, open: NaN, high: NaN, low: NaN, close: NaN });
+    const data = bars(40);
+    /** The neighbours with values, and the first and last bar in view each a gap. */
+    const within = edged(data, 1e6, 0, 800).map((it, i, all) => (i === 1 || i === all.length - 2 ? { ...it, bar: gap(it.bar) } : it));
+    const cases: [string, DrawItem[], DrawItem[]][] = [
+      ['beyond', edged(data, 1e6, 0, 800).map((it, i, all) => (i === 0 || i === all.length - 1 ? { ...it, bar: gap(it.bar) } : it)), items(data, 8)],
+      ['within', within, within.slice(1, -1)],
+    ];
+    for (const [name, withEdges, without] of cases) {
+      for (const type of ['line', 'area', 'baseline', 'hlc-area'] as const) {
+        for (const style of [{}, { lineStyle: 'dashed' }, { highColor: '#ff0000', lowColor: '#0000ff', baseValue: 100 }] as SeriesStyle[]) {
+          const label = `${type} ${JSON.stringify(style)}, gap ${name} the view`;
+          const got = shoot(type, withEdges, style);
+          expect(got.length, label).toBeGreaterThan(0);
+          expectShapes(got, shoot(type, without, style));
+        }
+      }
+    }
+  });
 });
 
 describe('area, baseline and HLC area', () => {

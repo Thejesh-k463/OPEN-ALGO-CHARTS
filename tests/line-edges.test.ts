@@ -273,6 +273,96 @@ describe('a line-family segment to a neighbour beyond the view', () => {
   });
 });
 
+/**
+ * A study's plot stores a bar with no value as NaN (a warm-up, the dormant
+ * half of a trend study), so the neighbour beyond an edge is the plot's own
+ * next point, value or not. When a gap sits at the edge, that neighbour or
+ * the bar in view next to it has no value, and nothing may join across it:
+ * the line breaks, and a fill must not reach out from the plot edge either
+ * (an area, a baseline or a band would otherwise shade from the edge to the
+ * first value in view, or across the gap to the next one).
+ */
+describe('a gap at the edge of the view', () => {
+  const gap = (): Bar => ({ time: 0, open: NaN, high: NaN, low: NaN, close: NaN });
+  /** The neighbours beyond both edges are gaps. */
+  const gapBeyond = (): DrawItem[] => [
+    { x: -1e7, bar: gap(), edgeX: 0 },
+    { x: 120, bar: bar(100) },
+    { x: 400, bar: bar(110) },
+    { x: 610, bar: bar(95) },
+    { x: PLOT + 1e7, bar: gap(), edgeX: PLOT },
+  ];
+  /** The neighbours have values; the first and last bars in view are gaps. */
+  const gapWithin = (): DrawItem[] => [
+    { x: -1e7, bar: bar(60), edgeX: 0 },
+    { x: 120, bar: gap() },
+    { x: 400, bar: bar(110) },
+    { x: 530, bar: bar(104) },
+    { x: 610, bar: gap() },
+    { x: PLOT + 1e7, bar: bar(130), edgeX: PLOT },
+  ];
+  /** What a canvas actually draws: it ignores a point with a coordinate that is not finite. */
+  const drawn = (ops: readonly Op[]): string[] => ops
+    .filter((o) => ['moveTo', 'lineTo', 'rect', 'stroke', 'fill', 'clip'].includes(o.type))
+    .filter((o) => o.args.every(Number.isFinite))
+    .map((o) => `${o.type} ${o.args.join(' ')}`);
+  const renderers: [string, (ctx: CanvasRenderingContext2D, items: DrawItem[]) => void][] = [
+    ['line', (ctx, items) => drawLine(ctx, items, toY, 1, {})],
+    ['dashed line', (ctx, items) => drawLine(ctx, items, toY, 1, { lineStyle: 'dashed' })],
+    ['area', (ctx, items) => drawArea(ctx, items, toY, 1, 300, {})],
+    ['baseline', (ctx, items) => drawBaseline(ctx, items, toY, 1, { baseValue: 100 })],
+    ['HLC band', (ctx, items) => drawHlcArea(ctx, items, toY, 1, { highColor: '#ff0000', lowColor: '#0000ff' })],
+  ];
+
+  it('is never bridged: every renderer draws what the bars in view draw on their own', () => {
+    for (const [name, items] of [['beyond', gapBeyond()], ['within', gapWithin()]] as const) {
+      for (const [label, draw] of renderers) {
+        const edged = makeCtx();
+        draw(edged.ctx, items);
+        const alone = makeCtx();
+        draw(alone.ctx, items.slice(1, -1));
+        expect(drawn(edged.rec.ops), `${label}, gap ${name} the view`).toEqual(drawn(alone.rec.ops));
+      }
+    }
+  });
+
+  it('holds a step\'s last value out to a neighbour that is a gap, and draws nothing from one on the left', () => {
+    // A step holds its value until the next bar, gap or not, as it does in
+    // view; that is not a bridge. A gap on the left has no value to hold.
+    const finite = (ops: readonly Op[]): [string, number, number][] => path(ops).filter(([, x, y]) => Number.isFinite(x) && Number.isFinite(y));
+    for (const lineStyle of ['solid', 'dashed'] as const) {
+      const edged = makeCtx();
+      drawLine(edged.ctx, gapBeyond(), toY, 1, { step: true, lineStyle });
+      const alone = makeCtx();
+      drawLine(alone.ctx, gapBeyond().slice(1, -1), toY, 1, { step: true, lineStyle });
+      const want = finite(alone.rec.ops), got = finite(edged.rec.ops);
+      expect(got.slice(0, want.length)).toEqual(want);
+      expect(got[got.length - 1]).toEqual(['lineTo', PLOT + 9.5, toY(95)]);
+    }
+  });
+
+  it('holds a step at the neighbour\'s level up to a first bar in view that is a gap, on a leg of its own anchored to that bar', () => {
+    // A step holds its value until the next bar, gap or not, as it does in
+    // view; that is not a bridge. The hold is a stroke of its own, a whole
+    // number of dash periods long from the corner under the gap, so its
+    // dashes move with the bars as the view pans, not with the plot edge.
+    for (const far of [1e7, 23.7]) {
+      const items = gapWithin();
+      items[0].x = -far;
+      const { ctx, rec } = makeCtx();
+      drawLine(ctx, items, toY, 1, { step: true, lineStyle: 'dashed' });
+      const p = path(rec.ops);
+      expect(p[0][2]).toBe(toY(60));
+      expect(p[1]).toEqual(['lineTo', 120, toY(60)]);
+      const lead = p[1][1] - p[0][1];
+      expect(Math.abs(lead / 10 - Math.round(lead / 10)), `${lead} px before the gap`).toBeLessThan(1e-9);
+      // The hold is stroked before anything else is drawn.
+      const first = rec.ops.findIndex((o) => o.type === 'stroke');
+      expect(path(rec.ops.slice(0, first))).toEqual(p.slice(0, 2));
+    }
+  });
+});
+
 describe('kagi joins its vertices across the view edge too', () => {
   it('cuts the connector to a neighbour beyond the view', () => {
     const items: DrawItem[] = [

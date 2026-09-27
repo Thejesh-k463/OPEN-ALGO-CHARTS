@@ -28,7 +28,10 @@ import { InvalidationLevel } from '../src/core/invalidate-mask';
 import { Canvas2dBackend } from '../src/render/canvas2d-backend';
 import type { IRenderBackend } from '../src/render/backend';
 import { fakeDocument } from './helpers/fake-dom';
+import { makeCtx } from './helpers/fake-ctx';
 import { registerTransformChartTypes } from '../src/transform';
+import { registerIndicator } from '../src/model/indicator-registry';
+import { darkTheme } from '../src/theme';
 
 const bar = (time: number, v: number): Bar => ({ time, open: v, high: v, low: v, close: v });
 
@@ -210,6 +213,51 @@ describe('the pane hands a joining renderer its neighbours', () => {
     expect(items[1].edgeX).toBeUndefined();
     expect(items[1].x).toBeGreaterThan(0);
     expect(items[1].x).toBeLessThan(chart.timeScale.width);
+    chart.destroy();
+  });
+
+  it('to a study plot, its own next point, gap or not, so a gap at the edge of the view is never bridged', () => {
+    // A study stores a bar with no value as NaN rather than leaving it out,
+    // so the neighbour is the plot's very next point. Were the gaps left out,
+    // the neighbour would be the last value before the gap, and the segment
+    // from it would join across the gap.
+    const { chart, paint, last } = chartRig();
+    const bars = fiveSecond(2000, T0);
+    chart.addSeries('candlestick').setData(bars);
+    chart.timeScale.setBarSpacing(6);
+    chart.timeScale.setRightOffset(-600);
+    paint();
+    const first = Math.floor(chart.timeScale.visibleRange().from);
+    // Two gaps: one that ends just beyond the left edge of the view, so the
+    // neighbour there is a gap, and one that ends on the last bar in view, so
+    // the neighbour beyond the right edge has a value and the bar before it
+    // does not.
+    const lastInView = Math.ceil(chart.timeScale.visibleRange().to);
+    const gapAt = (i: number): boolean => (i >= first - 40 && i < first) || (i >= lastInView - 30 && i <= lastInView);
+    const id = `edge-gap-study-${first}`;
+    registerIndicator({
+      id, name: 'Edge gap study', placement: 'onchart', inputs: [],
+      plots: [{ key: 'level', type: 'area', title: 'Level' }],
+      calc: (source) => ({ level: source.map((b, i) => (gapAt(i) ? null : b.close)) }),
+    });
+    chart.addIndicator(id);
+    paint();
+    const items = last(getChartType('area'));
+    const toY = (p: number): number => 250 - (p - 22_000) * 4;
+    expect(items[0].edgeX).toBe(0);
+    expect(items[0].bar.close).toBeNaN();
+    expect(items[0].x).toBeCloseTo(chart.timeScale.indexToX(first - 1), 9);
+    expect(Number.isFinite(items[1].bar.close)).toBe(true);
+    expect(items[items.length - 1].edgeX).toBe(chart.timeScale.width);
+    expect(Number.isFinite(items[items.length - 1].bar.close)).toBe(true);
+    expect(items[items.length - 2].bar.close).toBeNaN();
+    // So the area paints exactly what its bars in view paint on their own.
+    const drawn = (list: DrawItem[]): string[] => {
+      const { ctx, rec } = makeCtx();
+      getChartType('area').draw(ctx, list, toY, 6, 1, {}, { plotHeight: 400, maxVolume: 0, theme: darkTheme });
+      return rec.ops.filter((o) => o.args.every(Number.isFinite)).map((o) => `${o.type} ${o.args.join(' ')}`);
+    };
+    expect(drawn(items)).toEqual(drawn(items.slice(1, -1)));
     chart.destroy();
   });
 
