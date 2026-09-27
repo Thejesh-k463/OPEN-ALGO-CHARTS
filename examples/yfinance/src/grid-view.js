@@ -21,11 +21,15 @@ const WIRE = { '1w': '1wk' };
 // The widget asks for a time window; this server answers by named period, so
 // a chart whose layout saved no period asks for its interval's one here, and
 // the keys are every interval this view can load at all.
-const PERIODS = { '1m': '5d', '5m': '1mo', '15m': '1mo', '30m': '1mo', '1h': '6mo', '1d': '2y', '1w': '10y' };
+const PERIODS = { '1m': '5d', '5m': '1mo', '15m': '1mo', '30m': '1mo', '1h': '6mo', '1d': '5y', '1w': '10y' };
 // The periods the server knows, in days, and how far back the source serves
 // each intraday interval: a longer ask comes back empty, not refused.
 const PERIOD_DAYS = { '1d': 1, '5d': 5, '1mo': 31, '3mo': 92, '6mo': 186, ytd: 366, '1y': 366, '2y': 731, '5y': 1830, '10y': 3653, max: Infinity };
 const MAX_DAYS = { '1m': 7, '5m': 60, '15m': 60, '30m': 60, '1h': 730 };
+// A daily chart loads five years at least, as on the main page, so it holds
+// 500 candles or more. A shorter period its layout saved, such as the year an
+// hourly chart kept when it moved to daily, would draw about 250.
+const MIN_DAYS = { '1d': PERIOD_DAYS['5y'] };
 // The main page saves its weekly frame by the source's own code.
 const ALIASES = { '1wk': '1w' };
 
@@ -35,7 +39,8 @@ const ALIASES = { '1wk': '1w' };
  * keeps its saved period for when it changes back.
  */
 export function gridPeriod(interval, saved) {
-  return PERIOD_DAYS[saved] <= (MAX_DAYS[interval] ?? Infinity) ? saved : PERIODS[interval] || '1y';
+  const days = PERIOD_DAYS[saved];
+  return days >= (MIN_DAYS[interval] ?? 0) && days <= (MAX_DAYS[interval] ?? Infinity) ? saved : PERIODS[interval] || '1y';
 }
 
 /**
