@@ -10,6 +10,11 @@ explain the workspace, alert, replay and feed changes shipped during September.
 ARCHITECTURE.md. `website/public/architecture-diagram.svg` is its identical website
 copy, refreshed by the site's sync script. The intrinsic size is 1280 by 1520;
 README displays it at 920 pixels with a link to the full-size vector.
+The site's light theme shows `website/public/architecture-diagram-light.svg`,
+which the same sync step generates from the docs file with
+`website/scripts/diagram-light.mjs`. That script maps every colour to its light
+counterpart and stops the build on a colour it does not know, so a colour added
+to the dark SVG needs its light pair added to the map in the same change.
 
 The map must preserve these distinctions:
 
@@ -91,8 +96,9 @@ Source references: `src/index.ts`, `src/feed/data-controller.ts`,
 `src/compare/controller.ts`, `src/workspace/`, `src/render/backend.ts`,
 `src/trade/order-engine.ts` and `package.json` exports.
 
-When updating the asset, check both SVG copies, README/ARCHITECTURE alt text, the
-website component's intrinsic dimensions and cache query, and the website guide.
+When updating the asset, check both SVG copies and the light variant,
+README/ARCHITECTURE alt text, the website component's intrinsic dimensions and
+cache query, and the website guide.
 Render at full size and README width in Chromium, Firefox and WebKit; verify text
 bounds, label collisions and actual pixels. Keep historical measurements below
 as a record of the earlier redraw.
