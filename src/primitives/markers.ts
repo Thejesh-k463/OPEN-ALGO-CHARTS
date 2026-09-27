@@ -199,6 +199,27 @@ function paintLabel(ctx: CanvasRenderingContext2D, up: boolean, cx: number, anch
   for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], tx, first + lh * i);
 }
 
+/**
+ * The bar at exactly `time` in a time-sorted series, by binary search. Where
+ * the time repeats (a host that appends the forming bar beside its fetched
+ * copy), the last copy is the live one, as the data layer keeps it.
+ */
+function barAtTime(bars: readonly Bar[], time: number): Bar | undefined {
+  let lo = 0;
+  let hi = bars.length - 1;
+  while (lo <= hi) {
+    let mid = (lo + hi) >> 1;
+    const t = bars[mid].time;
+    if (t === time) {
+      while (mid + 1 < bars.length && bars[mid + 1].time === time) mid++;
+      return bars[mid];
+    }
+    if (t < time) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return undefined;
+}
+
 export class SeriesMarkers implements IPrimitive {
   private readonly _seriesId: SeriesId;
   private readonly _fallbackBars: (() => readonly Bar[]) | undefined;
@@ -243,17 +264,33 @@ export class SeriesMarkers implements IPrimitive {
   public draw(ctx: CanvasRenderingContext2D, rc: PrimitiveRenderContext): void {
     this._lastPositions = [];
     if (this._markers.length === 0) return;
-    const barByTime = new Map<number, Bar>();
-    // The fallback goes in first so a real point on the marker's own series
-    // still wins. Where that series has a gap the instrument's bar is left
-    // standing, which is the whole point: the mark is drawn rather than lost.
-    if (this._fallbackBars !== undefined) {
-      for (const bar of this._fallbackBars()) barByTime.set(bar.time, bar);
-    }
-    for (const { bar } of rc.dataLayer.indexedBars(this._seriesId)) {
-      // Indicator null columns retain their timestamp as NaN points.
-      if (Number.isFinite(bar.close)) barByTime.set(bar.time, bar);
-    }
+    // Bars are looked up per drawn marker, never collected up front: a paint
+    // runs on every live tick, and indexing the whole history here made the
+    // frame cost grow with the history length instead of with what is shown.
+    const own = rc.dataLayer.seriesBars(this._seriesId);
+    let fallback: readonly Bar[] | undefined;
+    let fallbackByTime: Map<number, Bar> | undefined;
+    const barAt = (time: number): Bar | undefined => {
+      // A real point on the marker's own series wins; indicator null columns
+      // retain their timestamp as NaN points. Where that series has a gap the
+      // instrument's bar stands in, which is the whole point: the mark is drawn
+      // rather than lost.
+      const bar = barAtTime(own, time);
+      if (bar !== undefined && Number.isFinite(bar.close)) return bar;
+      if (this._fallbackBars === undefined) return undefined;
+      fallback ??= this._fallbackBars();
+      // The fallback comes from the host and is not promised to be sorted. An
+      // exact hit is right when it is sorted (a repeated time's copies sit
+      // together and the last wins) and when it repeats no time; only a miss
+      // has to be confirmed by indexing it, at most once per paint.
+      const hit = barAtTime(fallback, time);
+      if (hit !== undefined) return hit;
+      if (fallbackByTime === undefined) {
+        fallbackByTime = new Map();
+        for (const b of fallback) fallbackByTime.set(b.time, b);
+      }
+      return fallbackByTime.get(time);
+    };
     const priceScale = this._priceScale?.() ?? rc.priceScale;
     const range = rc.timeScale.visibleRange();
     const stackByTime = new Map<number, number>();
@@ -263,7 +300,7 @@ export class SeriesMarkers implements IPrimitive {
       const styled = hasTextStyle(m) || m.textColor !== undefined;
       const index = rc.dataLayer.timeToIndex(m.time);
       if (index === undefined || (!styled && (index < range.from - 1 || index > range.to + 1))) continue;
-      const bar = barByTime.get(m.time);
+      const bar = m.position === 'paneTop' || m.position === 'paneBottom' ? undefined : barAt(m.time);
       const px = effectiveMarkerPx(m.size, rc.timeScale.barSpacing) * rc.dpr;
       const x = rc.timeScale.indexToX(index) * rc.dpr;
       const stack = stackByTime.get(m.time) ?? 0;

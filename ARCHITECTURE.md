@@ -726,7 +726,7 @@ const markers = createSeriesMarkers(series, [...])   // add/update/remove later
 
 Behavior:
 - A **BUY signal** = `{ shape:'arrowUp', position:'belowBar', color:'#26a69a', text:'BUY' }`; a **SELL** = `{ shape:'arrowDown', position:'aboveBar', color:'#ef5350', text:'SELL' }`.
-- Markers outside the visible range are skipped before drawing (a marker with styled text is still laid out). The skip is a test per marker, not a binary search, and each paint maps bar times over the series' whole history, so the cost grows with the marker count and the history rather than with the view. It has not been measured; `docs/performance-notes.md` records it for the render benchmark.
+- Markers outside the visible range are skipped before drawing (a marker with styled text is still laid out). The skip is a test per marker, not a binary search, so the cost grows with the marker count. The bar under a drawn marker is found by binary search in its own series, and where that series has no point, in the host's fallback bars; those are indexed into a map, once per paint, only when that search misses. So the history length enters a paint only for a mark the fallback search cannot find.
 - Multiple markers on one bar **stack** (vertical offset accumulates) so they never overlap.
 - `aboveBar`/`belowBar` offset from the bar's high/low; `inBar` sits at the body; `atPrice` pins to an exact price-y.
 - Hit-test enabled: hover highlights, click fires `onMarkerClick(id)`.

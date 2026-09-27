@@ -239,19 +239,6 @@ is the tighter and more honest budget.
 
 ## Findings not measured yet
 
-### Markers map the whole history on every paint
-
-`SeriesMarkers.draw` in `src/primitives/markers.ts` builds a map from bar
-time to bar on every paint. It fills the map from `dataLayer.indexedBars(seriesId)`,
-which allocates one object per bar in the series' whole history, and from the
-fallback bars when a marker set has them. It then tests every marker against the
-visible range one at a time. The work therefore grows with the history length and
-the marker count, not with the bars in view, and it repeats on every base repaint
-of the pane, which includes every live tick (ARCHITECTURE.md §3.2).
-
-Neither the endurance workload nor the render bench attaches markers, so neither
-includes this cost. To see it, add a marker set of realistic size to a bench
-scenario and compare frame times at 2,000 and 50,000 bars with the view held at
-150 bars. A fix would read only the visible range (`visibleBars`), plus the styled
-markers that are laid out whatever their position, or keep the map until the
-series data changes.
+None open. The markers finding recorded here was resolved when a marker paint
+stopped indexing the whole history (#31): it now looks up the bar under each
+drawn mark by binary search.
