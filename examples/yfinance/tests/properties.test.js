@@ -245,6 +245,23 @@ describe('the properties bar', () => {
     expect(draw.get(a.id).intervals).toEqual({ from: '5m' });
   });
 
+  it('keeps the hidden note to the interval on screen as it changes under a drawing picked on purpose', () => {
+    const a = line(draw, { intervals: { from: '5m', to: '1h' } });
+    chart.emit('data:context', { symbol: 'AAPL', interval: '1d' });
+    draw.select(a.id);   // from an objects panel: off the chart, and picked all the same
+    const note = q('[data-note="interval"]');
+    expect(note.textContent).toBe('Hidden on 1D');
+    // Still off the chart on weekly bars, so still selected: the note names the new interval.
+    chart.emit('data:context', { symbol: 'AAPL', interval: '1wk' });
+    expect(draw.selection()).toEqual([a.id]);
+    expect(note.hidden).toBe(false);
+    expect(note.textContent).toBe('Hidden on 1W');
+    // On the chart at 15 minutes: nothing to warn about.
+    chart.emit('data:context', { symbol: 'AAPL', interval: '15m' });
+    expect(draw.selection()).toEqual([a.id]);
+    expect(note.hidden).toBe(true);
+  });
+
   it('locks, hides and reorders through the controller', () => {
     const a = line(draw);
     const b = line(draw);

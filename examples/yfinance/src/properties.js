@@ -1132,6 +1132,9 @@ export function mountPropertiesBar(app, anchorEl) {
     if (!chart || !app.draw) { hide(); return; }
     off.push(chart.on('draw:select', () => show()));
     off.push(chart.on('draw:update', sync));
+    // A new interval leaves a drawing picked from the objects panel selected
+    // while it is still off the chart, and its note must name the new one.
+    off.push(chart.on('data:context', sync));
     // A removal filters the selection without a select event of its own.
     off.push(chart.on('draw:remove', () => { if (!bar.hidden) show(); }));
     off.push(chart.on('viewport', reposition));
