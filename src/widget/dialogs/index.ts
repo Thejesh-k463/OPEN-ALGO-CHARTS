@@ -196,6 +196,7 @@ export const DIALOG_CSS = `
 .oac-widget .oac-ctx__row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; background: transparent;
   border: 0; border-radius: 6px; color: ${v('tx')}; text-align: left; white-space: nowrap; }
 .oac-widget .oac-ctx__row:hover, .oac-widget .oac-ctx__row:focus-visible { background: ${v('elev-2')}; outline: none; }
+.oac-widget .oac-ctx__row:is(:hover, :focus-visible) :is(.oac-ctx__note, .oac-ctx__key) { color: ${v('mut')}; }
 .oac-widget .oac-ctx__row[aria-disabled="true"] { color: ${v('faint')}; cursor: default; background: transparent; }
 .oac-widget .oac-ctx__row.is-danger:not([aria-disabled="true"]):hover { color: ${v('danger')}; }
 .oac-widget .oac-ctx__row[aria-checked="true"] { color: ${v('acc-2')}; }

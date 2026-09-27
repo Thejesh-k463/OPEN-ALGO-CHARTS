@@ -185,6 +185,9 @@ export const WIDGET_CSS = `
 .oac-widget .oac-menu__sub { color: ${v('faint')}; font-size: 11px; }
 .oac-widget .oac-menu__key { margin-left: auto; color: ${v('faint')}; }
 .oac-widget .oac-menu__empty { padding: 8px 10px; color: ${v('faint')}; }
+/* A hovered row is elev-2, where faint text no longer reads: its hints brighten with it. */
+.oac-widget .oac-menu__row:is(:hover, :focus-visible, .is-active) :is(.oac-menu__sub, .oac-menu__key),
+.oac-widget .oac-fly__row:is(:hover, :focus-visible) .oac-fly__chord { color: ${v('mut')}; }
 
 /* Stage: the rail on the left, the chart filling the rest. */
 .oac-widget .oac-stage { grid-row: 2; position: relative; min-height: 0; min-width: 0; display: flex; }
@@ -262,7 +265,8 @@ export const WIDGET_CSS = `
   box-shadow: ${v('shadow')}; font-size: 12px; line-height: 1.4; opacity: 0; transition: opacity .09s ease; }
 .oac-widget .oac-tip.is-on { opacity: 1; }
 .oac-widget .oac-tip__chord { margin-left: 10px; color: ${v('mut')}; }
-.oac-widget .oac-tip__sub { display: block; margin-top: 2px; color: ${v('faint')}; font-size: 11px; }
+/* The tip sits on elev-2, a step above the surfaces faint text is measured on. */
+.oac-widget .oac-tip__sub { display: block; margin-top: 2px; color: ${v('mut')}; font-size: 11px; }
 
 /* Status line */
 .oac-widget .oac-statusline { grid-row: 3; display: flex; align-items: center; gap: 12px; height: ${v('status-h')}; padding: 0 10px;
@@ -273,8 +277,8 @@ export const WIDGET_CSS = `
 .oac-widget .oac-statusline__field { display: inline-flex; align-items: center; gap: 4px; }
 .oac-widget .oac-statusline__field > i { font-style: normal; color: ${v('faint')}; }
 .oac-widget .oac-statusline__field > b { font-weight: 500; color: ${v('tx')}; }
-.oac-widget .oac-statusline .is-up > b { color: ${v('buy')}; }
-.oac-widget .oac-statusline .is-down > b { color: ${v('sell')}; }
+.oac-widget .oac-statusline .is-up > b { color: ${v('up')}; }
+.oac-widget .oac-statusline .is-down > b { color: ${v('down')}; }
 .oac-widget .oac-statusline__msg { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: ${v('mut')}; }
 .oac-widget .oac-statusline__msg.is-error { color: ${v('danger')}; }
 .oac-widget .oac-statusline__tz { color: ${v('faint')}; }
