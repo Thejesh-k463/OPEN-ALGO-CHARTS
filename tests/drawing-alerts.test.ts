@@ -236,6 +236,34 @@ describe('drawing alert evaluation and lifecycle', () => {
     if (method === 'undo') { draw.redo(); expect(alerts.list()).toEqual([]); }
   });
 
+  it('keeps a drawing alert while its instrument, and so its drawing, is off the chart', () => {
+    const { chart, draw, alerts, series, fired } = alertSetup([60, 120]);
+    const removed: unknown[] = [];
+    chart.on('alert:removed', value => removed.push(value));
+    chart.setDataContext({ symbol: 'AAA', exchange: 'NSE', interval: '1m' });
+    const drawing = add(draw, { tool: 'horizontal-line', points: [point(120, 105)] });
+    const alert = alerts.add({ source: { kind: 'drawing', drawingId: drawing.id }, condition: 'crossingUp', policy: 'onTouch' });
+    const saved = draw.toJSON();
+    // Another instrument's drawings replace this one's, the way a host keeping
+    // drawings per instrument swaps them, and one of them reuses the id.
+    chart.setDataContext({ symbol: 'BBB', exchange: 'NSE', interval: '1m' });
+    draw.fromJSON({ version: 2, drawings: [{ ...saved.drawings[0], points: [point(120, 95)] }] });
+    draw.fromJSON({ version: 2, drawings: [] });
+    expect(removed).toEqual([]);
+    expect(alerts.availability(alert.id)).toMatchObject({ available: false, reason: 'Instrument context differs' });
+    // Restored while another instrument is on the chart, it is kept too.
+    alerts.fromJSON(alerts.toJSON());
+    expect(alerts.list().map(item => item.id)).toEqual([alert.id]);
+    chart.setDataContext({ symbol: 'AAA', exchange: 'NSE', interval: '1m' });
+    draw.fromJSON(saved);
+    series.setData([bar(60, 100), bar(120, 100)]);
+    series.update({ ...bar(120, 100), high: 106 });
+    expect(fired.map(event => event.alertId)).toEqual([alert.id]);
+    // On its own instrument a missing drawing still takes the alert with it.
+    draw.remove(drawing.id);
+    expect(removed).toHaveLength(1);
+  });
+
   it('does not compare a non-price drawing against the primary price', () => {
     registerIndicator({ id: 'drawing-alert-reading', name: 'Reading', placement: 'pane', inputs: [],
       plots: [{ key: 'v', title: 'Value', type: 'line' }], calc: bars => ({ v: bars.map(item => item.volume ?? null) }) });

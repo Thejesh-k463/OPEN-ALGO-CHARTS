@@ -318,10 +318,11 @@ export class AlertController {
     const document = parseAlertsDocument(input);
     const next = new Map<string, RecordState>();
     const removed: { alert: Alert; reason: string }[] = [];
+    const context = scopeOf(this._chart);
     for (const alert of document.alerts) {
       const source = alert.source;
       let reason: string | undefined;
-      if (source.kind === 'drawing' && this._drawings && this._drawings.get(source.drawingId) == null) reason = 'drawing-missing';
+      if (this._drawingGone(alert, context)) reason = 'drawing-missing';
       const plot = source.kind === 'indicator' ? source : source.kind === 'drawing' ? source.input : undefined;
       if (!reason && plot && this._chart.indicators) {
         const instance = this._chart.indicators().find(item => item.id === plot.instanceId);
@@ -414,6 +415,20 @@ export class AlertController {
     owners.delete(this._chart);
   }
 
+  /**
+   * Whether a drawing alert has lost its drawing. Only an alert on the
+   * instrument the chart shows can tell: a host that keeps drawings per
+   * instrument has another instrument's drawings off the chart, and an id in
+   * one instrument's document may name an unrelated drawing in another's. So
+   * an alert set on another instrument keeps its drawing reference, waits
+   * without evaluating, and is judged when its instrument is back.
+   */
+  private _drawingGone(alert: Alert, context: AlertScope): boolean {
+    const source = alert.source;
+    return source.kind === 'drawing' && this._drawings !== undefined && sameInstrument(alert.scope, context)
+      && this._drawings.get(source.drawingId) == null;
+  }
+
   /** The slot the chart keeps its price pane in now; it moves, so it is never kept. */
   private _pricePane(): number {
     return this._chart.primaryPaneIndex?.() ?? 0;
@@ -460,10 +475,11 @@ export class AlertController {
     if (this._destroyed || this._restoring) return;
     this._cancelDrag();
     const revision = ++this._revision;
+    const context = scopeOf(this._chart);
     for (const record of [...this._records.values()]) {
       if (this._destroyed || this._revision !== revision) break;
       const source = record.alert.source;
-      if (source.kind === 'drawing' && this._drawings && this._drawings.get(source.drawingId) == null) {
+      if (this._drawingGone(record.alert, context)) {
         this._remove(record.alert.id, 'drawing-removed');
       } else if (source.kind === 'indicator' || source.kind === 'drawing') {
         this._seed(record);
