@@ -1163,7 +1163,7 @@ export class Pane {
       if (buffer === undefined) this._drawItems.set(s, buffer = createSeriesDrawItems());
       const priceToY = buffer.priceToY;
       const items = buffer.build(ctx.dataLayer, s.dataId, range.from - shift, range.to - shift, shift, ctx.timeScale,
-        scale, kind === null ? null : lod);
+        scale, kind === null ? null : lod, entry.connectsBars === true);
       // A merged stick stands for its whole column, so the renderer sizes it
       // for the column rather than for one of the bars inside it.
       const drawSpacing = kind === 'ohlc' ? Math.max(spacing, columnWidth / dpr) : spacing;
