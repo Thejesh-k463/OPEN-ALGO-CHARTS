@@ -2,6 +2,234 @@
 
 All notable changes to OpenAlgo Charts.
 
+## 2.5.9
+
+2026-09-28
+
+Drawing interaction and replay. Drawings belong to the instrument they were
+drawn on. The magnet works on every pane and in every drag, and box select,
+drag to copy, an eraser, a temporary measure and visibility per interval join
+the drawing controller. The widget gains a floating toolbar over the selected
+drawings, style templates and a coordinates tab. Replay's forming bar stays
+inside the bar it closes on, so its open no longer jumps when the bar closes,
+and a bar with no finer data can form over simulated steps. Line, step and
+area series draw the segment that crosses each edge of the view, the price axis
+keeps its labels whole and its value tags readable, and a drawing hit test asks
+only the drawings near the pointer. What a host can see change: the widget
+keeps drawings per instrument by default, a drawings document is version 3 when
+a drawing carries an interval range, the modifier gestures are on by default,
+the bar countdown appears only on the price pane, and `ReplayState` has a new
+`simulated` field. See the upgrade notes.
+
+### Added
+
+- **Drawings per instrument** (#38, for OpenAlgo issue 2131). A trend line drawn
+  on one symbol showed on every symbol loaded into the same chart, and deleting it
+  on any symbol deleted it everywhere. `InstrumentDrawings` (draw tier) keeps one
+  drawing document per instrument (`EXCHANGE:SYMBOL`, or a key the host supplies)
+  in a `DrawingDocumentStore` (`webStorageDrawingStore`, `memoryDrawingStore`),
+  and `migrateUnscopedDrawings` attaches a document saved before to the symbol it
+  was saved on. The widget and the chart grid use it by default:
+  `drawingScope: 'instrument'` (`'chart'` keeps one set whatever symbol is
+  loaded), `drawingStore`, and `widget.instrumentDrawings`. With `persist`, each
+  instrument's drawings sit beside the layout under
+  `oac-widget:<namespace>:drawings:<exchange>:<symbol>` (`DRAWINGS_KEY_PREFIX`).
+  A symbol change is not an undo step, and an alert tied to a drawing waits,
+  without evaluating, while its instrument is off the chart.
+- **Modifier gestures on drawings.** None is a key chord, so none collides with a
+  tool shortcut or the editing keys. Each turns off through
+  `DrawingControllerOptions.gestures` (`snapModifier`, `measure`, `boxSelect`,
+  `dragCopy`), at construction or with `setOptions`.
+  - **The magnet everywhere.** Handle drags, body drags and study panes snap, not
+    only placement on the price pane; in a study pane an anchor snaps to the
+    plotted study values. Holding Ctrl (Cmd on macOS) gives the strong snap
+    whatever `magnet` is set to.
+  - **Temporary measure.** Shift+click on empty space with no tool in use lays down
+    a ruler that is never saved, undone or linked, and goes on the next click or
+    Escape (`measuring()`, `draw:measure`).
+  - **Box select.** Ctrl+drag on empty space selects every drawing the box
+    touches, respecting unselectable policies; add Shift to add to the selection.
+  - **Drag to copy.** Alt+drag on a drawing's body drags a copy and leaves the
+    drawing, as one undo step.
+  - **Eraser.** `setEraser(true)`: a click on a drawing deletes it and a drag
+    deletes every drawing it crosses, as one undo step, respecting read-only
+    policies (`erasing()`, `draw:eraser`).
+- **Visibility per interval.** `Drawing.intervals` (`DrawingIntervalRange`,
+  `{ from?, to? }`, interval codes, both ends included) limits a drawing to a
+  range of chart intervals, compared by bar length. Outside its range a drawing is
+  kept, saved and undone, but not painted, hit-tested, box-selected, erased or
+  exported, and the object inventory marks its row. New:
+  `DrawingController.interval()`, `shownOnInterval(id)`, `hiddenOnInterval()`,
+  `drawingShownOnInterval` and `INTERVAL_FIELDS`. The reference host sets the
+  range under Visibility in the properties bar's more settings.
+- **Drawing toolbar (widget).** On a desktop layout a small toolbar sits just above
+  the selected drawings: colour, line width, line style, lock, delete and a more
+  menu (properties, duplicate, hide, stacking order, templates). It stays inside
+  the chart, follows a pan, a zoom or a rescaled axis, reads "mixed" where the
+  selected drawings disagree, greys read-only drawings with the reason, and makes
+  each change one undo step. It is keyboard reachable (Tab from the chart, then
+  the arrow keys, which never nudge the drawing) and localized. On whenever the
+  drawing rail is; `drawingToolbar: false` turns it off. New:
+  `mountDrawingToolbar`, `DRAWING_TOOLBAR_CSS`, `TOOLBAR_LINE_WIDTHS`.
+- **Style templates.** `WidgetOptions.drawingTemplates` takes a
+  `DrawingTemplateStore`; the toolbar's more menu and the properties dialog save a
+  drawing's look as its tool's default or under a name, and apply one as one undo
+  step. A default reaches only drawings placed with that tool afterwards. The
+  workspace tier adds `DrawingTemplateRepository`, a revision-checked catalog with
+  memory and IndexedDB storage (`createMemoryDrawingTemplateStorage`,
+  `createIndexedDbDrawingTemplateStorage`) and `DrawingTemplateConflictError`.
+- **Coordinates tab.** The drawing properties dialog shows each anchor as a date,
+  a time on the chart's clock and a price, validates an edit, and writes a row as
+  one undo step on Enter or when the focus leaves it
+  (`mountDrawingProperties(ctx, anchor, { tab: 'coordinates' })`,
+  `mountDrawingCoordinates`).
+- **Objects panel.** It says each pane lists back to front, shows a grip on rows
+  that can move, and moves a row with Alt+ArrowUp and Alt+ArrowDown.
+- **Replay: simulated forming.** Feeds keep far less fine history than coarse
+  (about a week of 1-minute bars against years of 5-minute ones), so most of a
+  replayed session had nothing to form from and landed whole. With
+  `ReplayOptions.simulate` (`ReplaySimulation`, `{ steps }`, 2 to 240), a bar no
+  finer bar forms takes that many steps along a path from its open to the extreme
+  nearer it, the other extreme and its close. It keeps its real open, only widens
+  toward its real high and low, holds volume in proportion and closes on the bar
+  itself; real finer bars win wherever they exist. `ReplayState.simulated` is true
+  on those steps: the order of the extremes is an assumption, and a stop tested
+  inside a simulated bar was not tested against traded prices. Off by default.
+  The reference host turns it on at the finer rung's pace (five steps for five
+  minutes over one) and marks the steps Simulated on the replay bar.
+- **Lines across the edges of the view** (#37). `RendererEntry.connectsBars` marks
+  a renderer that draws a segment from each bar to the next; its items then also
+  carry the nearest bar beyond each edge of the view, with `DrawItem.edgeX`, the x
+  of the plot edge it lies past. The built-in line, line-markers, step, area,
+  baseline and HLC area renderers and Kagi set it. `SvgContext.lineDashOffset`
+  exports as `stroke-dashoffset`.
+- **Widget contrast helpers**: `contrastRatio`, `readableOn`, `TEXT_CONTRAST`, and
+  the `--oac-up` and `--oac-down` tokens.
+- **Vue 3** (#40): a tested integration in `examples/vue/` and a guide, including
+  why a chart must stay out of Vue's reactivity. `vue` is a development
+  dependency only.
+- **Release benchmarks** (#34). `npm run bench:release` rebuilds the previous
+  release from its tag, runs the render bench five times on each build in one
+  session and writes the release's entry into `benchmarks/releases.json` and the
+  website's Benchmarks page; every release from 2.5.8 carries one.
+
+### Changed
+
+- **Drawings documents may be version 3.** `DRAWING_STATE_VERSION` and
+  `DRAWING_CLIPBOARD_VERSION` are 3, and a document or clipboard payload is
+  written as the lowest version that holds it: 3 only when a drawing carries an
+  interval range, otherwise 2, byte for byte what 2.5.8 wrote. Version 2 documents
+  load unchanged. An older build refuses a version 3 clipboard payload and drops
+  the ranges from a version 3 layout.
+- **The bar countdown appears only in the last-price tag of the pane that shows
+  the chart's price source.** A study pane's value tag stays one row instead of
+  growing into its level tags.
+- **Value tags are painted over price-line and level tags** where they meet, so an
+  RSI value near its 50 level, or the last price at a resting order, stays
+  readable.
+- **A price-axis tick label within half a tag height of a pane's top or bottom
+  edge is left out** instead of being printed cut in half (RSI 0 and 100). The
+  gridline stays.
+- **Eighteen drawing tool glyphs are redrawn** to what their tools draw: the four
+  pitchforks (one trident, told apart by where the median starts, with a pivot
+  dot), Fib circles, Fib spiral, Fib wedge, the speed resistance arcs and fan,
+  supersonic and golden supersonic, the Dedekind tessellation and the six
+  harmonic patterns, each drawn to its own ratios.
+- **Widget colours.** Faint chrome text meets WCAG AA (4.5:1) in both themes and
+  in host themes, and the watchlist's up and down colours follow the theme instead
+  of the dark palette.
+- A host that drives a `DrawingLayer` itself and edits a drawing in place passes
+  the list again with `setDrawings` (the layer now keeps a hit box per drawing);
+  `DrawingController` already does.
+
+### Fixed
+
+- **Replay: the open of a forming bar no longer changes** (#41). Intra-bar replay
+  built the forming bar from the finer feed alone and closed the bucket on the
+  displayed bar, so where the two feeds disagree (the official open against the
+  first minute's, finer extremes past the displayed ones, finer volumes that sum
+  past the displayed volume) the open jumped when the bar closed, a high could
+  fall back and volume could shrink, and every indicator read those prices.
+  Every forming step now carries the displayed bar's open, keeps its extremes and
+  close within the displayed high and low and its volume within the displayed
+  volume; where the feeds agree each step is still exactly the aggregate of the
+  finer bars. On a year of RELIANCE, HDFCBANK, INFY and SBIN daily bars replayed
+  from hourly ones, the open moved at the close on 199 of 232 candles (up to 0.84
+  percent) and a forming high passed the real one on 3 steps; hourly and
+  5-minute replays showed forming volume above the candle's on 203 steps. All
+  are zero now in Chromium, Firefox and WebKit, and every close still lands on
+  the displayed bar exactly.
+- **Line-family series at the edges of the view** (#37 and its follow-ups). A
+  sparse level held across the left edge lost the part entering from off screen,
+  and with no bar in view the whole line. The edge segment is now cut at the plot
+  edge before it is stroked or filled, on the 2D and WebGL2 backends and in the
+  SVG export: a dashed level whose bars sat sessions either side of the view used
+  to upload 63 million floats a frame to the WebGL2 backend and took 170 to 500
+  ms a step, and now uploads about 5,600. Dashed and dotted strokes keep 2.5.8's
+  dash pattern along the bars in view, and a gap at the edge (a whitespace item
+  or a study's missing value) is never bridged by a line, an area, a baseline or
+  an HLC band.
+- A chart whose container is taken out of the document while the pointer is over
+  it (a keep-alive view switch, from the keyboard or in code) no longer answers
+  hover-scoped shortcuts while it is parked.
+- Series markers take the last fallback bar of a repeated time, the live one (#31).
+- Reference host: the yfinance server loads prices as they traded
+  (`auto_adjust=False`), and a daily chart loads at least five years, so it holds
+  500 candles or more (#35). Replay asks the finer interval only for the history
+  the source keeps, so the last week of a 5-minute chart forms from real 1-minute
+  bars. Select all leaves out drawings the interval hides.
+
+### Performance
+
+- **A drawing hit test asks only the drawings near the pointer.** Each drawing
+  layer keeps a box per drawing, measured again when the scales, the bars, the
+  plot size, the pointer kind, the tools or the fonts change. With 500 trend lines
+  a pointer move asks 4.5 drawings instead of 500, and the hit test takes about a
+  tenth of the time (medians 63.8 to 5.8 us, `node scripts/bench-pane.mjs`).
+- **Markers** (#31): a paint reads the bar under each drawn mark instead of
+  indexing the series' whole history, so a single marker on a long intraday
+  history no longer pays for all of it: 29.84 ms to 0.010 ms a paint at 200,000
+  bars and 500 markers, in the unit harness.
+- **Data layer** (#36): it counts how many series hold each time, so dropping a
+  time costs its own series instead of rebuilding the shared index from every
+  series.
+- Building a joining renderer's draw items no longer makes a closure per series
+  per frame.
+- **Measured against 2.5.8** on the release bench (five runs of each build in one
+  session, `benchmarks/releases.json`, the website's Benchmarks page): frames are
+  on par. On Canvas 2D at 200,000 bars a full zoom-out and a ten-study tick take
+  about 4 percent longer (medians 54.1 to 56.6 ms and 146.8 to 152.1 ms), a
+  ten-study tick at 50,000 bars is about 15 percent quicker (64.8 to 55.3 ms), and
+  WebGL2 frames are within a few percent either way.
+
+### Website
+
+- The site opens in the light theme; a saved choice still wins (#39).
+- A Benchmarks page lists each release against the one before (#34).
+- A Vue 3 guide (#40), and the docs for everything above.
+
+### Tests
+
+- 9803 unit tests across 442 files and 668 reference host tests across 63 files
+  pass, and the browser suite passes 1667 cases in Chromium, Firefox and WebKit.
+  The replay fixes carry tests that fail on the previous code, and fixtures whose
+  finer and displayed bars disagreed by construction now describe consistent
+  feeds. Against 2.5.8, every pixel that differs lies in the price axis strip of
+  a study pane (edge labels and value tags) or at an edge of the view.
+
+Saved layouts, drawings and workspace documents from 2.5.8 load unchanged, and
+no runtime dependencies or package tiers were added.
+
+Sizes, measured on this release and against 2.5.8 (Brotli, decimal kB): base
+engine 130.37 to 131.68, base plus trade 147.06 to 148.36, draw 48.42 to 55.61,
+widget 92.72 to 99.64, workspace 10.47 to 11.33, transform 4.50 to 4.56, WebGL2
+6.39 to 6.93, widget terminal 311.90 to 327.32 and every tier together 364.91
+to 381.78; the indicators, profile and trade tiers are unchanged. The
+chart-only import grows from 83.87 to 84.82 KiB: the line-family edge work and
+the price axis fixes run on every chart, while the drawing gestures, the
+widget's drawing UI and replay's simulated forming shake out. Each budget is
+the smallest two-decimal value that passes.
+
 ## 2.5.8
 
 2026-09-26

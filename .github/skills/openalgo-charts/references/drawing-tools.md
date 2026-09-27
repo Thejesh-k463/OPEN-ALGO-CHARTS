@@ -423,8 +423,8 @@ step nowhere. See
 | `remove(id, options?)` / `removeMany(ids, options?)` / `clear(options?)` | Delete one / several (one undo step) / all. Read-only drawings stay unless `{ force: true }`. A forced delete records no undo step and takes the drawing out of every recorded step, so no redo brings it back. |
 | `finish()` | Commit a `points: 0` tool at the anchors placed so far. Returns whether it committed. |
 | `cancel()` | Drop the anchors placed so far; disarms the tool unless `stayInDrawingMode` keeps it (a second call then disarms). Also ends a drag in hand or a temporary measure first. Returns whether anything changed. |
-| `measuring()` | Whether a temporary measure (Shift+click on empty space) is on the chart; `draw:measure` (`{ active }`) fires as one starts and goes. (unreleased) |
-| `setEraser(active)` / `erasing()` | Eraser mode: a click on a drawing deletes it, a drag deletes what it crosses, one undo step each; read-only, locked, unselectable and hidden drawings stay. Turning it on disarms any tool; `setTool`, `cancel()` and `setEraser(false)` turn it off. `draw:eraser` (`{ active }`) fires on each change. (unreleased) |
+| `measuring()` | Whether a temporary measure (Shift+click on empty space) is on the chart; `draw:measure` (`{ active }`) fires as one starts and goes. (since 2.5.9) |
+| `setEraser(active)` / `erasing()` | Eraser mode: a click on a drawing deletes it, a drag deletes what it crosses, one undo step each; read-only, locked, unselectable and hidden drawings stay. Turning it on disarms any tool; `setTool`, `cancel()` and `setEraser(false)` turn it off. `draw:eraser` (`{ active }`) fires on each change. (since 2.5.9) |
 | `popAnchor()` | Remove the last anchor of a `points: 0` tool still being placed (the Backspace of placement). Fixed-anchor and freehand tools have nothing to pop. |
 | `hovered()` | Id of the unselected drawing under the pointer, or `null`. Fed by the chart's `hover` event; `drawing:hover { id }` fires when it changes. |
 | `magnetMode()` | The resolved `MagnetMode` (`'off' | 'weak' | 'strong'`), after the boolean shorthand is mapped. |
@@ -448,7 +448,7 @@ step nowhere. See
 
 Events on the chart bus: `draw:tool`, `draw:add`, `draw:update`, `draw:remove`, `draw:select` (the primary id), `draw:copy`, `draw:cut`, `draw:paste`, plus the 2.0 pair `drawing:select` (`{ ids }`, the whole selection) and `drawing:change` (`{ ids, kind: 'add' | 'update' | 'remove' | 'reorder' }`, one per mutation, after the per-drawing `draw:*` events; `ids` is empty for a history step that changed no drawing, a study anchor's drag and its undo or redo), and `drawing:hover` (`{ id: string | null }`, when the unselected drawing under the pointer changes). `DrawingChangeKind` names the `kind` union.
 Events on the chart bus: `draw:tool`, `draw:add`, `draw:update`, `draw:remove`, `draw:select` (the primary id), `draw:copy`, `draw:cut`, `draw:paste`, plus the 2.0 pair `drawing:select` (`{ ids }`, the whole selection) and `drawing:change` (`{ ids, kind: 'add' | 'update' | 'remove' | 'reorder' }`, one per mutation, after the per-drawing `draw:*` events), and `drawing:hover` (`{ id: string | null }`, when the unselected drawing under the pointer changes). `DrawingChangeKind` names the `kind` union. `DrawingChangeEvent` names the whole payload: `linked: true` on a linked chart's commit, and `step` (2.5.6) on the change that closes a recorded undo step, the number `historySteps()` lists it under; a forced edit, a linked commit, a restore and an `undo`/`redo` carry none.
-The modifier gestures (unreleased) add `draw:measure` (`{ active }`), as a temporary measure starts and goes, and `draw:eraser` (`{ active }`), as eraser mode turns on and off; see Modifier gestures.
+The modifier gestures (since 2.5.9) add `draw:measure` (`{ active }`), as a temporary measure starts and goes, and `draw:eraser` (`{ active }`), as eraser mode turns on and off; see Modifier gestures.
 
 **The controller listens on `chart.on(...)`, not `subscribeClick` / `subscribeDrag`.** Those two are single-slot callbacks the host needs for its own order lines; routing drawings through the bus means the two never contend.
 
@@ -471,7 +471,7 @@ layer's answer: see [times past the last bar](data-and-time.md#times-past-the-la
 5. `freehand` tools (`brush`, `highlighter`) ignore clicks and sample the cursor while the pointer is held; the release commits. A tap that never moved is discarded.
 6. A press-drag-release also draws a two-anchor shape in one gesture: the chart emits the press point, then the release point tagged `viaDrag`.
 7. **Shift locks the angle** on tools with `angleLock` (the line family): the free end is projected onto the nearest 45 degree ray on screen, while placing and while dragging a handle. It projects rather than rotates, so a level line ends under the pointer's x. It needs the host's four pixel mappings and is inert without them.
-8. **The magnet ring.** With `magnet` on, or Ctrl (Cmd) held, the layer paints a ring where the next click will land (the hovered bar's time and the nearest O/H/L/C, so a snapped anchor sits on the bar centre; on a study pane the nearest value a study plots there). `'weak'` pulls only when a value is within 8 px, and needs `priceToCoordinate` to judge that; `'strong'` always pulls. Shift's angle lock wins over the magnet and hides the ring. See [the magnet everywhere](#the-magnet-everywhere-unreleased).
+8. **The magnet ring.** With `magnet` on, or Ctrl (Cmd) held, the layer paints a ring where the next click will land (the hovered bar's time and the nearest O/H/L/C, so a snapped anchor sits on the bar centre; on a study pane the nearest value a study plots there). `'weak'` pulls only when a value is within 8 px, and needs `priceToCoordinate` to judge that; `'strong'` always pulls. Shift's angle lock wins over the magnet and hides the ring. See [the magnet everywhere](#the-magnet-everywhere-since-259).
 9. **Freehand strokes** read the coalesced `samples` a pressed `crosshair:move` carries, so a fast stroke inks every position the pointer passed through rather than one per frame; on release the trail is thinned (`rdpSimplify`, a pixel and a half) and painted as a spline (`catmullRom`). A pen stores `pressure` per sample (a mouse stores nothing), and `style.pressure` on the brush and highlighter lets it drive the width (`pressureWidth`).
 10. **Escape, Enter and Backspace** while a tool is armed mean `cancel()`, `finish()` and `popAnchor()`; `keyToDrawingAction` says so when the host passes `placing: true`.
 
@@ -985,7 +985,7 @@ left edge and top from that rectangle, so an HTML overlay a host lays against
 `ViewportPoint`, `DrawingPlacementOptions`.
 
 
-## Drawings per instrument (unreleased)
+## Drawings per instrument (since 2.5.9)
 
 The controller holds one document and the engine has no instrument concept, so
 a host that loads another symbol into the same chart keeps the previous
@@ -1096,7 +1096,7 @@ What it decides, and why:
   reported and shows no drawings; the next change on that instrument writes
   over it.
 
-## Modifier gestures (unreleased)
+## Modifier gestures (since 2.5.9)
 
 Pointer gestures a held modifier key starts. Ctrl means Cmd as well, so macOS
 users press Cmd. None of them is a key chord, so none collides with
@@ -1114,7 +1114,7 @@ it flag by flag.
 | Ctrl+drag | empty chart space, no tool armed: box select (Ctrl+Shift+drag adds to the selection) | `boxSelect` |
 | Alt+drag | a drawing's body: drag a copy, leaving the drawing | `dragCopy` |
 
-### The magnet everywhere (unreleased)
+### The magnet everywhere (since 2.5.9)
 
 The magnet (`magnet: 'weak' | 'strong'`) pulls a handle in hand and a whole
 shape in hand, not only a placement:
@@ -1145,7 +1145,7 @@ a hidden plot. All are optional on `DrawingChartHost`, and a chart from
 `createChart()` has them all; a host without them snaps placements on the price
 pane as before.
 
-### Temporary measure (unreleased)
+### Temporary measure (since 2.5.9)
 
 Shift+click on empty chart space, with no tool armed, lays down a ruler: the
 `measure` tool drawn from the click to the pointer, its far end following the
@@ -1165,7 +1165,7 @@ through it passes `placing: draw.activeTool() !== null || draw.measuring()`.
 Shift+click keeps its other meanings: on a drawing it adds to the selection,
 and with a tool armed Shift is the angle lock.
 
-### Box select (unreleased)
+### Box select (since 2.5.9)
 
 Ctrl plus a drag on empty chart space, with no tool armed, draws a box on the
 pane it started on and selects every drawing on that pane the box touches,
@@ -1197,7 +1197,7 @@ layer (a `DrawingLayer` subclass), a thin solid rim over a translucent fill in
 the theme's `lineColor` (solid, so it never reads as the dashed crosshair), and
 is gone on release.
 
-### Drag to copy (unreleased)
+### Drag to copy (since 2.5.9)
 
 Alt (Option on macOS) plus a drag on a drawing's body leaves the drawing where
 it is and moves a copy of it instead: the whole selection, as a plain drag
@@ -1215,7 +1215,7 @@ no step recorded. The magnet lands a copy the way it lands a moved shape, and
 Ctrl with Alt copies with the strong magnet. A handle drag with Alt is a
 handle drag.
 
-### Eraser mode (unreleased)
+### Eraser mode (since 2.5.9)
 
 `draw.setEraser(true)` turns eraser mode on: a click on a drawing deletes it,
 and a drag deletes every drawing it crosses, as one undo step when the pointer
@@ -1239,7 +1239,7 @@ it. A host routing Escape through `keyToDrawingAction` passes
 so that Escape reaches `cancel()`. It is a mode, not a modifier, so it has no
 `gestures` flag: a host that offers no eraser control never turns it on.
 
-## Visibility per interval (unreleased)
+## Visibility per interval (since 2.5.9)
 
 A drawing can carry the range of chart intervals it is shown on:
 `Drawing.intervals`, a `DrawingIntervalRange` of interval codes, `{ from?, to? }`,

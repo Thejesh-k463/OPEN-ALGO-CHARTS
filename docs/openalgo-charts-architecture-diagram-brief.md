@@ -88,6 +88,11 @@ still describes it. The base, indicator and all-tier figures (the chips and the
 `<desc>`) move, and are taken from `npm run size` on the 2.5.8 release build like every
 recheck above, never carried over from earlier notes.
 
+Rechecked on 2.5.9: base 131.68 kB, indicators 40.38 kB, draw 55.61 kB, profile
+14.96 kB, transform 4.56 kB, trade 16.69 kB, workspace 11.33 kB, webgl 6.93 kB and
+widget 99.64 kB; all tiers 381.78 kB. Registry counts are unchanged. Drawings per instrument,
+the drawing gestures and the widget's drawing UI live in their tiers and add no box to the diagram.
+
 Source references: `src/index.ts`, `src/feed/data-controller.ts`,
 `src/feed/instrument.ts`, `src/model/bar.ts`, `src/core/pane.ts`,
 `src/alerts/controller.ts`, `src/replay/group.ts`, `src/link/group.ts`,

@@ -141,7 +141,7 @@ splitter change is written before the current task ends, so a reload straight af
 keeps it. Pans, zooms and drags are written once they settle, and any write still
 pending is flushed when the page hides, on `pagehide` and on `destroy()`.
 
-Each chart keeps drawings per instrument (unreleased), in a store of its own keyed by its
+Each chart keeps drawings per instrument (since 2.5.9), in a store of its own keyed by its
 pane id, so two charts on one symbol never overwrite each other's lines. The payload
 carries only the drawings each chart shows; with `persist`, the drawings of the symbols a
 chart is not showing are saved beside it under `oac-widget:<namespace>:grid-drawings` and

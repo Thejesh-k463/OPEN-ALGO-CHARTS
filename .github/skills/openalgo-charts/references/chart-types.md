@@ -81,7 +81,7 @@ A whitespace item `{ time }` becomes a NaN bar: it claims a logical index, is sk
 - Line strokes are not rounded to whole device px, and use round caps and joins; `lineWidth` is honoured fractionally.
 - `volume-candle` scales the body by `volume / maxVisibleVolume` **of the currently visible bars**, clamped to `[0.05, 1]`, so the same bar changes width as you pan.
 
-## Lines across the edge of the view (unreleased)
+## Lines across the edge of the view (since 2.5.9)
 
 The types that join each bar to the next (`line`, `line-markers`, `step`, `area`, `hlc-area`, `baseline`, and `kagi` from the transform tier) set `connectsBars` in the registry. Their renderers get the series' nearest bar beyond each edge of the view as well as the bars in it, so the segment that crosses an edge is drawn.
 

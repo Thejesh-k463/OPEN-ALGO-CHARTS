@@ -218,7 +218,7 @@ Chart-wide insets shrink when the maximum column count across panes shrinks.
 Crosshair price tags are omitted when the readout scale is hidden.
 Last-price and series-value tags follow their source's left or right scale.
 The readout series carries the countdown, and only on the pane that shows the
-chart's price source (unreleased): a study pane's tag is the study's value and
+chart's price source (since 2.5.9): a study pane's tag is the study's value and
 stays one row. Other visible sources use their plot colors, including sources
 on the opposite axis. Collisions are resolved independently per column.
 Hidden-scale sources draw no axis tags.
@@ -483,7 +483,7 @@ chart.axisChromeOptions();
 | Option | Draws |
 |---|---|
 | `sessionClock` | A live clock in the corner where the price and time strips meet, formatted in the **chart's** timezone with that zone's offset from UTC on a second row. `{ showOffset: false }` drops the row, and it drops itself in a strip too short to carry it. Nothing is drawn when either strip is hidden. |
-| `barCountdown` | A second row inside the last-price tag counting down to the current bar's close. The tag grows from 16 to 28 media px and its width follows the wider row. Only the pane showing the chart's price source carries it (unreleased): it counts that bar, and a study pane's tag stays one row. |
+| `barCountdown` | A second row inside the last-price tag counting down to the current bar's close. The tag grows from 16 to 28 media px and its width follows the wider row. Only the pane showing the chart's price source carries it (since 2.5.9): it counts that bar, and a study pane's tag stays one row. |
 | `clock` | Wall-clock **UTC seconds**, not a monotonic animation clock. Pass the feed's clock to keep a delayed or replayed chart honest about the time its data thinks it is. |
 
 **The bar interval is read back off the bars**, as a median of the recent gaps, not configured: the chart is never told its own timeframe, and one that switches mid-session has to follow. A median rather than a minimum, so a backfilled duplicate two seconds apart cannot halve the cadence; and only the tail is sampled, so a year of daily history does not outvote the intraday feed running now. Past a bar's close the count rolls into the next bar's cycle instead of stalling at `00:00:00`, because a feed a second late with the new bar should still show a running clock. With no readable cadence the row reads `--:--:--` rather than vanishing.
@@ -492,9 +492,9 @@ chart.axisChromeOptions();
 
 Since the ladder became denser in 1.8.5 this is no longer a rare event: rungs sit about a tag-height apart, so the last-price tag now essentially always suppresses the label beside it. That matches a reference terminal, which hides the prices either side of its own tag for the same reason. The rule did not change, only how often it fires.
 
-**A tick label is drawn whole or not at all** (unreleased). A rung within half a tag height (8 media px) of the pane's top or bottom edge would print a price the edge cuts in half, which reads as a different number, so its label is left out on either axis; the gridline stays. The margin is the label's band, the same one the collision rule above gives it, not its measured ink, so every engine labels the same rungs.
+**A tick label is drawn whole or not at all** (since 2.5.9). A rung within half a tag height (8 media px) of the pane's top or bottom edge would print a price the edge cuts in half, which reads as a different number, so its label is left out on either axis; the gridline stays. The margin is the label's band, the same one the collision rule above gives it, not its measured ink, so every engine labels the same rungs.
 
-**The last-price tag is painted over a price line's tag** (unreleased), after the pane's price lines rather than before them, so where the two meet (a study's 70 level against its value, an order resting at the touch) the price in force stays readable, as its priority says.
+**The last-price tag is painted over a price line's tag** (since 2.5.9), after the pane's price lines rather than before them, so where the two meet (a study's 70 level against its value, an order resting at the touch) the price in force stays readable, as its priority says.
 
 **A host drawing its own last-price line should stop.** The engine already draws a dashed line across the plot and a filled axis tag at that price, coloured by the forming candle's direction. A second `PriceLine` at the same price puts two tags on one pixel row, printed through each other. The engine's is also the one to keep: it reserves its band before the ladder is drawn, so neighbouring prices yield to it rather than being painted over, and it carries the bar-close countdown. A `PriceLine` takes part in neither, since its tag is drawn straight onto the strip, under the last-price tag where they overlap.
 

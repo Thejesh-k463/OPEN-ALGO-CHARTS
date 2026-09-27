@@ -180,7 +180,7 @@ Types: `Watchlist`, `WatchlistEntry`, `WatchlistCatalog`, `WatchlistStorage`, `W
 `WatchlistOperationOptions`, `WatchlistRepositoryOptions`, `IndexedDbWatchlistStorage`,
 `IndexedDbCatalogStorage`.
 
-## Drawing style templates (unreleased)
+## Drawing style templates (since 2.5.9)
 
 DOM-free saved drawing looks, in the same tier and with the same storage discipline as
 workspaces and watchlists: a tool's default ("save as default") and named templates.

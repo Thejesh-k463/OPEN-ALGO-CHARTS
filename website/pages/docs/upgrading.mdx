@@ -1,11 +1,65 @@
 ---
-title: Upgrading to 2.5.8
-description: Version 2.5.8 turns the level of detail on by default and writes study plots in place, and needs no migration.
+title: Upgrading to 2.5.9
+description: Version 2.5.9 keeps drawings per instrument, adds drawing gestures and a drawing toolbar, holds replay's forming bar inside the bar it closes on, and needs no code change for most hosts.
 ---
 
-# Upgrading to 2.5.8
+# Upgrading to 2.5.9
 
-Version 2.5.8 needs no migration. Saved layouts, drawings and workspace documents
+Version 2.5.9 needs no code change for most hosts. Saved layouts, drawings and workspace
+documents from 2.5.8 load unchanged, and no export was removed. What a host can notice:
+
+- **Drawings belong to the instrument they were drawn on.** The widget and the chart grid
+  now keep one drawing document per instrument (`drawingScope: 'instrument'`, the
+  default): loading another symbol shows that symbol's drawings, and deleting them there
+  leaves the first symbol's alone. With `persist`, each instrument's drawings are stored
+  beside the layout under `oac-widget:<namespace>:drawings:<exchange>:<symbol>`. A layout
+  saved before this attaches its drawings to the symbol it was saved on. To keep one set of
+  drawings whatever symbol is loaded, pass `drawingScope: 'chart'`. See
+  [Drawings per instrument](/docs/widget#drawings-per-instrument).
+- **Drawings documents may be version 3.** A document is written as the lowest version
+  that holds it: version 3 only when a drawing carries an interval range (visibility per
+  interval), otherwise version 2, byte for byte what 2.5.8 wrote. A host that checks
+  `version === 2` must accept 3. An older build refuses a version 3 clipboard payload and
+  drops the ranges from a version 3 layout.
+- **Modifier gestures are on by default.** Ctrl while placing or dragging snaps strongly,
+  Shift+click on empty space lays down a temporary measure, Ctrl+drag on empty space
+  selects every drawing the box touches, and Alt+drag on a drawing drags a copy. A host
+  whose own chart gestures use one of these keys turns it off with `gestures`, for
+  example `gestures: { boxSelect: false }`. See
+  [Modifier gestures](/docs/drawing-tools#modifier-gestures).
+- **The widget shows a toolbar over the selected drawings** on a desktop layout. It is on
+  whenever the drawing rail is; `drawingToolbar: false` turns it off.
+- **The price axis.** The bar countdown appears only in the last-price tag of the pane
+  that shows the chart's price source, so a study pane's value tag stays one row. The
+  last-price and study value tags are painted over price-line and level tags where they
+  meet, so an order tag within a tag height of the last price is now under it. A tick
+  label within half a tag height of a pane's top or bottom edge is left out instead of
+  being cut in half; its gridline stays. Refresh screenshot baselines of study panes.
+- **Lines at the edges of the view.** A line, step or area series draws the segment that
+  crosses each edge of the view, so a sparse level held across the edge no longer loses
+  that part. Dashed lines keep 2.5.8's dash pattern along the bars in view, and a gap at
+  the edge is never bridged. A custom renderer that joins neighbouring bars opts in with
+  `RendererEntry.connectsBars`. Pixels change at the edges; refresh screenshot baselines
+  that crop there.
+- **Replay's forming bar.** With `subBars`, the bar that forms step by step now carries
+  the displayed bar's open from its first step, and its high, low and volume never pass
+  the displayed bar's, so nothing jumps back when the bar closes. `ReplayState` gains
+  `simulated`; a test that compares a whole state object with `toEqual` needs
+  `simulated: false` added. The new, optional `simulate: { steps }` forms a bar that no
+  finer bar covers over simulated steps. See [Market replay](/docs/market-replay).
+- **A `DrawingLayer` driven directly.** The layer now keeps a hit box per drawing. A host
+  that drives a `DrawingLayer` itself and edits a drawing in place passes the list again
+  with `setDrawings`, as `DrawingController` already does.
+- **Widget colours.** Faint chrome text now meets WCAG AA (4.5:1) in both themes, and the
+  watchlist's up and down colours follow the theme through the new `--oac-up` and
+  `--oac-down` tokens. Eighteen drawing tool glyphs are redrawn. Refresh screenshot
+  baselines of the widget chrome.
+
+See the [release notes](/docs/release-notes#259) for everything 2.5.9 adds.
+
+## Earlier upgrades
+
+Version 2.5.8 needed no migration. Saved layouts, drawings and workspace documents
 from 2.5.7 load unchanged, no export was added or removed, and a chart that keeps
 the default zoom floor paints the same pixels. It changes one default and how a
 study writes its plots, and it makes several internal paths cheaper that a test
@@ -77,7 +131,6 @@ New and optional: `IPrimitive.hitBounds`. See
 [Indicators](/docs/indicators) and the
 [release notes](/docs/release-notes#258).
 
-## Earlier upgrades
 
 Version 2.5.7 needed no migration and no code change. It reorganised the chart's
 internal code; every public method, option, event and type stayed the same, saved

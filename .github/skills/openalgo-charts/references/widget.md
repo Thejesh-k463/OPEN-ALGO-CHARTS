@@ -86,7 +86,7 @@ Everything `src/widget/index.ts` exports at runtime. The shell (`createWidget` a
 | `DEFAULT_LOOKBACK_BARS` | const `500` | Bars per load when `lookbackBars` is not given. |
 | `SAVE_DEBOUNCE_MS` | const `250` | Debounce on writing the persisted layout. |
 | `STATE_KEY` | const `'state'` | The storage entry the layout lives under. |
-| `DRAWINGS_KEY_PREFIX` | const `'drawings:'` | (unreleased) With `persist`, each instrument's drawings live beside the layout under this prefix and the instrument key: `oac-widget:<namespace>:drawings:NSE:INFY`. |
+| `DRAWINGS_KEY_PREFIX` | const `'drawings:'` | (since 2.5.9) With `persist`, each instrument's drawings live beside the layout under this prefix and the instrument key: `oac-widget:<namespace>:drawings:NSE:INFY`. |
 | `WIDGET_STATE_VERSION` | const `1` | `WidgetState.version`. |
 | `Widget`, `WidgetOptions`, `WidgetState`, `WidgetChartState`, `WidgetRestoreReport`, `WidgetEventName` | types | See the sections below. |
 | `mountMobile(ctx, options)` | function | Mount the narrow header, bottom bar and sheets against an existing `WidgetContext`. Returns `MobileHandle`. |
@@ -187,7 +187,7 @@ the status line and download resources are released after handoff or failure.
 | `themeMode(theme)` | function | `'dark'` or `'light'`, judged from the theme background. |
 | `token(name)` | function | `var(--oac-name)`. |
 | `parseColor(input)`, `formatColor(c)`, `luminance(color)`, `mix(a, b, t)`, `withAlpha(color, alpha)` | functions | The colour maths the tokens are built from; exported for a host deriving its own. |
-| `contrastRatio(a, b)`, `readableOn(color, surfaces, pole, min?)`, `TEXT_CONTRAST` | functions, const `4.5` | (unreleased) The WCAG ratio of two colours, and a colour stepped toward `pole` by the least amount that reads at `min` on every one of `surfaces`. The text tokens (`mut`, `faint`, `up`, `down`, `amber`, `danger`) are built with it, so they read at 4.5 to 1 in both built-in themes and in a host theme. |
+| `contrastRatio(a, b)`, `readableOn(color, surfaces, pole, min?)`, `TEXT_CONTRAST` | functions, const `4.5` | (since 2.5.9) The WCAG ratio of two colours, and a colour stepped toward `pole` by the least amount that reads at `min` on every one of `surfaces`. The text tokens (`mut`, `faint`, `up`, `down`, `amber`, `danger`) are built with it, so they read at 4.5 to 1 in both built-in themes and in a host theme. |
 | `TOKEN_PREFIX` | const `'--oac-'` | |
 | `WIDGET_FONT`, `WIDGET_MONO` | consts | The UI and monospace font stacks. |
 | `RAIL_WIDTH`, `TOPBAR_HEIGHT`, `STATUSLINE_HEIGHT` | consts | `42`, `40`, `24` CSS pixels, shared by the stylesheet and the placement maths. |
@@ -207,9 +207,9 @@ Every mount takes the context and an optional anchor element (so it satisfies `D
 | `mountSettingsDialog(ctx, anchor?, { tab?, unavailable?, onApply?, onClose? })` | function | Chart settings, generated from `chartSettingsSchema(chart)`; Cancel and Escape revert the dirty keys. |
 | `mountIndicatorPicker(ctx, anchor?, { onAdd?, closeOnAdd? })` | function | Searchable, grouped list of every registered indicator. |
 | `mountIndicatorSettings(ctx, anchor?, { instanceId?, tab?, onChange?, onClose? })` | function | Inputs and styles for one indicator, from its descriptor. `instanceId` falls back to `anchor.dataset.instanceId`, then the chart's only indicator. |
-| `mountDrawingProperties(ctx, anchor?, { ids?, tab?, onClose? })` | function | The selected drawings' fields, from `drawingSettingsSchema`, on a Style tab, and (unreleased) every anchor as a date, a time and a price on a Coordinates tab (`tab: 'coordinates'` opens on it). Bottom left: Restore defaults, and (unreleased) Templates when the context carries `drawingTemplates`. |
-| `mountDrawingCoordinates(ctx, host, ids, why)` | function | (unreleased) The Coordinates tab on its own, for a host's own dialog: `ids()` names the drawings and `why()` is the reason they are read-only, or null. Returns a `DrawingCoordinatesHandle` (`el`, `refresh()`, `destroy()`). |
-| `DRAWING_COORDINATES_CSS` | const | (unreleased) Its rules, part of `WIDGET_COMPONENT_CSS`. |
+| `mountDrawingProperties(ctx, anchor?, { ids?, tab?, onClose? })` | function | The selected drawings' fields, from `drawingSettingsSchema`, on a Style tab, and (since 2.5.9) every anchor as a date, a time and a price on a Coordinates tab (`tab: 'coordinates'` opens on it). Bottom left: Restore defaults, and (since 2.5.9) Templates when the context carries `drawingTemplates`. |
+| `mountDrawingCoordinates(ctx, host, ids, why)` | function | (since 2.5.9) The Coordinates tab on its own, for a host's own dialog: `ids()` names the drawings and `why()` is the reason they are read-only, or null. Returns a `DrawingCoordinatesHandle` (`el`, `refresh()`, `destroy()`). |
+| `DRAWING_COORDINATES_CSS` | const | (since 2.5.9) Its rules, part of `WIDGET_COMPONENT_CSS`. |
 | `mountLevelEditor(ctx, anchor?, { ids? })` | function | Per-level ratio, colour and visibility for the fib and gann tools. |
 | `mountTextEditor(ctx, anchor?, { id?, onDone? })` | function | In-place editing laid over the painted text. Returns a `TextEditorHandle` with `commit()` and `cancel()`; an outside press commits, Escape cancels. |
 | `mountContextMenu(ctx, anchor?, { event?, hooks? })` | function | The right-click menu for the chart's `contextmenu` payload: trade rows when `onOrder` is given (limit and stop rows only over the price pane, where the pointer's price is the instrument's; a study pane offers the market rows alone), drawing actions on a drawing, scale modes on a price axis, `Move pane up` and `Move pane down` (row ids `pane-up`, `pane-down`, greyed at an edge, and greyed with the note "price pane stays on top" where a chart built without `movablePrimaryPane` would refuse the swap) over any pane when there are two or more, the price pane included, `Collapse pane` or `Expand pane` (row id `pane-collapse`) over a study pane in any slot, paste, fit, indicators, settings. A menu raised from a button names no pane and has no pane rows. A move or a collapse is saved with the layout and emitted as a `layout` event with reason `paneMoved` or `paneCollapsed`. |
@@ -311,10 +311,10 @@ Color swatches stay compact. Theme overrides should target these tokens.
 | `indicators` | `boolean` | on | The Indicators button. |
 | `persist` | `boolean \| string` | off | `true` uses the `default` namespace; a string names one, so two widgets on a page keep separate layouts. |
 | `storage` | `StorageLike \| null` | the page's `localStorage` | The store behind `persist`. |
-| `drawingScope` | `'instrument' \| 'chart'` | `'instrument'` | (unreleased) Whose drawings the chart shows. `'instrument'`: each symbol and exchange keeps its own, swapped by `setSymbol`, a restored layout or a watchlist pick. `'chart'`: one set that stays whatever symbol is loaded, as before; `widget.instrumentDrawings` is then null. See Drawings per instrument, below. |
-| `drawingTemplates` | `DrawingTemplateStore` | none | (unreleased) Saved drawing looks: a tool's default and named templates, from `openalgo-charts/workspace` (`DrawingTemplateRepository`). Without one no template control is shown. See Drawing toolbar, style templates and coordinates, below. |
-| `drawingToolbar` | `boolean` | on with the rail | (unreleased) The floating toolbar over the selected drawings on a desktop layout. |
-| `drawingStore` | `DrawingDocumentStore` | beside the layout with `persist`, else in memory | (unreleased) Where each instrument's drawings are kept in `'instrument'` scope. Not a `ChartGridOptions` field: the grid gives each cell its own. |
+| `drawingScope` | `'instrument' \| 'chart'` | `'instrument'` | (since 2.5.9) Whose drawings the chart shows. `'instrument'`: each symbol and exchange keeps its own, swapped by `setSymbol`, a restored layout or a watchlist pick. `'chart'`: one set that stays whatever symbol is loaded, as before; `widget.instrumentDrawings` is then null. See Drawings per instrument, below. |
+| `drawingTemplates` | `DrawingTemplateStore` | none | (since 2.5.9) Saved drawing looks: a tool's default and named templates, from `openalgo-charts/workspace` (`DrawingTemplateRepository`). Without one no template control is shown. See Drawing toolbar, style templates and coordinates, below. |
+| `drawingToolbar` | `boolean` | on with the rail | (since 2.5.9) The floating toolbar over the selected drawings on a desktop layout. |
+| `drawingStore` | `DrawingDocumentStore` | beside the layout with `persist`, else in memory | (since 2.5.9) Where each instrument's drawings are kept in `'instrument'` scope. Not a `ChartGridOptions` field: the grid gives each cell its own. |
 | `locale` | `string` | the runtime's | BCP 47 tag for the numbers on the status line. |
 | `symbolSearch` | `(query) => SymbolMatch[] \| Promise<SymbolMatch[]>` | none | Called as the user types in the symbol box, after `SEARCH_DEBOUNCE_MS`. |
 | `lookbackBars` | `number` | `DEFAULT_LOOKBACK_BARS` | Bars per load. |
@@ -354,7 +354,7 @@ ordinary hosts should let `createWidget` wire and destroy it.
 ```ts
 widget.chart;                        // Chart
 widget.draw;                         // DrawingController
-widget.instrumentDrawings;           // InstrumentDrawings, or null with drawingScope 'chart' (unreleased)
+widget.instrumentDrawings;           // InstrumentDrawings, or null with drawingScope 'chart' (since 2.5.9)
 widget.root;                         // the .oac-widget element
 widget.context;                      // the WidgetContext every mounted piece was handed
 widget.objects;                      // the owned base-tier ChartObjects inventory
@@ -785,7 +785,7 @@ const report = grid.applyWorkspace(parseWorkspacePayload(fileText)); // { applie
 - Below `compactWidth` only the active cell shows, with a tab strip to switch; splitters
   hide. `CHART_GRID_CSS` is part of `WIDGET_COMPONENT_CSS`.
 
-## Drawings per instrument (unreleased)
+## Drawings per instrument (since 2.5.9)
 
 A widget keeps drawings per instrument by default (`drawingScope: 'instrument'`):
 a trend line drawn on one symbol stays with that symbol, comes back when it is
@@ -1007,7 +1007,7 @@ history.subscribe(refreshButtons); history.clear(); history.destroy();
   `pane-weight`, `pane-collapse`, `axis`, `settings`, `drawing`, `command`), `ChartHistoryError`
   (`direction`, `step`, `error`).
 
-## Drawing toolbar, style templates and coordinates (unreleased)
+## Drawing toolbar, style templates and coordinates (since 2.5.9)
 
 **Floating toolbar.** With the rail on (or `drawingToolbar: true`), selecting drawings on a
 desktop layout shows `.oac-drawbar` (`role="toolbar"`) over the chart: a colour swatch,

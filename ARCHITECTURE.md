@@ -4,7 +4,7 @@
 > Historical pre-implementation target: **< 50 KB Brotli** for the full package (engine + trade overlay), no runtime dependencies. *(Brotli is the size metric we hold the budget against - see §11. Gzip runs ~10-15% larger.)*
 > Goal: professional-grade interactive financial-chart rendering + advanced on-chart trading & trade management.
 
-> **Current release: 2.5.8.** Rendering performance. A zoomed-out chart draws one OHLC-preserving stick per device-pixel column (the level of detail, now on by default, §4.4), and the series pass walks the visible bars in place without allocating per bar. A live tick no longer rebuilds the shared time index: a study writes only the plot points that moved (§4.1), and sixteen common built-ins take a `calcTail` instead of a pass over the history. A tick or a study recompute repaints only the panes it changes, and kinetic scroll and the eased wheel zoom step inside the render frame (§3.2). A primitive can declare `hitBounds`, so a pointer move asks only the primitives near it (§8). A render bench holds pan, zoomed-out and tick frames to budgets per bar count in CI (§11). The 2.5.8 build measures **130.37 kB** base, **147.06 kB** base + trade and **364.91 kB** for all tiers (decimal Brotli sizes).
+> **Current release: 2.5.9.** Drawing interaction and replay. Drawings belong to the instrument they were drawn on (`InstrumentDrawings`, the widget's default), and the drawing controller gains the magnet on every pane and in every drag, box select, drag to copy, an eraser, a temporary measure and visibility per interval (drawings document version 3 when a drawing carries a range). A drawing layer keeps a hit box per drawing, so a hover asks only the drawings near the pointer. Replay holds its forming bar inside the bar it closes on and can form a bar with no finer data over simulated steps. Line-family series draw the segment that crosses each edge of the view (`connectsBars`), and the price axis keeps edge labels whole and value tags over level tags. The 2.5.9 build measures **131.68 kB** base, **148.36 kB** base + trade and **381.78 kB** for all tiers (decimal Brotli sizes).
 >
 > **2.5.7.** An internal release: the chart's logic moved out of `chart.ts` into collaborator modules behind the unchanged `Chart` class (see Chart internals below), with the same public API and the same pixels as 2.5.6. The 2.5.7 build measured **126.91 kB** base, **143.60 kB** base + trade and **357.50 kB** for all tiers (decimal Brotli sizes).
 >
@@ -28,7 +28,7 @@ notifications. Pipeline arrows show data flow, not package dependencies.
 
 ## Current integration map
 
-For 2.5.8 integrations, start with these current guides and implementation
+For 2.5.9 integrations, start with these current guides and implementation
 boundaries. The numbered design sections below retain historical plans and
 explicitly labeled estimates; use the current API types for implementation.
 
@@ -1088,7 +1088,7 @@ reader of that version sees. Three rules fell out of getting this wrong:
 
 ## 13a. Deferred / not-yet-implemented (honest status)
 
-The current implementation keeps these boundaries in 2.5.8:
+The current implementation keeps these boundaries in 2.5.9:
 
 - **Separate price/time axis-widget canvases** - axes draw within the pane
   canvas by design (small-engine simplification).

@@ -8,7 +8,7 @@ import DrawingToolsDemo from '../../components/DrawingToolsDemo'
 
 # Drawing Tools
 
-`openalgo-charts/draw` is a lazy tier (**48.42 kB** Brotli in 2.5.8) with 87 tools and a headless
+`openalgo-charts/draw` is a lazy tier (**55.61 kB** Brotli in 2.5.9) with 87 tools and a headless
 controller. It ships **no UI**: no toolbar, no dialogs. It owns the model and the
 interactions; your app supplies the buttons.
 
@@ -420,7 +420,7 @@ things (alerts, annotations) without the draw tier.
 
 ## Modifier gestures
 
-<Callout type="info">Unreleased: on the main branch, not in 2.5.8.</Callout>
+<Callout type="info">Since 2.5.9.</Callout>
 
 Holding a modifier key turns a pointer gesture into something else. **Ctrl** means Cmd on
 macOS. None of them is a key chord, so none collides with a tool's `Alt+` shortcut or with
@@ -836,7 +836,7 @@ See [Chart State](/docs/state) for the rest of the payload.
 
 ## Drawings per instrument
 
-<Callout type="info">Unreleased: on the main branch, not in 2.5.8.</Callout>
+<Callout type="info">Since 2.5.9.</Callout>
 
 The chart state holds one drawing document: the drawings on screen. The engine has no
 instrument concept, so a host that loads another symbol into the same chart would keep
@@ -891,7 +891,7 @@ How it behaves:
 
 ## Visibility per interval
 
-<Callout type="info">Unreleased: on the main branch, not in 2.5.8.</Callout>
+<Callout type="info">Since 2.5.9.</Callout>
 
 A level drawn on hourly bars is often noise on the one minute chart and too fine to matter
 on the weekly one. A drawing can carry the range of chart intervals it is shown on,
