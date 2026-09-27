@@ -226,3 +226,17 @@ describe('reference replay availability', () => {
     expect(() => replayBarEndTime('unknown', 'UTC')(flatBar(T, 1))).toThrow(/interval/i);
   });
 });
+
+describe('the finer period replay asks for', async () => {
+  const { finerPeriod } = await import('../src/replay.js');
+  it('keeps a period the finer interval can serve', () => {
+    expect(finerPeriod('5m', '1mo')).toBe('1mo');
+    expect(finerPeriod('1d', '5y')).toBe('5y');
+  });
+  it('asks for the longest period the source keeps when the chart period is longer', () => {
+    // The source refuses a month of 1-minute bars outright; five days it serves.
+    expect(finerPeriod('1m', '1mo')).toBe('5d');
+    expect(finerPeriod('15m', '1y')).toBe('1mo');
+    expect(finerPeriod('60m', '5y')).toBe('1y');
+  });
+});

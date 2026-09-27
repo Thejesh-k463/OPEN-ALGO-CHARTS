@@ -146,7 +146,7 @@ export const PERIODS = ['1mo', '6mo', '1y', '5y', 'max'];
    the default 1y range silently drew nothing while 1h and 1d worked. Clamp
    the range to what the interval can actually serve. */
 export const PERIOD_DAYS = { '1mo': 31, '6mo': 186, '1y': 366, '5y': 1830, max: 1e6 };
-export const INTERVAL_MAX_DAYS = { '1m': 7, '2m': 60, '5m': 60, '15m': 60, '30m': 60, '90m': 60, '1h': 730 };
+export const INTERVAL_MAX_DAYS = { '1m': 7, '2m': 60, '5m': 60, '15m': 60, '30m': 60, '60m': 730, '90m': 60, '1h': 730 };
 /* A calendar frame needs years of source bars to draw anything: a quarter
    chart over one month is a single candle, which reads as a broken load
    rather than as a range the frame cannot fill. A daily chart loads at least

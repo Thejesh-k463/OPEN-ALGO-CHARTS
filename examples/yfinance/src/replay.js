@@ -7,6 +7,7 @@ import { setLegend } from './volume.js';
 import { capturePaneTarget } from './pane-target.js';
 import { replayBarEndTime } from './replay-timing.js';
 import { requestVariant, sessionOf } from './session.js';
+import { INTERVAL_MAX_DAYS, PERIOD_DAYS } from './intervals.js';
 export { replayBarEndTime } from './replay-timing.js';
 
 // Read off the namespace rather than named above on purpose: a missing named
@@ -375,6 +376,25 @@ export async function startReplayAt(index) {
   }
 }
 
+/** Periods the history endpoint serves, with their length in days, shortest first. */
+const FINER_PERIODS = [['5d', 5], ['1mo', 31], ['3mo', 92], ['6mo', 186], ['1y', 366]];
+
+/**
+ * The period to ask the finer interval for: the chart's own, unless that is
+ * longer than the source keeps for the finer interval, then the longest it does
+ * keep. A 5-minute chart over a month asks for five days of 1-minute bars, not
+ * a month the source refuses outright, so the last week forms from real bars
+ * and only the older candles are simulated.
+ */
+export function finerPeriod(finer, period) {
+  const cap = INTERVAL_MAX_DAYS[finer];
+  const days = PERIOD_DAYS[period];
+  if (cap === undefined || days === undefined || days <= cap) return period;
+  let best = FINER_PERIODS[0][0];
+  for (const [name, length] of FINER_PERIODS) if (length <= cap) best = name;
+  return best;
+}
+
 /**
  * The base-interval session under the displayed one.
  *
@@ -393,7 +413,7 @@ export async function loadReplaySubBars(target = owner()) {
   if (replaySubBars.has(key)) return replaySubBars.get(key);
   const revision = replayLoadRevision;
   try {
-    const bars = await fetchBars(req.symbol, finer, req.period, { slot: 'replay:' + target.pane, timezone: target.timezone,
+    const bars = await fetchBars(req.symbol, finer, finerPeriod(finer, req.period), { slot: 'replay:' + target.pane, timezone: target.timezone,
       variant: requestVariant(req) });
     if (!bars || bars.length === 0) return null;
     if (revision !== replayLoadRevision || !target.current()) return null;
