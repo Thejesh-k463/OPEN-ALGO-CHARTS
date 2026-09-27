@@ -23,14 +23,14 @@
  * volume), bars, high-low, line, line-markers, step, area, HLC area,
  * baseline, column and histogram. Each emitter mirrors its 2D renderer
  * branch for branch and takes its geometry from the same functions
- * (`candleGeometry`, `optimalBarWidth`, `candleTier`, `barGeometry`,
- * `valuePoints`, `stepPoints`), so the two backends agree on which device
- * pixels a bar covers. Anything else (kagi, point and figure, a custom type)
- * falls back: the batch so far is flushed to keep z-order, and the entry's
- * own renderer paints on the 2D context. A lost context takes the same
- * fallback for the whole frame, so the chart never goes blank while the GPU
- * is away; when the context comes back the program is rebuilt and the next
- * frame is on the GPU again.
+ * (`candleGeometry`, `optimalBarWidth`, `candleTier`, `barGeometry`, and the
+ * line renderers' `project`, `projectSteps` and `trimToView`), so the two
+ * backends agree on which device pixels a bar covers. Anything else (kagi,
+ * point and figure, a custom type) falls back: the batch so far is flushed
+ * to keep z-order, and the entry's own renderer paints on the 2D context.
+ * A lost context takes the same fallback for the whole frame, so the chart
+ * never goes blank while the GPU is away; when the context comes back the
+ * program is rebuilt and the next frame is on the GPU again.
  */
 import type { DrawItem, RendererEntry, SeriesRenderContext, SeriesType } from '../../model/chart-type-registry';
 // The two registries come from the package entry, not a deep path. This file
@@ -49,7 +49,9 @@ import {
   candleGeometry, candleTier, optimalBarWidth, DEFAULT_CANDLE_STYLE, type CandleStyle,
 } from '../candles';
 import { barGeometry } from '../bars';
-import { valuePoints, stepPoints, type Pt } from '../line';
+import {
+  project, projectSteps, trimToView, dashPeriod, polyline, CLOSE, HIGH, LOW, EDGE_PAD, type Polyline,
+} from '../line';
 import { VertexBatch } from './batch';
 import { ColorCache, TRANSPARENT, lerpPremultiplied, normaliseWith2d, type PremultipliedRgba } from './color';
 import { bindShapeAttributes, compileShapeProgram, type ShapeProgram } from './shaders';
@@ -472,6 +474,14 @@ function emitDashedSegment(
 }
 
 /**
+ * The points the line emitters work in, written in place like the 2D
+ * renderers' own and reused from frame to frame. An emitter fills and reads
+ * them within one call, and `emitArea` and `emitHlcArea` are done with theirs
+ * before they hand over to `emitLine`.
+ */
+const VALUES = polyline(), STEPS = polyline(), HIGHS = polyline(), LOWS = polyline();
+
+/**
  * The line renderer's `strokePolyline`: media-px points, broken at any
  * non-finite point, the segment arriving at point `i` in that point's own
  * colour when the series carries per-point colours. A colour change restarts
@@ -479,7 +489,7 @@ function emitDashedSegment(
  * here too.
  */
 function emitPolyline(
-  batch: VertexBatch, pts: readonly Pt[], dpr: number, hw: number, fallback: string,
+  batch: VertexBatch, line: Polyline, dpr: number, hw: number, fallback: string,
   colors: readonly (string | undefined)[] | undefined, dash: readonly number[], color: ColorOf,
 ): void {
   // A 2D context repeats an odd pattern to make it even, and treats a pattern
@@ -490,14 +500,15 @@ function emitPolyline(
   for (const d of pattern) total += d;
   const dashed = pattern.length > 0 && total > 0;
   const state: DashState = { idx: 0, rem: dashed ? pattern[0] : 0 };
-  let prev: Pt | undefined;
+  const xs = line.xs, ys = line.ys;
+  let prev = -1;
   let run: string | undefined;
   let c = color(fallback);
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i];
-    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) { prev = undefined; continue; }
-    if (prev === undefined) {
-      prev = p;
+  for (let i = line.s; i < line.n; i++) {
+    const x = xs[i], y = ys[i];
+    if (!Number.isFinite(x) || !Number.isFinite(y)) { prev = -1; continue; }
+    if (prev < 0) {
+      prev = i;
       state.idx = 0;
       state.rem = dashed ? pattern[0] : 0;
       continue;
@@ -509,30 +520,42 @@ function emitPolyline(
       state.idx = 0;
       state.rem = dashed ? pattern[0] : 0;
     }
-    if (dashed) emitDashedSegment(batch, prev.x * dpr, prev.y * dpr, p.x * dpr, p.y * dpr, hw, c, pattern, state);
-    else batch.segment(prev.x * dpr, prev.y * dpr, p.x * dpr, p.y * dpr, hw, c, true);
-    prev = p;
+    if (dashed) emitDashedSegment(batch, xs[prev] * dpr, ys[prev] * dpr, x * dpr, y * dpr, hw, c, pattern, state);
+    else batch.segment(xs[prev] * dpr, ys[prev] * dpr, x * dpr, y * dpr, hw, c, true);
+    // A dashed 2D stroke strokes the bars in view on their own after a leg
+    // cut in from beyond the view, which starts their pattern afresh; the leg
+    // out it carries on, as the walk here does.
+    if (i === line.a) {
+      state.idx = 0;
+      state.rem = dashed ? pattern[0] : 0;
+    }
+    prev = i;
   }
 }
 
-/** `drawLine`: the stroke (unless markers only), then a dot per point. */
+/** `drawLine`: the stroke (unless markers only), cut at the view like it, then a dot per point. */
 function emitLine(
   batch: VertexBatch, items: readonly DrawItem[], toY: (v: number) => number,
   dpr: number, style: SeriesStyle, color: ColorOf,
 ): void {
-  const base = valuePoints(items, toY);
-  const pts = style.step ? stepPoints(base) : base;
+  const base = VALUES;
+  project(base, items, toY, CLOSE);
+  let pts = base;
+  if (style.step) projectSteps(base, pts = STEPS);
   const cols = pointColors(items, style.step === true);
   const fill = style.color ?? '#4f8cff';
-  const hw = Math.max(1, (style.lineWidth ?? 1.5) * dpr) / 2;
-  if (!style.markersOnly) emitPolyline(batch, pts, dpr, hw, fill, cols, lineDash(style, dpr), color);
+  const lineWidth = style.lineWidth ?? 1.5;
+  const hw = Math.max(1, lineWidth * dpr) / 2;
+  const dash = lineDash(style, dpr);
+  trimToView(pts, items, style.step === true, dashPeriod(dash, dpr), EDGE_PAD + lineWidth);
+  if (!style.markersOnly) emitPolyline(batch, pts, dpr, hw, fill, cols, dash, color);
   if (style.markers || style.markersOnly) {
     const r = (style.markerRadius ?? 2) * dpr;
-    for (let i = 0; i < base.length; i++) {
-      const p = base[i];
-      if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+    for (let i = 0; i < items.length; i++) {
+      const x = base.xs[i], y = base.ys[i];
+      if (!Number.isFinite(x) || !Number.isFinite(y) || items[i].edgeX !== undefined) continue;
       const c = color(cols !== undefined ? (items[i].bar.color ?? fill) : fill);
-      batch.segment(p.x * dpr, p.y * dpr, p.x * dpr, p.y * dpr, r, c, true);
+      batch.segment(x * dpr, y * dpr, x * dpr, y * dpr, r, c, true);
     }
   }
 }
@@ -548,15 +571,15 @@ type BaseSide = 'above' | 'below' | 'both';
  * is evaluated at the corners and the GPU interpolates it across.
  */
 function emitFillToBase(
-  batch: VertexBatch, pts: readonly Pt[], dpr: number, baseY: number,
+  batch: VertexBatch, line: Polyline, dpr: number, baseY: number,
   colorAt: (y: number) => PremultipliedRgba, side: BaseSide,
 ): void {
   const cBase = colorAt(baseY);
   let px = NaN;
   let py = NaN;
-  for (const p of pts) {
-    const x = p.x * dpr;
-    const y = p.y * dpr;
+  for (let i = line.s; i < line.n; i++) {
+    const x = line.xs[i] * dpr;
+    const y = line.ys[i] * dpr;
     if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
     if (Number.isFinite(px)) {
       const aAbove = py <= baseY;
@@ -585,8 +608,10 @@ function emitArea(
   batch: VertexBatch, items: readonly DrawItem[], toY: (v: number) => number,
   dpr: number, plotHeight: number, style: SeriesStyle, color: ColorOf,
 ): void {
-  const pts = valuePoints(items, toY);
-  if (pts.length === 0) return;
+  const pts = VALUES;
+  project(pts, items, toY, CLOSE);
+  trimToView(pts, items, false, 0, EDGE_PAD + (style.lineWidth ?? 1.5));
+  if (pts.n <= pts.s) return;
   const baseY = plotHeight * dpr;
   if (baseY > 0) {
     const top = color(style.areaTopColor ?? 'rgba(79,140,255,0.40)');
@@ -606,8 +631,10 @@ function emitBaseline(
   dpr: number, style: SeriesStyle, color: ColorOf,
 ): void {
   const baseY = toY(style.baseValue ?? 0) * dpr;
-  const pts = valuePoints(items, toY);
-  if (pts.length === 0 || !Number.isFinite(baseY)) return;
+  const pts = VALUES;
+  project(pts, items, toY, CLOSE);
+  trimToView(pts, items, false, 0, EDGE_PAD + (style.lineWidth ?? 1.5));
+  if (pts.n <= pts.s || !Number.isFinite(baseY)) return;
   if (baseY > 0) {
     const topFill = color(style.areaTopColor ?? 'rgba(38,166,154,0.20)');
     emitFillToBase(batch, pts, dpr, baseY, (y) => lerpPremultiplied(topFill, TRANSPARENT, y / baseY), 'above');
@@ -618,12 +645,12 @@ function emitBaseline(
   const hw = Math.max(1, Math.round((style.lineWidth ?? 1.5) * dpr)) / 2;
   const topLine = color(style.topColor ?? '#26a69a');
   const bottomLine = color(style.bottomColor ?? '#ef5350');
-  for (let i = 1; i < pts.length; i++) {
-    const a = pts[i - 1];
-    const b = pts[i];
-    if (!Number.isFinite(a.x) || !Number.isFinite(a.y) || !Number.isFinite(b.x) || !Number.isFinite(b.y)) continue;
-    const above = (a.y + b.y) / 2 <= baseY / dpr;
-    batch.segment(a.x * dpr, a.y * dpr, b.x * dpr, b.y * dpr, hw, above ? topLine : bottomLine, false);
+  const xs = pts.xs, ys = pts.ys;
+  for (let i = pts.s + 1; i < pts.n; i++) {
+    const ax = xs[i - 1], ay = ys[i - 1], bx = xs[i], by = ys[i];
+    if (!Number.isFinite(ax) || !Number.isFinite(ay) || !Number.isFinite(bx) || !Number.isFinite(by)) continue;
+    const above = (ay + by) / 2 <= baseY / dpr;
+    batch.segment(ax * dpr, ay * dpr, bx * dpr, by * dpr, hw, above ? topLine : bottomLine, false);
   }
 }
 
@@ -633,18 +660,23 @@ function emitHlcArea(
   dpr: number, style: SeriesStyle, color: ColorOf,
 ): void {
   if (items.length === 0) return;
-  const highs = valuePoints(items, toY, (b) => b.high);
-  const lows = valuePoints(items, toY, (b) => b.low);
+  const highs = HIGHS, lows = LOWS;
+  const pad = EDGE_PAD + (style.lineWidth ?? 1.5);
+  project(highs, items, toY, HIGH);
+  project(lows, items, toY, LOW);
+  // Cut on x alone, so both edges keep the same points and pair up below.
+  trimToView(highs, items, false, 0, pad);
+  trimToView(lows, items, false, 0, pad);
   const band = color(style.areaTopColor ?? 'rgba(79,140,255,0.15)');
+  const hx = highs.xs, hy = highs.ys, lx = lows.xs, ly = lows.ys;
   let prev = -1;
-  for (let i = 0; i < items.length; i++) {
-    const h = highs[i];
-    const l = lows[i];
-    if (!Number.isFinite(h.x) || !Number.isFinite(h.y) || !Number.isFinite(l.y)) continue;
+  for (let i = highs.s; i < highs.n; i++) {
+    if (!Number.isFinite(hx[i]) || !Number.isFinite(hy[i]) || !Number.isFinite(ly[i])) continue;
     if (prev >= 0) {
-      const ph = highs[prev];
-      const pl = lows[prev];
-      batch.quad(ph.x * dpr, ph.y * dpr, band, h.x * dpr, h.y * dpr, band, pl.x * dpr, pl.y * dpr, band, l.x * dpr, l.y * dpr, band);
+      batch.quad(
+        hx[prev] * dpr, hy[prev] * dpr, band, hx[i] * dpr, hy[i] * dpr, band,
+        lx[prev] * dpr, ly[prev] * dpr, band, lx[i] * dpr, ly[i] * dpr, band,
+      );
     }
     prev = i;
   }

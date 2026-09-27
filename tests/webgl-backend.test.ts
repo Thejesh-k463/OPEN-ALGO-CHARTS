@@ -663,6 +663,73 @@ describe('lines', () => {
   });
 });
 
+/**
+ * The segment to a neighbour beyond the view (DrawItem.edgeX) is cut at the
+ * view before it reaches the batch. Uncut, a dashed line whose neighbour sat
+ * ten million pixels away emitted a quad for every dash of the way: half a
+ * million per series per frame.
+ */
+describe('lines joining a neighbour beyond the view', () => {
+  /** The items for `data`, with a neighbour `far` px beyond each end, marked with the view edges given. */
+  const edged = (data: readonly Bar[], far: number, leftEdge: number, rightEdge: number): DrawItem[] => {
+    const out = items(data, 8);
+    const lastX = out[out.length - 1].x;
+    return [
+      { x: out[0].x - far, bar: { ...data[0], close: data[0].close - 7 }, edgeX: leftEdge },
+      ...out,
+      { x: lastX + far, bar: { ...data[0], close: data[0].close + 9 }, edgeX: rightEdge },
+    ];
+  };
+  const shoot = (type: string, list: DrawItem[], style: SeriesStyle, dpr = 1): Shape[] => {
+    const r = rig();
+    r.backend.beginFrame(true);
+    r.backend.drawSeries(getChartType(type), list, priceToY, 8, dpr, style, rc());
+    r.backend.endFrame();
+    const up = r.surface.gl.uploads;
+    return up.length === 0 ? [] : decode(up[up.length - 1]);
+  };
+
+  it('emits a bounded batch for a dashed line whose neighbours are a million pixels away', () => {
+    const data = bars(40);
+    for (const type of ['line', 'step', 'area'] as const) {
+      for (const lineStyle of ['dashed', 'dotted'] as const) {
+        const got = shoot(type, edged(data, 1e6, 0, 800), { lineStyle });
+        expect(got.length, `${type} ${lineStyle}`).toBeLessThan(1500);
+        for (const s of got) {
+          const xs = s.kind === 'segment' ? [s.x0, s.x1] : s.kind === 'fill' ? s.pts.map((p) => p[0]) : [s.x, s.x + s.w];
+          for (const x of xs) {
+            expect(x).toBeGreaterThan(-100);
+            expect(x).toBeLessThan(900);
+          }
+        }
+      }
+    }
+  });
+
+  it('paints the dashes from the first bar in view exactly as it does without the neighbours', () => {
+    const data = bars(40);
+    const same = (a: Shape, b: Shape): boolean => a.kind === 'segment' && b.kind === 'segment'
+      && [a.x0 - b.x0, a.y0 - b.y0, a.x1 - b.x1, a.y1 - b.y1].every((d) => Math.abs(d) < 1e-3);
+    for (const dpr of [1, 2]) {
+      for (const type of ['line', 'step'] as const) {
+        for (const lineStyle of ['dashed', 'dotted'] as const) {
+          // A far neighbour, one cut a few dashes out, and a near one inside the margin.
+          for (const far of [1e6, 40.5, 12]) {
+            const style: SeriesStyle = { lineStyle };
+            const without = shoot(type, items(data, 8), style, dpr);
+            const withEdges = shoot(type, edged(data, far, 0, 10 + 39 * 8 + 1), style, dpr);
+            // What comes before the line's own first dash is the added edge
+            // segment; from that dash on it is the line as it was, dash for dash.
+            const lead = withEdges.findIndex((s) => same(s, without[0]));
+            expect(lead, `${type} ${lineStyle} ${far} at ${dpr}`).toBeGreaterThan(0);
+            expectShapes(withEdges.slice(lead, lead + without.length), without);
+          }
+        }
+      }
+    }
+  });
+});
+
 describe('area, baseline and HLC area', () => {
   const fills = (shapes: Shape[]): Extract<Shape, { kind: 'fill' }>[] => shapes.filter((s): s is Extract<Shape, { kind: 'fill' }> => s.kind === 'fill');
   const segments = (shapes: Shape[]): Extract<Shape, { kind: 'segment' }>[] => shapes.filter((s): s is Extract<Shape, { kind: 'segment' }> => s.kind === 'segment');

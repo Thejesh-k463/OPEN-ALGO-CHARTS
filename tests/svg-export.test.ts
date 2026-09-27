@@ -342,6 +342,24 @@ describe('SvgContext', () => {
     expect(c.getLineDash()).toEqual([4, 2]);
   });
 
+  it('carries a dash offset with the dash list, and not without one', () => {
+    const c = new SvgContext(10, 10);
+    c.setLineDash([6, 4]);
+    c.save();
+    c.lineDashOffset = 7.25;
+    c.beginPath(); c.moveTo(0, 0); c.lineTo(10, 0); c.stroke();
+    c.restore();
+    c.beginPath(); c.moveTo(0, 1); c.lineTo(10, 1); c.stroke();
+    expect(c.lineDashOffset).toBe(0);
+    const paths = body(c).split('/>');
+    expect(paths[0]).toContain('stroke-dasharray="6 4" stroke-dashoffset="7.25"');
+    expect(paths[1]).not.toContain('stroke-dashoffset');
+    const solid = new SvgContext(10, 10);
+    solid.lineDashOffset = 3;
+    solid.beginPath(); solid.moveTo(0, 0); solid.lineTo(1, 1); solid.stroke();
+    expect(body(solid)).not.toContain('stroke-dashoffset');
+  });
+
   it('turns an empty dash list back into a solid line', () => {
     const c = new SvgContext(10, 10);
     c.setLineDash([4, 2]);
