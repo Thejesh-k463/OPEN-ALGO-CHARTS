@@ -213,6 +213,14 @@ export interface DrawingGestureOptions {
    * empty space the chart is in placement mode, so the press is not a pan.
    */
   boxSelect?: boolean;
+  /**
+   * Alt (Option) plus a drag on a drawing's body: the drawing stays where it
+   * is and a copy of it moves instead, as one undo step. The whole movable
+   * selection is copied, as a plain drag would move it, and each copy is the
+   * user's own drawing, with no policy and no link lineage. A copy waits for
+   * the pointer to travel three pixels, so a jitter leaves none behind.
+   */
+  dragCopy?: boolean;
 }
 
 /** How `DrawingController.setTool` arms a tool. */
@@ -393,8 +401,9 @@ const gesturesOf = (base: Required<DrawingGestureOptions>, patch: DrawingGesture
   snapModifier: patch.snapModifier ?? base.snapModifier,
   measure: patch.measure ?? base.measure,
   boxSelect: patch.boxSelect ?? base.boxSelect,
+  dragCopy: patch.dragCopy ?? base.dragCopy,
 });
-const ALL_GESTURES: Required<DrawingGestureOptions> = { snapModifier: true, measure: true, boxSelect: true };
+const ALL_GESTURES: Required<DrawingGestureOptions> = { snapModifier: true, measure: true, boxSelect: true, dragCopy: true };
 
 // `external` is a step of the history that is not a drawing edit, a study
 // anchor's drag: its snapshots are the drawings as they stood, unchanged by it.
@@ -482,6 +491,10 @@ export class DrawingController {
     origin: ScreenPoint | null;
     /** For a shape grabbed by its body, the anchor of it the magnet lands. */
     anchor: number | null;
+    /** The drawing that anchor is on: the one grabbed, or its copy. */
+    lead: string;
+    /** On a drag that copies, the copies it moves and the selection they replaced. */
+    copy?: { ids: string[]; sources: string[] };
     items: { id: string; paneIndex: number; points: DrawingPoint[]; viewportPoints?: ViewportPoint[] }[];
     undo: DrawingHistoryEntry[];
     redo: DrawingHistoryEntry[];
@@ -833,6 +846,7 @@ export class DrawingController {
     if (drag) {
       this._dragStart = null;
       for (const item of drag.items) { const drawing = this.get(item.id); if (drawing) this._restoreAnchors(drawing, item); }
+      this._dropCopies(drag);
       this._undo = drag.undo;
       this._redo = drag.redo;
       this._pendingHistory = null;
@@ -2122,7 +2136,7 @@ export class DrawingController {
    * anchor on the value, so it keeps its form.
    */
   private _pullShape(start: NonNullable<typeof this._dragStart>, dt: number, dp: number): { dt: number; dp: number } | null {
-    const item = start.anchor === null ? undefined : start.items.find((i) => i.id === start.id);
+    const item = start.anchor === null ? undefined : start.items.find((i) => i.id === start.lead);
     const a = item === undefined || item.viewportPoints !== undefined ? undefined : item.points[start.anchor as number];
     if (a === undefined) return null;
     const moved = { time: a.time + dt, price: a.price + dp };
@@ -2144,20 +2158,30 @@ export class DrawingController {
       // the selection is what moves, and a drag that moved something other than
       // what it grabbed would be a surprise.
       if (handle === null && !this._selection.includes(rawId)) this.select(rawId);
-      const moving = handle === null
+      let moving = handle === null
         ? this._targets(this._selection).filter((m) => m.locked !== true && !pinned(m))
         : [d];
+      // Alt on a body moves copies instead, and only once the pointer has
+      // really travelled: a copy dropped by a jitter would sit unseen under
+      // the drawing it copies.
+      const copy = handle === null && this._opts.gestures.dragCopy && p.modifiers?.alt === true;
+      if (copy && !this._travelled(p)) return;
       // Snapshot once per gesture so undo restores the pre-drag position, not
       // an intermediate frame.
       const undo = this._undo.slice();
       const redo = this._redo.slice();
       this._pushUndo();
+      const sources = this._selection.slice();
+      const lead = moving.indexOf(d);
+      if (copy) moving = this._copies(moving);
       this._dragStart = {
         id: rawId, handle,
         undo, redo,
         from: { time: p.fromTime ?? p.time, price: p.fromPrice ?? p.price },
         origin: this._screen.dragOrigin(p),
         anchor: handle === null ? this._grabbedAnchor(d, p) : null,
+        lead: moving[lead]?.id ?? rawId,
+        ...(copy ? { copy: { ids: moving.map((m) => m.id), sources } } : {}),
         items: moving.map((m) => ({
           id: m.id, paneIndex: m.paneIndex, points: m.points.map((q) => ({ ...q })),
           ...(m.space === 'viewport' ? { viewportPoints: (m.viewportPoints ?? []).map((q) => ({ ...q })) } : {}),
@@ -2182,6 +2206,36 @@ export class DrawingController {
     this._emitDragPreview();
   }
 
+  /** Whether a drag has left its press by more than the chart's click slop, on screen. */
+  private _travelled(p: DragPayload): boolean {
+    const from = this._screen.toPixel({ time: p.fromTime ?? p.time, price: p.fromPrice ?? p.price }, p.paneIndex);
+    const to = this._screen.toPixel({ time: p.time, price: p.price }, p.paneIndex);
+    return from === null || to === null || Math.hypot(to.x - from.x, to.y - from.y) > 3;
+  }
+
+  /**
+   * Copies of `sources` for a drag to move, in the model and selected. A
+   * copy is the user's own drawing, as a duplicate is: no policy, a fresh
+   * id, and `_insert` drops the link lineage.
+   */
+  private _copies(sources: readonly Drawing[]): Drawing[] {
+    const copies = sources.map((m) => {
+      const { id: _id, createdAt: _createdAt, policy: _policy, ...rest } = cloneDrawing(m);
+      void _id; void _createdAt; void _policy;
+      return this._insert(rest);
+    });
+    this._setSelection(copies.map((c) => c.id));
+    return copies;
+  }
+
+  /** A cancelled copy leaves nothing: its copies go, and the selection is what they were copied from. */
+  private _dropCopies(start: NonNullable<typeof this._dragStart>): void {
+    if (start.copy === undefined) return;
+    const gone = new Set(start.copy.ids);
+    this._drawings = this._drawings.filter((d) => !gone.has(d.id));
+    this._setSelection(start.copy.sources.filter((id) => this._selectable(id)));
+  }
+
   private _emitDragPreview(): void {
     const drawings = this._dragStart?.items.map(item => this.get(item.id)).filter((d): d is Drawing => d !== undefined) ?? [];
     this._chart.emit('draw:preview', { drawings: drawings.map(cloneDrawing) });
@@ -2196,6 +2250,7 @@ export class DrawingController {
       const drawing = this.get(item.id);
       if (drawing !== undefined) this._restoreAnchors(drawing, item);
     }
+    this._dropCopies(start);
     this._undo = start.undo;
     this._redo = start.redo;
     this._pendingHistory = null;
@@ -2304,6 +2359,7 @@ export class DrawingController {
   private _onDragEnd(): void {
     if (this._dragStart === null) return;
     const moved = this._dragStart.items.map((i) => this.get(i.id)).filter((m): m is Drawing => m !== undefined);
+    const copied = this._dragStart.copy !== undefined;
     this._dragStart = null;
     this._chart.emit('draw:preview-clear', { ids: moved.map(d => d.id) });
     // Whatever was lifted for the gesture goes back under the series.
@@ -2311,8 +2367,10 @@ export class DrawingController {
       this._lifted.clear();
       this._sync();
     }
-    for (const m of moved) this._chart.emit('draw:update', { drawing: m });
-    if (moved.length > 0) this._emitChange(moved.map((m) => m.id), 'update');
+    // A copy is new at the drop: announced once, where it landed, so a link
+    // or an autosave never sees it at the place it was copied from.
+    for (const m of moved) this._chart.emit(copied ? 'draw:add' : 'draw:update', { drawing: m });
+    if (moved.length > 0) this._emitChange(moved.map((m) => m.id), copied ? 'add' : 'update');
   }
 
   // ── plumbing ────────────────────────────────────────────────────────────

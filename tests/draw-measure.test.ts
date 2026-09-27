@@ -87,7 +87,7 @@ describe('Shift+click starts a temporary measure', () => {
     peer.applySize(800, 600);
     peer.addSeries('candlestick').setData(BARS);
     const peerDraw = new DrawingController(peer);
-    const link = createDrawingLinkGroup();
+    const link = createDrawingLinkGroup({ enabled: true });
     const context = { symbol: 'NIFTY', exchange: 'NSE' };
     link.add(chart, draw, () => context);
     link.add(peer, peerDraw, () => context);
@@ -100,6 +100,9 @@ describe('Shift+click starts a temporary measure', () => {
     expect(draw.canUndo()).toBe(false);
     expect(events.filter((e) => e.name !== 'draw:measure')).toEqual([]);
     expect(peerDraw.drawings()).toEqual([]);
+    // The link is live: a real drawing crosses it.
+    draw.add({ tool: 'horizontal-line', paneIndex: 0, style: {}, points: [at(chart, 400, 250)] });
+    expect(peerDraw.drawings()).toHaveLength(1);
   });
 
   it('goes on the next click, which does nothing else', () => {

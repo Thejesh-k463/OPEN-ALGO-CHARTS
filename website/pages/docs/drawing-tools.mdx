@@ -427,6 +427,7 @@ presses, these read the keys held during a click or a drag.
 | Ctrl | Place an anchor, or drag a handle or a shape: the strong magnet while held, whatever `magnet` is set to | `gestures: { snapModifier: false }` |
 | Shift | Click empty chart space with no tool armed: a [temporary measure](#temporary-measure) | `gestures: { measure: false }` |
 | Ctrl | Drag on empty chart space with no tool armed: [box select](#box-select); add Shift to add to the selection | `gestures: { boxSelect: false }` |
+| Alt | Drag a drawing's body: [drag a copy](#drag-to-copy) and leave the drawing where it is | `gestures: { dragCopy: false }` |
 
 Every gesture is on by default. A host whose own chart gestures already use one of these keys
 turns it off through `gestures` (a `DrawingGestureOptions`), at construction or later with
@@ -481,6 +482,15 @@ A drag on empty space normally pans the chart. While Ctrl is held over empty spa
 controller puts the chart in placement mode so the press draws the box instead, and hands
 the pan back as soon as Ctrl is let go or the pointer moves onto a drawing. A Ctrl+click that
 never becomes a drag is unchanged, and a Ctrl+drag that starts on a drawing moves it.
+
+### Drag to copy
+
+Hold Alt (Option on macOS) and drag a drawing's body: the drawing stays and a copy of it
+moves with the pointer. With several drawings selected, all of them are copied, the ones a
+plain drag would move. The copy is one undo step, carries no policy, and reaches a linked
+chart once, where it was dropped. A copy is only made once the pointer has moved a few
+pixels, so an unsteady click does not leave one hidden under the drawing, and Escape during
+the drag takes it back.
 
 ## Drawing policies
 

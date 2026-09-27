@@ -1108,6 +1108,7 @@ it flag by flag.
 | Ctrl held | placing an anchor, dragging a handle or a shape: the strong magnet while held | `snapModifier` |
 | Shift+click | empty chart space, no tool armed: a temporary measure | `measure` |
 | Ctrl+drag | empty chart space, no tool armed: box select (Ctrl+Shift+drag adds to the selection) | `boxSelect` |
+| Alt+drag | a drawing's body: drag a copy, leaving the drawing | `dragCopy` |
 
 ### The magnet everywhere (unreleased)
 
@@ -1190,4 +1191,22 @@ never becomes a drag is the click it always was, and Ctrl+drag that starts on a
 drawing drags it (with the strong magnet). The box is painted by the pane's top
 layer (a `DrawingLayer` subclass), a dashed rim over a translucent fill in the
 theme's crosshair colour, and is gone on release.
+
+### Drag to copy (unreleased)
+
+Alt (Option on macOS) plus a drag on a drawing's body leaves the drawing where
+it is and moves a copy of it instead: the whole selection, as a plain drag
+would move it (locked and read-only members are neither moved nor copied), and
+the copies end up selected. The copy is made once the pointer has travelled 3
+px from the press, so an unsteady click leaves no copy hidden under the
+drawing. It is one undo step: the step's `drawing:change` is `kind: 'add'` with
+the copies' ids, and undo takes the copies away. The copies are announced
+once, at the drop (`draw:add`, then the `drawing:change`), never at the place
+they were copied from, so a `DrawingLinkGroup` sends each linked chart one new
+drawing where it landed. Like `duplicate`, each copy is the user's own: a new
+id, no `policy`, and no link lineage. A cancelled drag (`drag:cancel`, Escape,
+a pane removed) takes the copies back out and gives the selection back, with
+no step recorded. The magnet lands a copy the way it lands a moved shape, and
+Ctrl with Alt copies with the strong magnet. A handle drag with Alt is a
+handle drag.
 
