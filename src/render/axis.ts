@@ -214,6 +214,20 @@ function survivingTicks(
 }
 
 /**
+ * Whether a tick label centred on `y` fits whole between the strip's top and
+ * `bottom`, in device px. A label is a tag-height band here, as it is to the
+ * collision rule above, so a rung within half a tag of the pane's edge, where
+ * the next pane or the time axis would cut its label in two and leave a
+ * different number, or none, is not labelled. The gridline stays, and so do
+ * its neighbours. Judged on the band rather than on measured ink, so the same
+ * rungs are labelled in every engine and with every font.
+ */
+function tickFits(y: number, bottom: number, dpr: number): boolean {
+  const half = (AXIS_TAG_HEIGHT / 2) * dpr;
+  return y >= half && y <= bottom - half;
+}
+
+/**
  * Draw price tick labels in the right axis strip (bitmap scope).
  *
  * `reserved` lists the bands other labels have already claimed (last price,
@@ -253,7 +267,7 @@ export function drawPriceAxis(
     if (keep !== null && !keep[i]) continue;
     const price = ticks[i];
     const y = Math.round(priceScale.priceToY(price) * dpr);
-    if (y < 0 || y > layout.plotHeight * dpr) continue;
+    if (!tickFits(y, layout.plotHeight * dpr, dpr)) continue;
     ctx.fillText(priceScale.format(price), xStart + 6 * dpr, y);
   }
   ctx.restore();
@@ -297,7 +311,7 @@ export function drawLeftPriceAxis(
     if (keep !== null && !keep[i]) continue;
     const price = ticks[i];
     const y = Math.round(priceScale.priceToY(price) * dpr);
-    if (y < 0 || y > plotHeight * dpr) continue;
+    if (!tickFits(y, plotHeight * dpr, dpr)) continue;
     ctx.fillText(priceScale.format(price), xEdge - 6 * dpr, y);
   }
   ctx.restore();

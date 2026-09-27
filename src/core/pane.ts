@@ -1219,26 +1219,36 @@ export class Pane {
 
     const slots = this.axisSlots(ctx);
     const colors = { up: ctx.theme.lastPriceUp, down: ctx.theme.lastPriceDown, text: ctx.theme.lastPriceText };
-    if (lastEntry !== null) {
-      drawLastPriceLabel(g, readout, lastEntry.close, lastEntry.up, layout, dpr, axisStyle,
-        colors, lastEntry.showLine, false, ctx.barCountdown);
+    const last = lastEntry;
+    if (last !== null) {
+      drawLastPriceLabel(g, readout, last.close, last.up, layout, dpr, axisStyle, colors, last.showLine, false);
     }
-    // Resolve each strip independently: equal prices on opposite scales do not
-    // overlap. The readout tag outranks series tags, which outrank axis ticks.
-    const paintAxis = (slot: PriceAxisSlot): void => {
-      const { side, width, scaleId } = slot, scale = this._scaleFor(scaleId);
+    // The countdown counts to the close of the chart's own bar, so it rides
+    // on the tag of the pane that shows the price source. A study pane's tag
+    // is the study's value: a clock under it named a bar the pane does not
+    // draw, and doubled the tag's height into the study's level tags.
+    const countdown = this._source !== null && this._series.includes(this._source) ? ctx.barCountdown : undefined;
+    const lastTagOn = (scale: PriceScale): boolean => last !== null && last.showTag && readout === scale;
+    /** Paint into one axis strip, clipped to it, in the coordinates its tags use. */
+    const inSlot = (slot: PriceAxisSlot, paint: (scale: PriceScale, columnLayout: PlotLayout) => void): void => {
+      const { side, width } = slot, scale = this._scaleFor(slot.scaleId);
       if (!scale.scaled) return;
-      const showLastTag = lastEntry !== null && lastEntry.showTag && readout === scale;
-      const tags = valueTags.filter(tag => tag.scaleId === scaleId);
-      const columnLayout = { ...layout, priceAxisWidth: width, plotLeft: width };
       g.save();
       const outer = Math.round(slot.x * dpr), end = Math.round((slot.x + width) * dpr);
       g.beginPath(); g.rect(outer, 0, end - outer, Math.round(layout.plotHeight * dpr)); g.clip();
       g.translate(side === 'left' ? end : outer - Math.round(layout.plotWidth * dpr), 0);
+      paint(scale, { ...layout, priceAxisWidth: width, plotLeft: width });
+      g.restore();
+    };
+    // Resolve each strip independently: equal prices on opposite scales do not
+    // overlap. The readout tag outranks series tags, which outrank axis ticks.
+    for (const slot of slots) inSlot(slot, (scale, columnLayout) => {
+      const { side, width, scaleId } = slot;
+      const tags = valueTags.filter(tag => tag.scaleId === scaleId);
       const bands: AxisLabelBand[] = [];
-      if (lastEntry !== null && showLastTag && readout === scale) {
-        const height = lastPriceTagHeight(dpr, ctx.barCountdown?.visible === true);
-        const y = axisTagY(Math.round(scale.priceToY(lastEntry.close) * dpr), layout.plotHeight * dpr, height, side);
+      if (last !== null && lastTagOn(scale)) {
+        const height = lastPriceTagHeight(dpr, countdown?.visible === true);
+        const y = axisTagY(Math.round(scale.priceToY(last.close) * dpr), layout.plotHeight * dpr, height, side);
         if (y !== null) bands.push({ y, height, priority: AXIS_LABEL_PRIORITY.lastPrice });
       }
       const tagBase = bands.length;
@@ -1260,16 +1270,20 @@ export class Pane {
       for (let i = 0; i < tags.length; i++) {
         if (allowed[tagBase + i]) drawSeriesValueTag(g, scale, tags[i].price, tags[i].color, columnLayout, dpr, axisStyle, side);
       }
-      if (lastEntry !== null && showLastTag) {
-        drawLastPriceLabel(g, scale, lastEntry.close, lastEntry.up, columnLayout, dpr, axisStyle,
-          colors, false, true, ctx.barCountdown, side);
-      }
-      g.restore();
-    };
-    for (const slot of slots) paintAxis(slot);
+    });
 
     // normal-layer primitives (price lines, markers, events) draw over series
     for (const p of live) if (p.zOrder() === 'normal' && !slotted?.has(p)) p.draw(g, this._boundPrimitiveContext(p, prc, ctx));
+
+    // The readout tag goes on after them: where the market is now outranks a
+    // level's tag (AXIS_LABEL_PRIORITY), so a price line crossing it, a
+    // study's 70 or an order at the touch, does not cover the one number that
+    // moves.
+    if (last !== null) for (const slot of slots) inSlot(slot, (scale, columnLayout) => {
+      if (lastTagOn(scale)) {
+        drawLastPriceLabel(g, scale, last.close, last.up, columnLayout, dpr, axisStyle, colors, false, true, countdown, slot.side);
+      }
+    });
 
     if (ctx.showTimeAxis) {
       // The zone goes to the axis rather than being pre-baked into a formatter
