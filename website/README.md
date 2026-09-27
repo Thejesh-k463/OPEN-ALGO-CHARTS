@@ -84,7 +84,12 @@ The depth demo uses simulated updates and the published tick-grouping API.
 The drawing playground exercises the same controller used by applications.
 The homepage, guides and API reference share the site's dark and light palettes.
 A first visit opens in the light theme; the navbar toggle saves the reader's
-choice for later visits.
+choice for later visits. Live examples, the embedded profile and order-flow
+demos, example code and the architecture diagram follow the active theme, so
+host controls in an example take their colours from the page (`light-dark()`)
+or, for anything drawn on the canvas, from the chart's palette rather than a
+fixed dark value. The light diagram is generated from the dark one by
+`scripts/diagram-light.mjs` during the sync step.
 Intro animations respect the visitor's reduced-motion preference.
 
 The homepage chart uses public BTC/USD exchange candles through
