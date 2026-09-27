@@ -261,11 +261,13 @@ test('widget go-to panel offers a time on an intraday chart in the light theme',
 
 test('reference host go-to widens its period and places the date', async ({ page, request }, info) => {
   const errors = await openReference(page, request);
-  // A month on screen, so a date two hundred days back needs a longer period.
+  // A daily chart opens on five years and its range menu offers nothing
+  // shorter, so a date six years back needs the longest period.
   await page.getByRole('button', { name: 'History range' }).click();
-  await page.locator('.menu button', { hasText: '1mo' }).click();
-  await page.waitForFunction(() => (window as any).__oac.app.req.period === '1mo' && !(window as any).__oac.app.loading);
-  const target = await daysBack(page, 200);
+  await expect(page.locator('.menu button')).toHaveText([/^5y/, /^max/]);
+  await page.locator('.menu button', { hasText: '5y' }).click();
+  await page.waitForFunction(() => (window as any).__oac.app.req.period === '5y' && !(window as any).__oac.app.loading);
+  const target = await daysBack(page, 6 * 366);
   await page.getByRole('button', { name: 'Go to a date or range' }).click();
   const panel = page.locator('.oac-goto');
   await expect(panel).toBeVisible();
@@ -287,7 +289,7 @@ test('reference host go-to widens its period and places the date', async ({ page
     const view = chart.getVisibleLogicalRange();
     return { period: app.req.period, expected, centre: chart.dataLayer.indexToTime(Math.round((view.from + view.to) / 2)), first: chart.primaryBars()[0].time, start };
   }, target);
-  expect(outcome.period).toBe('1y');
+  expect(outcome.period).toBe('max');
   expect(outcome.first).toBeLessThanOrEqual(outcome.start);
   expect(outcome.centre).toBe(outcome.expected);
   await page.screenshot({ path: info.outputPath('reference-placed.png') });
@@ -320,17 +322,15 @@ test('reference host reports short history in the panel it reopens after the reb
 
 test('reference host drops a go-to request on a wheel zoom while the longer period loads', async ({ page, request }, info) => {
   const errors = await openReference(page, request);
-  await page.getByRole('button', { name: 'History range' }).click();
-  await page.locator('.menu button', { hasText: '1mo' }).click();
-  await page.waitForFunction(() => (window as any).__oac.app.req.period === '1mo' && !(window as any).__oac.app.loading);
+  await page.waitForFunction(() => (window as any).__oac.app.req.period === '5y' && !(window as any).__oac.app.loading);
   // Hold the longer period on the wire, so the zoom lands while it loads.
   let release!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
   await page.route('**/api/history**', async route => { await held; await route.continue(); });
-  // Two years back needs the 5y period. A nearer date widens to 1y, which the
-  // first load already fetched: the bar cache then serves it with no request,
-  // so nothing is on the wire to hold and the load finishes before any zoom.
-  const target = await daysBack(page, 730);
+  // Six years back needs max, which nothing has fetched yet. A period the page
+  // already loaded comes from the bar cache with no request, so nothing would
+  // be on the wire to hold and the load would finish before any zoom.
+  const target = await daysBack(page, 6 * 366);
   await page.getByRole('button', { name: 'Go to a date or range' }).click();
   const panel = page.locator('.oac-goto');
   await panel.locator('input[type=date]').first().fill(target);
@@ -342,7 +342,7 @@ test('reference host drops a go-to request on a wheel zoom while the longer peri
   await page.mouse.wheel(0, -240);
   await expect(message).toHaveText('');
   release();
-  await page.waitForFunction(() => (window as any).__oac.app.req.period === '5y' && !(window as any).__oac.app.loading, undefined, { timeout: 20_000 });
+  await page.waitForFunction(() => (window as any).__oac.app.req.period === 'max' && !(window as any).__oac.app.loading, undefined, { timeout: 20_000 });
   // The rebuild takes the panel, and a dropped request is not reopened.
   await expect(page.locator('.oac-goto')).toHaveCount(0);
   await expect(page.locator('#status')).not.toHaveText(/^Showing /);

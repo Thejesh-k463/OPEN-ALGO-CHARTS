@@ -136,6 +136,16 @@ one JSON endpoint. It is the standard library plus yfinance, and yfinance is
 imported on the first real request, so static serving and fixture mode work
 without it.
 
+Live bars are prices as they traded: the server asks the source for unadjusted
+OHLC (`auto_adjust=False`), which keeps its split adjustment but not the
+dividend adjustment its default applies to every past bar, so an old candle
+matches the exchange's record. Fixture mode (`--fixture`) serves synthetic bars
+for the tests and for offline work; its prices are not market data.
+
+A daily chart loads at least five years (about 1,240 sessions on NSE), so it
+always holds 500 candles or more where the instrument has that much history;
+its range menu offers 5y and max.
+
 ```
 GET /api/history?symbol=AAPL&interval=1d&period=1y
 GET /api/history?symbol=AAPL&interval=5m&from=<utc seconds>&to=<utc seconds>
@@ -373,10 +383,11 @@ chart is a complete widget with its own top bar, loading status and retry.
   saved layout the page cannot restore is kept, and the status line says why.
 - Each chart loads the history period its layout saved (`historyPeriod`, the
   main page's range) through the grid's `feed` function, when its interval can
-  serve it. Otherwise, and for a chart with no saved period, it loads its
-  interval's usual one (1m 5d; 5m, 15m and 30m 1mo; 1h 6mo; 1d 2y; 1w 10y). A chart
-  keeps its period when its interval changes, for when it changes back, and a
-  preset copies the active chart's period to the charts it adds. The grid writes
+  serve it and, for a daily chart, when it reaches five years. Otherwise, and for
+  a chart with no saved period, it loads its interval's usual one (1m 5d; 5m, 15m
+  and 30m 1mo; 1h 6mo; 1d 5y; 1w 10y). A chart keeps its period when its
+  interval changes, for when it changes back, and a preset copies the active
+  chart's period to the charts it adds. The grid writes
   the periods back into its saved layout and exports. No older history is paged,
   since the server answers by period.
 - Each chart's top bar opens the Watchlist and News panels in its own dock, through

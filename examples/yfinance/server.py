@@ -234,8 +234,14 @@ def yfinance_bars(req: HistoryRequest, now: int) -> list:
         ticker = yf.Ticker(req.symbol)
         # The source's own pre and post market bars; nothing is derived here.
         prepost = req.session == "extended"
+        # Prices as they traded. The source's default rewrites every past bar
+        # for later dividends, so an old candle stops matching the exchange's
+        # record (RELIANCE.NS closed 1165.03 on 2021-09-27; the adjusted series
+        # says 1143.37). Unadjusted bars keep the source's split adjustment,
+        # which is what an exchange-price chart shows.
+        adjust = False
         if req.start is None and req.end is None:
-            df = ticker.history(period=req.period, interval=req.interval, prepost=prepost)
+            df = ticker.history(period=req.period, interval=req.interval, prepost=prepost, auto_adjust=adjust)
         else:
             # A pinned window. The source ignores `end` when a period is given,
             # so the period is turned into a start here; `max` leaves the start
@@ -250,6 +256,7 @@ def yfinance_bars(req: HistoryRequest, now: int) -> list:
                 end=datetime.fromtimestamp(end, tz=timezone.utc),
                 interval=req.interval,
                 prepost=prepost,
+                auto_adjust=adjust,
             )
     except Exception as exc:  # noqa: BLE001 (the source's failures all become one status)
         raise upstream_error(exc) from None

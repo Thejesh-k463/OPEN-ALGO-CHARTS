@@ -6,8 +6,12 @@ const DAY = 86400;
 
 describe('reference go-to history', () => {
   it('widens to the shortest period that reaches the requested time', () => {
-    expect(widerPeriod('1d', '1y', 2 * 366 * DAY)).toBe('5y');
-    expect(widerPeriod('1d', '1mo', 40 * DAY)).toBe('6mo');
+    // Weekly offers every range, so several longer ones reach each date here.
+    expect(widerPeriod('1wk', '1y', 2 * 366 * DAY)).toBe('5y');
+    expect(widerPeriod('1wk', '1mo', 40 * DAY)).toBe('6mo');
+    expect(widerPeriod('1h', '1mo', 40 * DAY)).toBe('6mo');
+    // Daily starts at five years, so its one wider range is the longest.
+    expect(widerPeriod('1d', '5y', 6 * 366 * DAY)).toBe('max');
     expect(widerPeriod('1d', '5y', 90 * 366 * DAY)).toBe('max');
     expect(widerPeriod('1d', 'max', 90 * 366 * DAY)).toBeNull();
   });
@@ -29,13 +33,14 @@ describe('reference go-to loading', () => {
     return () => listening.delete(entry);
   } });
   beforeEach(() => {
-    fakeDom({ period: '1y' });
+    fakeDom({ period: '5y' });
     listening = new Set();
     app = {
       chart: chart(),
       chart2: chart(),
-      req: { symbol: 'AAPL', interval: '1d', period: '1y' },
-      p2: { symbol: 'MSFT', interval: '1d', period: '1mo' },
+      req: { symbol: 'AAPL', interval: '1d', period: '5y' },
+      // An hourly second chart: it widens by its own interval's ranges, not the main chart's.
+      p2: { symbol: 'MSFT', interval: '1h', period: '1mo' },
       load: vi.fn(async () => { app.req.period = document.getElementById('period').value; }),
       loadSecondary: vi.fn(async () => true),
     };
@@ -43,11 +48,11 @@ describe('reference go-to loading', () => {
   });
 
   it('reloads the main chart through its own load path with the wider period', async () => {
-    const time = Math.floor(Date.now() / 1000) - 2 * 366 * DAY;
+    const time = Math.floor(Date.now() / 1000) - 6 * 366 * DAY;
     expect(await loadPaneHistory(1, time)).toBe('loaded');
-    expect(document.getElementById('period').value).toBe('5y');
+    expect(document.getElementById('period').value).toBe('max');
     expect(app.load).toHaveBeenCalledTimes(1);
-    expect(app.req.period).toBe('5y');
+    expect(app.req.period).toBe('max');
     expect(listening.size).toBe(0);
   });
 
