@@ -13,21 +13,31 @@ import { widgetText } from '../localization';
  * hand off to their own surfaces (the level editor, the inline text editor)
  * because a ladder of eight rows and a box laid over the canvas are not
  * things a form row can hold.
+ *
+ * A second tab lists every anchor as a date, a time and a price
+ * (`drawing-coordinates.ts`). The template control bottom left saves the
+ * look as the tool's default or by name, and applies a saved one, when the
+ * widget was given a template store.
  */
 import { applyDrawingSettings, drawingSettingsSchema, getDrawingTool, readDrawingSettings } from 'openalgo-charts/draw';
 import type { Drawing, DrawingTool, SettingsSchema } from 'openalgo-charts/draw';
 import { editableIds, type WidgetContext } from '../context';
 import {
-  button, controlsFromFields, dialogFrame, el, glyphSvg, openPanel, placePanel, renderForm, selectionPoint,
+  button, controlsFromFields, dialogFrame, el, glyphSvg, openPanel, placePanel, renderForm, selectionPoint, tabList,
   type ButtonSpec, type FormHandle, type PanelHandle,
 } from '../form';
-import { ABOVE_GLYPH, BEHIND_GLYPH } from '../glyphs';
+import { ABOVE_GLYPH, ANCHOR_GLYPH, BEHIND_GLYPH, STYLE_GLYPH } from '../glyphs';
+import { openMenu } from '../topbar';
+import { templateMenuRows } from '../drawing-templates';
+import { mountDrawingCoordinates, type DrawingCoordinatesHandle } from './drawing-coordinates';
 import { mountLevelEditor } from './level-editor';
 import { mountTextEditor } from './text-editor';
 
 export interface DrawingPropertiesOptions {
   /** The drawings to edit; they become the selection. Default: the current selection. */
   ids?: readonly string[];
+  /** The tab to open on: the settings (default) or the anchors. */
+  tab?: 'style' | 'coordinates';
   /** Runs once when the dialog is gone. */
   onClose?(): void;
 }
@@ -148,7 +158,20 @@ export function mountDrawingProperties(ctx: WidgetContext, anchor?: HTMLElement,
   tools.setAttribute('aria-label', widgetText(ctx, 'Drawing actions'));
   frame.el.insertBefore(tools, frame.body);
   const pane = el(doc, 'div', 'oac-props__pane');
-  frame.body.appendChild(pane);
+  const anchors = el(doc, 'div', 'oac-props__pane oac-props__anchors');
+  let tab: 'style' | 'coordinates' = opts.tab ?? 'style';
+  const tabs = tabList(doc, [
+    { id: 'style', label: widgetText(ctx, 'Style'), icon: glyphSvg(STYLE_GLYPH) },
+    { id: 'coordinates', label: widgetText(ctx, 'Coordinates'), icon: glyphSvg(ANCHOR_GLYPH) },
+  ], tab, 'row', (next) => { tab = next as 'style' | 'coordinates'; showTab(); });
+  frame.body.append(tabs.el, pane, anchors);
+  let coords: DrawingCoordinatesHandle | null = null;
+  function showTab(): void {
+    pane.hidden = tab !== 'style';
+    anchors.hidden = tab !== 'coordinates';
+    // Built on first view: most edits never open it.
+    if (tab === 'coordinates' && coords === null) coords = mountDrawingCoordinates(ctx, anchors, () => ids, lockedOut);
+  }
 
   function renderTools(): void {
     tools.innerHTML = '';
@@ -240,9 +263,19 @@ export function mountDrawingProperties(ctx: WidgetContext, anchor?: HTMLElement,
       form?.sync(values());
     },
   }));
+  // The template picker sits with Restore defaults, bottom left: both set the look as a whole.
+  const saved = ctx.drawingTemplates;
+  if (saved !== undefined) {
+    const picker = frame.lead.appendChild(button(doc, { label: widgetText(ctx, 'Templates'), onClick: () => {
+      openMenu(ctx, picker, templateMenuRows(ctx, saved, ids, picker), { ariaLabel: widgetText(ctx, 'Templates') });
+    } }));
+    picker.dataset.act = 'templates';
+    picker.setAttribute('aria-haspopup', 'menu');
+  }
   frame.actions.appendChild(button(doc, { label: widgetText(ctx, 'Done'), variant: 'primary', onClick: () => handle.close() }));
   renderTools();
   renderPane();
+  showTab();
 
   /** Follow the selection: the same one refreshes in place, a new one rebuilds, none closes. */
   function refresh(): void {
@@ -257,6 +290,7 @@ export function mountDrawingProperties(ctx: WidgetContext, anchor?: HTMLElement,
       if (lockedOut() !== shownWhy) renderPane();
       else form?.sync(values());
       renderTools();
+      coords?.refresh();
       return;
     }
     ids = next;
@@ -267,6 +301,7 @@ export function mountDrawingProperties(ctx: WidgetContext, anchor?: HTMLElement,
     frame.setTitle(titleOf());
     renderTools();
     renderPane();
+    coords?.refresh();
   }
   const off = [
     chart.on('draw:update', refresh),
@@ -279,6 +314,7 @@ export function mountDrawingProperties(ctx: WidgetContext, anchor?: HTMLElement,
     if (closedOnce) return;
     closedOnce = true;
     form?.destroy();
+    coords?.destroy();
     for (const dispose of off) dispose();
     opts.onClose?.();
   };

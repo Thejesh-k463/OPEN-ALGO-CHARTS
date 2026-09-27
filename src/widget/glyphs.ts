@@ -37,5 +37,22 @@ export const BEHIND_GLYPH = 'M3 13h10M8 2v7M5 6l3 3 3-3';
 /** Fit every bar: a double arrow across. */
 export const FIT_GLYPH = 'M2 8h12M5 5 2 8l3 3M11 5l3 3-3 3';
 
+/** More actions: three dots stacked, so it is not read as a dotted line beside the style control. */
+export const MORE_GLYPH = 'M8 3v0M8 8v0M8 13v0';
+
+/**
+ * The line style control shows the style in force; a selection that
+ * disagrees shows a solid line over a dashed one.
+ */
+export const LINE_STYLE_GLYPH: Readonly<Record<string, string>> = {
+  solid: 'M2 8h12',
+  dashed: 'M2 8h3M7 8h2M11 8h3',
+  dotted: 'M3 8h0M8 8h0M13 8h0',
+  mixed: 'M2 5h12M2 11h3M7 11h2M11 11h3',
+};
+
+/** The coordinates tab: a point read off both axes, its guides stopping short of it. */
+export const ANCHOR_GLYPH = 'M3 2v11h11M10 6v0M3 6h4M10 13v-4';
+
 /** A row that can be dragged: two columns of dots, the handle a hand reaches for. */
 export const GRIP_GLYPH = 'M6 4v0M10 4v0M6 8v0M10 8v0M6 12v0M10 12v0';

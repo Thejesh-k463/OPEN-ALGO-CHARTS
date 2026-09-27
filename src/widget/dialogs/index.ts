@@ -32,6 +32,7 @@ export {
   mountDrawingProperties, commonSchema, drawingDefaults, resolvedDrawingValues,
   type DrawingPropertiesOptions,
 } from './drawing-properties';
+export { mountDrawingCoordinates, DRAWING_COORDINATES_CSS, type DrawingCoordinatesHandle } from './drawing-coordinates';
 export { selectionPoint } from '../form';
 export {
   mountLevelEditor, nextRatio, levelLabeller, ladderDrawings, FIB_SEQUENCE, type LevelEditorOptions,
