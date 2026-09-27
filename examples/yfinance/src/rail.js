@@ -773,7 +773,8 @@ function onGlobalKey(e) {
     hasSelection: d.selected() !== null,
     hasTarget: typeof d.hovered === 'function' && d.hovered() !== null,
     editingText: false,
-    placing: d.activeTool() !== null,
+    // A ruler on the chart takes Escape the way a tool being placed does.
+    placing: d.activeTool() !== null || (typeof d.measuring === 'function' && d.measuring()),
   });
   if (!action) {
     // The focused chart's alert is a fallback only after drawing ownership.

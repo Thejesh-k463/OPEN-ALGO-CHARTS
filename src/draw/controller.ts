@@ -34,6 +34,7 @@ import { migrateDrawings, migrateGroups } from './migrate';
 import { InputAnchors, type InputAnchorHost, type InputAnchorStep } from './input-anchors';
 import { DrawingScreen, within, type PaneProjection, type PointerSample } from './screen';
 import { barAt, magnetModeOf, magnetPoint, type SnapBar } from './snap';
+import { DrawingGestures, type GestureKeys } from './gestures';
 
 /**
  * The slice of the chart this controller needs.
@@ -197,6 +198,12 @@ export interface DrawingGestureOptions {
    * strong magnet for as long as it is held, whatever `magnet` is set to.
    */
   snapModifier?: boolean;
+  /**
+   * Shift+click on empty chart space, with no tool armed: a ruler from the
+   * click to the pointer, gone on the next click or `cancel()`. A preview,
+   * never a drawing: not saved, not an undo step, never linked.
+   */
+  measure?: boolean;
 }
 
 /** How `DrawingController.setTool` arms a tool. */
@@ -363,6 +370,9 @@ const held = (p: PointerFacts & { shiftKey?: boolean; ctrlKey?: boolean; metaKey
   key: 'shift' | 'ctrl' | 'meta'): boolean => p.modifiers?.[key] === true || p[`${key}Key` as const] === true;
 
 /** The pointer kind behind a payload; anything unnamed is a mouse. */
+const keysOf = (p: PointerFacts & { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }): GestureKeys =>
+  ({ shift: held(p, 'shift'), mod: held(p, 'ctrl') || held(p, 'meta'), alt: p.modifiers?.alt === true });
+
 const pointerKindOf = (p: PointerFacts): DrawingPointerKind =>
   p.pointerType === 'touch' || p.pointerType === 'pen' ? p.pointerType : 'mouse';
 
@@ -372,8 +382,9 @@ type ControllerOptions = Required<Omit<DrawingControllerOptions, 'defaultStyle' 
 /** Every gesture on, and a host's choice over it. */
 const gesturesOf = (base: Required<DrawingGestureOptions>, patch: DrawingGestureOptions = {}): Required<DrawingGestureOptions> => ({
   snapModifier: patch.snapModifier ?? base.snapModifier,
+  measure: patch.measure ?? base.measure,
 });
-const ALL_GESTURES: Required<DrawingGestureOptions> = { snapModifier: true };
+const ALL_GESTURES: Required<DrawingGestureOptions> = { snapModifier: true, measure: true };
 
 // `external` is a step of the history that is not a drawing edit, a study
 // anchor's drag: its snapshots are the drawings as they stood, unchanged by it.
@@ -405,6 +416,8 @@ export class DrawingController {
   private readonly _clipboard: DrawingClipboard;
   /** Every conversion between data space and the screen. */
   private readonly _screen: DrawingScreen;
+  /** The gestures that make no drawing: the temporary measure. */
+  private readonly _gestures: DrawingGestures;
   private readonly _layers = new Map<number, PaneLayers>();
   private _drawings: Drawing[] = [];
   private _groups: DrawingGroup[] = [];
@@ -476,6 +489,14 @@ export class DrawingController {
   public constructor(chart: DrawingChartHost, options: DrawingControllerOptions = {}) {
     this._chart = chart;
     this._screen = new DrawingScreen(chart);
+    this._gestures = new DrawingGestures({
+      tool: () => this._tool,
+      options: () => this._opts.gestures,
+      aim: (point, pane) => this._aimPoint(point, pane),
+      style: () => this._opts.defaultStyle,
+      preview: () => this._syncPreview(),
+      emit: (event, payload) => this._chart.emit(event, payload),
+    });
     this._opts = {
       magnet: magnetModeOf(options.magnet),
       gestures: gesturesOf(ALL_GESTURES, options.gestures),
@@ -497,7 +518,7 @@ export class DrawingController {
     this._off.push(chart.on('drag', (p) => this._onDrag(p as DragPayload)));
     this._off.push(chart.on('drag:end', () => this._onDragEnd()));
     this._off.push(chart.on('drag:cancel', () => { this.cancelDrag(); }));
-    this._off.push(chart.on('data:context', () => { this.cancelDrag(); }));
+    this._off.push(chart.on('data:context', () => { this.cancelDrag(); this._gestures.reset(); }));
     this._off.push(chart.on('dblclick', () => { this.finish(); }));
     this._off.push(chart.on('drawings:restore', document => this.fromJSON(document)));
     // Restore anything a previous session left in the chart state. A 1.9.x
@@ -548,6 +569,7 @@ export class DrawingController {
       throw new Error(`openalgo-charts: drawing tool "${toolId}" cannot be anchored to the viewport`);
     }
     this.cancelDrag();
+    this._gestures.reset();
     this._tool = toolId;
     this._toolSpace = space;
     this._pending = [];
@@ -597,6 +619,15 @@ export class DrawingController {
   /** The snap mode in force, after the boolean form has been folded. */
   public magnetMode(): MagnetMode {
     return this._opts.magnet;
+  }
+
+  /**
+   * Whether a temporary measure (Shift+click on empty space) is on the chart.
+   * `draw:measure` (`{ active }`) fires when one starts and when it goes. A
+   * host routing Escape to `cancel()` only while placing passes this too.
+   */
+  public measuring(): boolean {
+    return this._gestures.measuring();
   }
 
   /**
@@ -784,6 +815,7 @@ export class DrawingController {
     }
     this._pending = [];
     this._lastCursor = null;
+    this._gestures.reset();
     this._linkedPreviews.clear();
     const remapSnapshot = (value: string): string => {
       const document = migrateDrawings(JSON.parse(value));
@@ -1702,6 +1734,7 @@ export class DrawingController {
    */
   public fromJSON(data: unknown): void {
     this.cancelDrag();
+    this._gestures.reset();
     this._linkedPreviews.clear();
     const document = migrateDrawings(data);
     this._drawings = document.drawings;
@@ -1719,6 +1752,7 @@ export class DrawingController {
   public destroy(): void {
     if (this._destroyed) return;
     this.cancelDrag();
+    this._gestures.reset();
     this._destroyed = true;
     this._linkedPreviews.clear();
     this._chart.emit('draw:destroy', { controller: this });
@@ -1765,8 +1799,8 @@ export class DrawingController {
       return;
     }
     this._syncSnapRing();
-    // A tool mid-placement previews against the live cursor.
-    if (this._tool !== null && this._pending.length > 0) this._syncPreview();
+    // A tool mid-placement previews against the live cursor, and so does a ruler.
+    if ((this._tool !== null && this._pending.length > 0) || this._gestures.follow(this._lastCursor)) this._syncPreview();
   }
 
   /** The chart's hit-test answer for the pointer position, whenever it changes. */
@@ -1914,7 +1948,7 @@ export class DrawingController {
    * did nothing.
    */
   public cancel(): boolean {
-    if (this.cancelDrag()) return true;
+    if (this.cancelDrag() || this._gestures.endMeasure()) return true;
     if (this._tool === null) return false;
     const hadPending = this._pending.length > 0;
     this._pending = [];
@@ -1949,6 +1983,7 @@ export class DrawingController {
 
   private _onClick(p: ClickPayload): void {
     this._notePointer(p);
+    if (this._gestures.click({ ...p, keys: keysOf(p) })) return;
     // Placement takes precedence: while a tool is armed, a click is an anchor.
     if (this._tool !== null) {
       // A freehand stroke was already collected move-by-move; the click pair a
@@ -2399,6 +2434,8 @@ export class DrawingController {
    */
   private _syncPreview(): void {
     for (const l of this._layers.values()) l.top.setPreview(null);
+    const ruler = this._gestures.ruler();
+    if (ruler !== null) this._layerFor(ruler.paneIndex).top.setPreview(ruler);
     if (this._tool === null || this._pending.length === 0) return;
     const cursor = this._lastCursor;
     const points = cursor === null || cursor.paneIndex !== this._pendingPane

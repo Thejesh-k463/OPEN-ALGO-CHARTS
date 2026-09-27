@@ -33,6 +33,11 @@ export function attachDrawing() {
   // rebuild), not something the user just drew.
   app.chart.on('draw:add', ({ drawing }) => { if (!drawing.policy) el('status').textContent = `drew ${drawing.tool}`; });
   followSessionMarks(app.chart, app.draw, () => app.req?.symbol);
+  // The modifier gestures leave no drawing behind to explain them, so the
+  // status line says what is on the chart and how it goes.
+  app.chart.on('draw:measure', ({ active }) => {
+    el('status').textContent = active ? 'measuring: click anywhere or press Esc to clear' : '';
+  });
   for (const ev of ['drawing:change', 'drawing:select']) app.chart.on(ev, syncDrawToolbar);
   syncDrawToolbar();
   // The properties bar follows the selection on its own (it subscribes to

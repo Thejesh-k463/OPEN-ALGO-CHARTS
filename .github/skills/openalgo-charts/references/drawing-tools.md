@@ -421,7 +421,8 @@ step nowhere. See
 | `update(id, patch, options?)` / `updateMany(patches, options?)` | Patch `points` \| `style` \| `text` \| `props` \| `locked` \| `visible` \| `zIndex` \| `policy` \| `space` \| `viewportPoints` (a `DrawingPatch`). `space` alone converts the anchors at the view on screen (see Viewport-anchored drawings). `style`, `text`, `props` and `policy` merge; `points` replaces. `updateMany([{ id, patch }])` is one undo step and one `drawing:change`. A read-only drawing is refused (`update` returns false, `updateMany` skips it) unless `options` is `{ force: true }` (`DrawingEditOptions`). `update` also returns false when the patch asks for a `space` the drawing could not be moved to; the rest of that patch still applies. A patch that carries `policy`, and any forced call, records no undo step, and every recorded step takes it as well, so no later undo or redo reverses it. |
 | `remove(id, options?)` / `removeMany(ids, options?)` / `clear(options?)` | Delete one / several (one undo step) / all. Read-only drawings stay unless `{ force: true }`. A forced delete records no undo step and takes the drawing out of every recorded step, so no redo brings it back. |
 | `finish()` | Commit a `points: 0` tool at the anchors placed so far. Returns whether it committed. |
-| `cancel()` | Drop the anchors placed so far; disarms the tool unless `stayInDrawingMode` keeps it (a second call then disarms). Returns whether anything changed. |
+| `cancel()` | Drop the anchors placed so far; disarms the tool unless `stayInDrawingMode` keeps it (a second call then disarms). Also ends a drag in hand or a temporary measure first. Returns whether anything changed. |
+| `measuring()` | Whether a temporary measure (Shift+click on empty space) is on the chart; `draw:measure` (`{ active }`) fires as one starts and goes. (unreleased) |
 | `popAnchor()` | Remove the last anchor of a `points: 0` tool still being placed (the Backspace of placement). Fixed-anchor and freehand tools have nothing to pop. |
 | `hovered()` | Id of the unselected drawing under the pointer, or `null`. Fed by the chart's `hover` event; `drawing:hover { id }` fires when it changes. |
 | `magnetMode()` | The resolved `MagnetMode` (`'off' | 'weak' | 'strong'`), after the boolean shorthand is mapped. |
@@ -444,6 +445,7 @@ step nowhere. See
 
 Events on the chart bus: `draw:tool`, `draw:add`, `draw:update`, `draw:remove`, `draw:select` (the primary id), `draw:copy`, `draw:cut`, `draw:paste`, plus the 2.0 pair `drawing:select` (`{ ids }`, the whole selection) and `drawing:change` (`{ ids, kind: 'add' | 'update' | 'remove' | 'reorder' }`, one per mutation, after the per-drawing `draw:*` events; `ids` is empty for a history step that changed no drawing, a study anchor's drag and its undo or redo), and `drawing:hover` (`{ id: string | null }`, when the unselected drawing under the pointer changes). `DrawingChangeKind` names the `kind` union.
 Events on the chart bus: `draw:tool`, `draw:add`, `draw:update`, `draw:remove`, `draw:select` (the primary id), `draw:copy`, `draw:cut`, `draw:paste`, plus the 2.0 pair `drawing:select` (`{ ids }`, the whole selection) and `drawing:change` (`{ ids, kind: 'add' | 'update' | 'remove' | 'reorder' }`, one per mutation, after the per-drawing `draw:*` events), and `drawing:hover` (`{ id: string | null }`, when the unselected drawing under the pointer changes). `DrawingChangeKind` names the `kind` union. `DrawingChangeEvent` names the whole payload: `linked: true` on a linked chart's commit, and `step` (2.5.6) on the change that closes a recorded undo step, the number `historySteps()` lists it under; a forced edit, a linked commit, a restore and an `undo`/`redo` carry none.
+The modifier gestures (unreleased) add `draw:measure` (`{ active }`), as a temporary measure starts and goes; see Modifier gestures.
 
 **The controller listens on `chart.on(...)`, not `subscribeClick` / `subscribeDrag`.** Those two are single-slot callbacks the host needs for its own order lines; routing drawings through the bus means the two never contend.
 
@@ -1104,6 +1106,7 @@ it flag by flag.
 | Gesture | Where | Flag |
 |---|---|---|
 | Ctrl held | placing an anchor, dragging a handle or a shape: the strong magnet while held | `snapModifier` |
+| Shift+click | empty chart space, no tool armed: a temporary measure | `measure` |
 
 ### The magnet everywhere (unreleased)
 
@@ -1135,4 +1138,24 @@ the pointer during a drag, so a drag reads the bar at its time through
 a hidden plot. All are optional on `DrawingChartHost`, and a chart from
 `createChart()` has them all; a host without them snaps placements on the price
 pane as before.
+
+### Temporary measure (unreleased)
+
+Shift+click on empty chart space, with no tool armed, lays down a ruler: the
+`measure` tool drawn from the click to the pointer, its far end following the
+pointer on the pane it started on (a pointer elsewhere leaves the end where it
+last was). Both ends go through the magnet. The next click, anywhere, takes it
+away and does nothing else (it does not select what it lands on), and so does
+`cancel()`, which is what Escape maps to; arming a tool, a restore, a pane
+removed and a change of data context take it away too.
+
+It is a preview, painted in the slot a shape being placed uses: never in
+`drawings()` or `toJSON()`, never an undo step, never a `draw:add` or a
+`drawing:change`, so no `DrawingLinkGroup` carries it to another chart and no
+host autosave sees it. `measuring()` says whether one is up, and `draw:measure`
+(`{ active: boolean }`) fires as it starts and goes. `keyToDrawingAction` maps
+Escape to `cancel` only while `placing` is true, so a host that routes keys
+through it passes `placing: draw.activeTool() !== null || draw.measuring()`.
+Shift+click keeps its other meanings: on a drawing it adds to the selection,
+and with a tool armed Shift is the angle lock.
 

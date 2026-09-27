@@ -176,10 +176,14 @@ describe('clicking', () => {
 
   it('a click on empty space clears, unless it is the additive gesture', () => {
     const chart = makeChart();
-    const draw = new DrawingController(chart);
+    // Shift+click on empty space is the temporary measure when that gesture
+    // is on (draw-measure.test.ts); with it off it is the additive click.
+    const draw = new DrawingController(chart, { gestures: { measure: false } });
     const a = line(draw);
     draw.select(a.id);
     click(chart, null, { shiftKey: true });
+    expect(draw.selection()).toEqual([a.id]);
+    click(chart, null, { ctrlKey: true });
     expect(draw.selection()).toEqual([a.id]);
     click(chart, null);
     expect(draw.selection()).toEqual([]);
