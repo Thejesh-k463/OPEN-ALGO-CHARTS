@@ -453,7 +453,7 @@ const buildTooltip: BuildFn = (el, lib, tab) => {
       dot.style.display = 'none';
     } else if (tab === 'tracking') {
       tip.className = 'oac-tip oac-tip--track';
-      tip.innerHTML = '<span class="oac-tip__name">Apple Inc.</span> &nbsp; <b style="color:#eef1f7">' + e.bar.close.toFixed(2) + '</b> &nbsp; <span class="oac-tip__date">' + fmtDate(e.bar.time) + '</span>';
+      tip.innerHTML = '<span class="oac-tip__name">Apple Inc.</span> &nbsp; <b class="oac-tip__strong">' + e.bar.close.toFixed(2) + '</b> &nbsp; <span class="oac-tip__date">' + fmtDate(e.bar.time) + '</span>';
       tip.style.left = Math.min(Math.max(e.point.x, 90), el.clientWidth - 90) + 'px'; tip.style.top = '10px';
       dot.style.display = 'none';
     } else {

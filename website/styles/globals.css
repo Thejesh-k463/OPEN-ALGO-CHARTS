@@ -19,23 +19,25 @@
 .oac-card__code {
   margin: 10px 0 4px; padding: 12px 14px; border-radius: 10px; background: var(--oac-code-bg);
   border: 1px solid var(--oac-card-border); overflow: auto; max-height: 280px;
-  font: 12px/1.55 var(--oac-mono); color: #c9d1d9; white-space: pre;
+  font: 12px/1.55 var(--oac-mono); color: var(--oac-code-text); white-space: pre;
 }
 .oac-card__code code { font: inherit; background: none; padding: 0; border: none; color: inherit; }
-/* Data-tooltip demo overlays */
+/* Data-tooltip demo overlays. They sit on the chart canvas, which follows the
+   site theme, so they take the page palette rather than a fixed dark one. */
 .oac-tip {
   position: absolute; z-index: 12; pointer-events: none; transform: translateX(-50%);
-  background: #0d1117; border: 1px solid #ef5350; border-radius: 10px; padding: 8px 14px; text-align: center;
-  box-shadow: 0 8px 24px rgba(0,0,0,.5); white-space: nowrap;
+  background: var(--oac-tip-bg); border: 1px solid #ef5350; border-radius: 10px; padding: 8px 14px; text-align: center;
+  box-shadow: var(--oac-tip-shadow); white-space: nowrap;
 }
-.oac-tip__name { color: #ef5350; font-size: 12px; font-weight: 600; }
-.oac-tip__val { color: #eef1f7; font-size: 22px; font-weight: 700; line-height: 1.15; }
-.oac-tip__date { color: #8b93a7; font-size: 11px; }
+.oac-tip__name { color: var(--oac-tip-accent); font-size: 12px; font-weight: 600; }
+.oac-tip__val { color: var(--oac-tip-text); font-size: 22px; font-weight: 700; line-height: 1.15; }
+.oac-tip__strong { color: var(--oac-tip-text); }
+.oac-tip__date { color: var(--oac-tip-muted); font-size: 11px; }
 .oac-tip--track { transform: none; border-color: var(--oac-card-border); padding: 6px 11px; }
-.oac-tip--mag { transform: none; border-color: var(--oac-accent); padding: 5px 10px; color: #eef1f7; font-weight: 700; }
+.oac-tip--mag { transform: none; border-color: var(--oac-accent); padding: 5px 10px; color: var(--oac-tip-text); font-weight: 700; }
 .oac-tip-dot {
   position: absolute; z-index: 11; width: 10px; height: 10px; border-radius: 50%;
-  background: #ef5350; border: 2px solid #0d1117; transform: translate(-50%, -50%);
+  background: #ef5350; border: 2px solid var(--oac-tip-bg); transform: translate(-50%, -50%);
   pointer-events: none; box-shadow: 0 0 0 2px #ef5350;
 }
 .oac-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
@@ -76,7 +78,7 @@
   margin: 0;
   padding: 16px 18px;
   background: var(--oac-code-bg);
-  color: #c9d1d9;
+  color: var(--oac-code-text);
   font: 13px/1.6 var(--oac-mono);
   overflow-x: auto;
   border-bottom: 1px solid var(--oac-card-border);
@@ -130,13 +132,13 @@
   .oac-timeline-events__detail { border-left: 0; border-top: 1px solid var(--oac-card-border); padding: 13px 16px; }
 }
 
-/* token colors */
-.tok-kw   { color: #ff7b72; }
-.tok-str  { color: #a5d6ff; }
-.tok-num  { color: #79c0ff; }
-.tok-com  { color: #8b949e; font-style: italic; }
-.tok-fn   { color: #d2a8ff; }
-.tok-type { color: #7ee787; }
+/* token colors: one set per theme, defined with the palette below */
+.tok-kw   { color: var(--oac-tok-kw); }
+.tok-str  { color: var(--oac-tok-str); }
+.tok-num  { color: var(--oac-tok-num); }
+.tok-com  { color: var(--oac-tok-com); font-style: italic; }
+.tok-fn   { color: var(--oac-tok-fn); }
+.tok-type { color: var(--oac-tok-type); }
 
 /* ----------------------------------------------------------------------------
    Landing
@@ -322,7 +324,22 @@
   --oac-card: #ffffff;
   --oac-card-border: #e4e4e4;
   --oac-elevated: #f5f5f5;
-  --oac-code-bg: #151515;
+  /* Example source panels match the fenced code blocks on the same page, which
+     render light in the light theme; a dark panel under a white one read as a
+     leftover from the dark-only site. */
+  --oac-code-bg: #fafafa;
+  --oac-code-text: #151515;
+  --oac-tok-kw: #cf222e;
+  --oac-tok-str: #0a3069;
+  --oac-tok-num: #0550ae;
+  --oac-tok-com: #6e7781;
+  --oac-tok-fn: #8250df;
+  --oac-tok-type: #116329;
+  --oac-tip-bg: #ffffff;
+  --oac-tip-text: #151515;
+  --oac-tip-muted: #686868;
+  --oac-tip-accent: #d32f2f;
+  --oac-tip-shadow: 0 8px 24px rgba(0,0,0,.12);
   --oac-muted: #686868;
   --oac-button-bg: #171717;
   --oac-button-text: #ffffff;
@@ -341,6 +358,18 @@
   --oac-card-border: #292929;
   --oac-elevated: #1a1a1a;
   --oac-code-bg: #101010;
+  --oac-code-text: #c9d1d9;
+  --oac-tok-kw: #ff7b72;
+  --oac-tok-str: #a5d6ff;
+  --oac-tok-num: #79c0ff;
+  --oac-tok-com: #8b949e;
+  --oac-tok-fn: #d2a8ff;
+  --oac-tok-type: #7ee787;
+  --oac-tip-bg: #0d1117;
+  --oac-tip-text: #eef1f7;
+  --oac-tip-muted: #8b93a7;
+  --oac-tip-accent: #ef5350;
+  --oac-tip-shadow: 0 8px 24px rgba(0,0,0,.5);
   --oac-muted: #a1a1a1;
   --oac-button-bg: #f2f2f2;
   --oac-button-text: #111;
@@ -428,7 +457,7 @@ code, pre, kbd, samp { font-family: var(--oac-mono); }
 .oac-example__source summary::-webkit-details-marker { display: none; }
 .oac-example__source summary:hover { color: var(--oac-accent); background: var(--oac-elevated); }
 .oac-example__source summary:focus-visible { outline: 2px solid var(--oac-accent); outline-offset: -3px; }
-.oac-example__source .oac-example__code { margin: 0; border-radius: 0; border-width: 1px 0 0; padding: 20px; color: #c9d1d9; background: var(--oac-code-bg); }
+.oac-example__source .oac-example__code { margin: 0; border-radius: 0; border-width: 1px 0 0; padding: 20px; color: var(--oac-code-text); background: var(--oac-code-bg); }
 .oac-example__source .oac-example__code code { color: inherit; }
 .oac-site-footer { width: 100%; display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 45px; margin: 0 auto; }
 .oac-site-footer__brand p { color: var(--oac-muted); font-size: 12px; line-height: 1.9; margin-top: 17px; max-width: 255px; }
