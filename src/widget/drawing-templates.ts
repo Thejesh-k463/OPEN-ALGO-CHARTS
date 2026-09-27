@@ -15,7 +15,7 @@
  * into the placement's own undo step (the controller's `untracked`), so
  * placing a drawing stays one step and its redo brings the default back too.
  */
-import { applyDrawingSettings, drawingSettingsSchema, readDrawingSettings } from 'openalgo-charts/draw';
+import { applyDrawingSettings, drawingSettingsSchema, getDrawingTool, hasDrawingTool, readDrawingSettings } from 'openalgo-charts/draw';
 import type { Drawing, DrawingChangeEvent } from 'openalgo-charts/draw';
 import type { DrawingTemplate, DrawingTemplateCatalog, DrawingTemplateStore, DrawingTemplateValues } from 'openalgo-charts/workspace';
 import { editableIds, type WidgetContext } from './context';
@@ -104,17 +104,30 @@ export function createDrawingTemplates(ctx: WidgetContext, store: DrawingTemplat
   }
 
   /**
-   * A placement is an `add` step of one drawing whose tool is still the armed
-   * one: the controller disarms only after the add. A host's `add`, a paste
-   * and a duplicate arrive with no tool armed, or with another.
+   * A placement is an `add` step of one drawing of the tool in use, which
+   * the controller closes, in the same turn, by announcing the tool again
+   * (`draw:tool`: the same one while drawing stays on, else none). A paste,
+   * a duplicate and a host's `add` are never followed by one, so they keep
+   * the look they came with even while a tool of their kind is in use.
    */
+  let placed: string | null = null;
   const onChange = (payload: unknown): void => {
+    placed = null;
     const change = payload as DrawingChangeEvent;
     if (destroyed || change.kind !== 'add' || change.step === undefined || change.linked === true || change.ids.length !== 1) return;
     const d = draw.get(change.ids[0]);
-    if (d === undefined || draw.activeTool() !== d.tool) return;
-    const values = defaultFor(d.tool);
-    if (values === undefined) return;
+    if (d === undefined || draw.activeTool() !== d.tool || defaultFor(d.tool) === undefined) return;
+    const candidate = d.id;
+    placed = candidate;
+    // Only the turn that added it can confirm it.
+    queueMicrotask(() => { if (placed === candidate) placed = null; });
+  };
+  const onTool = (): void => {
+    const id = placed;
+    placed = null;
+    const d = id === null || destroyed ? undefined : draw.get(id);
+    const values = d === undefined ? undefined : defaultFor(d.tool);
+    if (d === undefined || values === undefined) return;
     const patches = patchesFor([d.id], values);
     if (patches.length === 0) return;
     const run = (): void => { draw.updateMany(patches); };
@@ -122,7 +135,7 @@ export function createDrawingTemplates(ctx: WidgetContext, store: DrawingTemplat
     if (ctx.history !== undefined && !ctx.history.isDestroyed) ctx.history.ignore(run);
     else draw.untracked(run);
   };
-  const off = chart.on('drawing:change', onChange);
+  const offs = [chart.on('drawing:change', onChange), chart.on('draw:tool', onTool)];
 
   const commit = async <T>(work: () => Promise<T>, done: string): Promise<T> => {
     try {
@@ -139,7 +152,7 @@ export function createDrawingTemplates(ctx: WidgetContext, store: DrawingTemplat
     if (d === undefined) throw new Error(widgetText(ctx, 'Select a drawing first'));
     return d;
   };
-  const toolLabel = (tool: string): string => widgetText(ctx, `schema.drawing.${tool}.name`, {}, tool);
+  const toolLabel = (tool: string): string => widgetText(ctx, `schema.drawing.${tool}.name`, {}, hasDrawingTool(tool) ? getDrawingTool(tool).name : tool);
 
   return {
     store,
@@ -169,7 +182,7 @@ export function createDrawingTemplates(ctx: WidgetContext, store: DrawingTemplat
     destroy: () => {
       if (destroyed) return;
       destroyed = true;
-      off();
+      for (const off of offs) off();
       unsubscribe();
       listeners.clear();
     },

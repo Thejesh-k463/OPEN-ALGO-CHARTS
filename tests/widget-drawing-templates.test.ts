@@ -82,6 +82,31 @@ describe('drawing templates in the widget', () => {
     expect(copy.style.color).toBe('#2a9df4');
   });
 
+  it('leaves a duplicate, a paste and a host drawing their own look while the tool is in use', async () => {
+    const { w } = await make();
+    const first = place(w, 'trend-line');
+    w.draw.update(first, { style: { ...w.draw.get(first)!.style, color: '#ab79df', lineWidth: 4 } });
+    await w.drawingTemplates!.saveDefault(first);
+    const source = w.draw.add({ tool: 'trend-line', paneIndex: 0, style: { color: '#2a9df4', lineWidth: 1 },
+      points: [{ time: bars[2].time, price: bars[2].low }, { time: bars[8].time, price: bars[8].low }] });
+    // Drawing stays on, so the trend line tool is still in use after each placement.
+    w.draw.setOptions({ stayInDrawingMode: true });
+    w.draw.setTool('trend-line');
+    const [copy] = w.draw.duplicate([source.id]);
+    expect(w.draw.get(copy.id)!.style).toMatchObject({ color: '#2a9df4', lineWidth: 1 });
+    await w.draw.copy([source.id]);
+    const [pasted] = await w.draw.paste();
+    expect(w.draw.get(pasted.id)!.style).toMatchObject({ color: '#2a9df4', lineWidth: 1 });
+    const hosted = w.draw.add({ tool: 'trend-line', paneIndex: 0, style: { color: '#f0a020' },
+      points: [{ time: bars[3].time, price: bars[3].low }, { time: bars[9].time, price: bars[9].low }] });
+    await settle();
+    expect(w.draw.get(hosted.id)!.style.color).toBe('#f0a020');
+    // Placements, one after another with the tool still in use, each start with the default.
+    expect(w.draw.activeTool()).toBe('trend-line');
+    const placed = [place(w, 'trend-line', 20, 40), place(w, 'trend-line', 22, 44)];
+    for (const id of placed) expect(w.draw.get(id)!.style).toMatchObject({ color: '#ab79df', lineWidth: 4 });
+  });
+
   it('keeps a placement with a default one undo step, and its redo brings the default back', async () => {
     const { w } = await make();
     const first = place(w, 'trend-line');
@@ -179,7 +204,7 @@ describe('drawing templates in the widget', () => {
     expect(w.drawingTemplates!.templatesFor('trend-line').map((t) => t.name)).toEqual(['Swing lows']);
   });
 
-  it('follows a change another session commits, and reports a store that cannot load', async () => {
+  it('follows a change committed through the store elsewhere on the page, and reports a store that cannot load', async () => {
     const storage = createMemoryDrawingTemplateStorage();
     const store = new DrawingTemplateRepository(storage, 'desk', { id: () => 'x1' });
     const { w } = await make({}, store);
@@ -190,15 +215,13 @@ describe('drawing templates in the widget', () => {
       saveTemplate: () => Promise.reject(new Error('offline')), renameTemplate: () => Promise.reject(new Error('offline')),
       removeTemplate: () => Promise.reject(new Error('offline')), setDefault: () => Promise.reject(new Error('offline')),
     };
-    const statuses: string[] = [];
     const other = await make({}, broken);
-    other.w.on('status', (s) => { statuses.push(s.text); });
     expect(other.w.drawingTemplates!.catalog()).toBeNull();
+    expect((other.root.querySelector('.oac-statusline__msg') as FakeElement).textContent).toBe('Drawing templates could not be loaded');
     const line = place(other.w, 'trend-line');
     await expect(other.w.drawingTemplates!.saveDefault(line)).rejects.toThrow('offline');
     // The default rows still work on a stale catalog; nothing is applied from nothing.
     expect(other.w.drawingTemplates!.defaultFor('trend-line')).toBeUndefined();
-    void statuses;
   });
 
   it('ignores a load that lands after a newer commit', async () => {

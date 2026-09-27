@@ -1062,11 +1062,12 @@ widget.drawingTemplates?.templatesFor('trend-line');   // saved looks for one to
   `text.value`, anchors, a lock or a pane, and is applied through each drawing's own schema
   (`applyDrawingSettings`), as one `updateMany`.
 - A tool's default reaches only drawings the user places with that tool after it was saved:
-  not the drawings already on the chart, not another tool, not a host's `draw.add`, a paste
-  or a duplicate. It is written with `DrawingController.untracked` (through
+  not the drawings already on the chart, not another tool, and not a host's `draw.add`, a
+  paste or a duplicate, even one made while that tool is in use. A placement is an `add`
+  step of one drawing of the tool in use that the controller closes, in the same turn, with
+  `draw:tool`. The default is written with `DrawingController.untracked` (through
   `history.ignore`), which every recorded step takes in, so placing the drawing is still
-  one undo step and its redo brings the default back. A host `add` of the armed tool while
-  the user is placing with it also takes the default.
+  one undo step and its redo brings the default back.
 - `createDrawingTemplates(ctx, store)` builds the holder for a custom host; the widget's is
   `widget.drawingTemplates` and `ctx.drawingTemplates` (null and undefined without a store).
   `DrawingTemplates`: `store`, `catalog()`, `templatesFor(tool)`, `defaultFor(tool)`,
