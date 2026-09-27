@@ -717,6 +717,27 @@ describe('panes', () => {
 });
 
 describe('one timeline with drawings', () => {
+  it('drops every drawing step and orphan once the controller loads another document', async () => {
+    const { chart, draw, history } = rig();
+    chart.addIndicator('hist-osc');
+    await settle();
+    draw.add(line(50, 1));
+    const kept = draw.add(line(101));
+    expect(chart.removePane(1)).toBe(true);
+    await settle();
+    // Another instrument's drawings, as a host keeping them per instrument loads them.
+    draw.fromJSON({ version: 2, drawings: [] });
+    expect(history.peekUndo()?.changes).toEqual(['study-remove']);
+    expect(history.undo()).toBe(true);
+    expect(chart.panes()).toHaveLength(2);
+    expect(draw.drawings()).toEqual([]);
+    // The study add is still a step; the drawing added before it no longer is.
+    expect(history.undo()).toBe(true);
+    expect(chart.indicators()).toHaveLength(0);
+    expect(history.canUndo()).toBe(false);
+    expect(draw.get(kept.id)).toBeUndefined();
+  });
+
   it('interleaves drawing steps with chart steps and walks them in order both ways', async () => {
     const { chart, draw, history } = rig();
     const first = draw.add(line(101));
