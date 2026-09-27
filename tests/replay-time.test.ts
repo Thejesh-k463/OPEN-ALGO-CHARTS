@@ -61,7 +61,9 @@ describe('availability-time replay', () => {
   });
 
   it('forms only from available finer bars and replaces the aggregate exactly at the declared end', () => {
-    const data = [bar(0, 999, 1000, 90), bar(300, 1100)];
+    // The finer bars lie inside the displayed one, so each step is exactly their
+    // aggregate; a feed that disagrees is held inside it (see the test below).
+    const data: Bar[] = [{ time: T, open: 100, high: 106, low: 98, close: 104, volume: 1000, oi: 90 }, bar(300, 1100)];
     const subs = [bar(0, 101, 10, 0), bar(60, 103, 20, 7), bar(120, 102, 30)];
     const { chart, series } = loaded(data);
     const replay = new ReplayController(chart, { timing: { barEndTime: end(300), subBarEndTime: end(60) },
@@ -77,24 +79,58 @@ describe('availability-time replay', () => {
     expect(series.getData()).toEqual([data[0]]);
     expect(replay.state()).toMatchObject({ subIndex: 3, subSteps: 4 });
     expect(subs[0]).toEqual(bar(0, 101, 10, 0));
-    expect(data[0]).toEqual(bar(0, 999, 1000, 90));
+    expect(data[0]).toEqual({ time: T, open: 100, high: 106, low: 98, close: 104, volume: 1000, oi: 90 });
+  });
+
+  it('forms inside the candle it closes on when the finer feed disagrees with it', () => {
+    // The official open against the first minute's, minutes that run past the
+    // candle's extremes and outweigh its volume: the forming bar keeps the open it
+    // closes with and only widens toward the closed bar, never back from it.
+    const final: Bar = { time: T, open: 100, high: 104, low: 98, close: 103, volume: 100 };
+    const data = [final, bar(300, 110)];
+    const subs: Bar[] = [
+      { time: T, open: 100.4, high: 101, low: 97.5, close: 100.8, volume: 40 },
+      { time: T + 60, open: 100.8, high: 104.6, low: 100.5, close: 104.2, volume: 50 },
+      { time: T + 120, open: 104.2, high: 104.3, low: 102.5, close: 103.1, volume: 30 },
+    ];
+    const { chart, series } = loaded(data);
+    const replay = new ReplayController(chart, { timing: { barEndTime: end(300), subBarEndTime: end(60) },
+      subBars: subs, startTime: T + 60 });
+    const seen: Bar[] = [];
+    for (const at of [T + 60, T + 120, T + 180, T + 300]) {
+      replay.seekTime(at);
+      seen.push(series.getData()[0]);
+      expect(replay.state().bar).toEqual(series.getData()[0]);
+    }
+    expect(seen[0]).toEqual({ time: T, open: 100, high: 101, low: 98, close: 100.8, volume: 40 });
+    expect(seen[3]).toEqual(final);
+    seen.forEach((b, k) => {
+      expect(b.open).toBe(100);
+      expect(b.high).toBeLessThanOrEqual(final.high);
+      expect(b.low).toBeGreaterThanOrEqual(final.low);
+      expect(b.volume).toBeLessThanOrEqual(100);
+      if (k === 0) return;
+      expect(b.high).toBeGreaterThanOrEqual(seen[k - 1].high);
+      expect(b.low).toBeLessThanOrEqual(seen[k - 1].low);
+      expect(b.volume).toBeGreaterThanOrEqual(seen[k - 1].volume as number);
+    });
   });
 
   it('ignores finer bars crossing a bucket and does not stretch them over a history gap', () => {
     const data = [bar(0), bar(900)];
     const { chart, series } = loaded(data);
     const replay = new ReplayController(chart, { timing: { barEndTime: end(300), subBarEndTime: end(120) },
-      subBars: [bar(240, 900), bar(600, 901), bar(900, 902)], startTime: T + 299 });
+      subBars: [bar(240, 99.5), bar(600, 100.5), bar(900, 101)], startTime: T + 299 });
     expect(series.getData()).toEqual([]);
     expect(replay.timePoints()).toEqual([T + 300, T + 1020, T + 1200]);
     replay.seekTime(T + 800);
     expect(series.getData()).toEqual([data[0]]);
     replay.seekTime(T + 1020);
-    expect(series.getData()[1].close).toBe(902);
+    expect(series.getData()[1].close).toBe(101);
   });
 
   it('withholds incomplete finer prefixes and keeps absent OI absent', () => {
-    const { chart, series } = loaded([bar(0, 999, 1000, 90), bar(300, 1100)]);
+    const { chart, series } = loaded([{ time: T, open: 100, high: 106, low: 98, close: 104, volume: 1000, oi: 90 }, bar(300, 1100)]);
     const replay = new ReplayController(chart, { timing: { barEndTime: end(300), subBarEndTime: end(60) },
       subBars: [bar(0, 101), bar(120, 800), bar(360, 900)], startTime: T + 240 });
     expect(series.getData()[0]).toMatchObject({ close: 101, high: 103 });

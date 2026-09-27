@@ -16,6 +16,7 @@
  * replay-aware code anywhere in the indicator tier.
  */
 import type { Bar } from '../model/bar';
+import { foldFiner, formingWithin, startFiner } from './forming';
 import type { BarConfirmationOptions, SeriesApi } from '../model/series';
 import { seriesConfirmation } from '../model/series-provenance';
 import { clamp } from '../helpers/math';
@@ -122,7 +123,11 @@ export interface ReplayOptions {
    * outside any displayed bucket are ignored. The last step of a bucket emits
    * the displayed bar **verbatim** rather than the aggregate, so a bucket always
    * closes on exactly the number the chart would have shown without this option,
-   * whatever the two feeds disagree about in between.
+   * whatever the two feeds disagree about in between. Every step before it is
+   * held inside that bar, the way a live candle grows: the displayed bar's open
+   * from the first step, the finer extremes and close within its high and low,
+   * and volume no more than its volume. A forming bar never shows a price its
+   * closed bar denies.
    *
    * Only the first driven series forms partially. Followers are cut to completed
    * buckets, because the controller cannot know how to half-aggregate an
@@ -158,30 +163,18 @@ function countUpTo(bars: readonly Bar[], cutoff: number): number {
 }
 
 /**
- * One partial bar from the sub-bars of a bucket consumed so far. Open is the
- * first one's, close the last one's, extremes and volume accumulate: the same
- * merge a live candle builder does, so a bar formed here and a bar formed from
- * ticks are the same shape.
+ * The forming bar after the sub-bars `from..to` of a bucket: their aggregate
+ * (extremes and volume accumulate, the same merge a live candle builder does),
+ * held inside `final`, the displayed bar the bucket closes on, so the open never
+ * moves and nothing shrinks back at the close (see `formingWithin`).
  *
  * `time` is the bucket's, not the sub-bar's, or the chart would index the
  * partial as a new bar every step instead of replacing the forming one.
  */
-function mergeSubBars(subs: readonly Bar[], from: number, to: number, time: number): Bar {
-  const first = subs[from];
-  let high = first.high;
-  let low = first.low;
-  let volume = first.volume ?? 0;
-  let oi = first.oi;
-  for (let i = from + 1; i <= to; i++) {
-    const b = subs[i];
-    if (b.high > high) high = b.high;
-    if (b.low < low) low = b.low;
-    volume += b.volume ?? 0;
-    if (b.oi !== undefined) oi = b.oi;
-  }
-  return { time, open: first.open, high, low, close: subs[to].close, volume,
-    ...(oi === undefined ? {} : { oi }),
-  };
+function mergeSubBars(subs: readonly Bar[], from: number, to: number, final: Bar): Bar {
+  const raw = startFiner(subs[from], final.time);
+  for (let i = from + 1; i <= to; i++) foldFiner(raw, subs[i]);
+  return formingWithin(raw, final);
 }
 
 export class ReplayController {
@@ -500,7 +493,7 @@ export class ReplayController {
       bar = this._bars[this._index];
       if (this._intra && this._sub < steps - 1 && this._subCount[this._index] > 0) {
         const from = this._subStart[this._index];
-        bar = mergeSubBars(this._subBars, from, from + this._sub, bar.time);
+        bar = mergeSubBars(this._subBars, from, from + this._sub, bar);
       }
     }
     return {
@@ -540,7 +533,7 @@ export class ReplayController {
     // covers this bucket.
     if (this._intra && nextSub < steps - 1 && this._subCount[next] > 0) {
       const from = this._subStart[next];
-      shown[next] = mergeSubBars(this._subBars, from, from + nextSub, this._bars[next].time);
+      shown[next] = mergeSubBars(this._subBars, from, from + nextSub, this._bars[next]);
     }
     const forming = this._intra && nextSub < steps - 1;
     this._write(shown, forming, first);

@@ -1,4 +1,5 @@
 import type { Bar } from '../model/bar';
+import { foldFiner, formingWithin, startFiner } from './forming';
 
 /** UTC seconds when this recorded candle becomes complete and available. */
 export type ReplayBarEndTime = (bar: Bar, index: number) => number;
@@ -52,19 +53,15 @@ export class ReplayTimeline {
         if (sub.time !== covered || available > end) gap = true;
         if (gap) continue;
         covered = available;
-        if (!partial) partial = { ...sub, time: full.time };
-        else {
-          partial.high = Math.max(partial.high, sub.high);
-          partial.low = Math.min(partial.low, sub.low);
-          partial.close = sub.close;
-          partial.volume = (partial.volume ?? 0) + (sub.volume ?? 0);
-          // Open interest is a level; retain the last reading, never a sum.
-          if (sub.oi !== undefined) partial.oi = sub.oi;
-        }
+        if (!partial) partial = startFiner(sub, full.time);
+        else foldFiner(partial, sub);
         if (available >= end) continue;
+        // Held inside the candle it closes on, so the open never moves and
+        // nothing shrinks back when the full bar replaces it (`formingWithin`).
+        const shown = formingWithin(partial, full);
         const last = this.points[this.points.length - 1];
-        if (last?.index === index && last.time === available) last.bar = { ...partial };
-        else this.points.push({ time: available, index, subIndex: 0, subSteps: 0, bar: { ...partial } });
+        if (last?.index === index && last.time === available) last.bar = shown;
+        else this.points.push({ time: available, index, subIndex: 0, subSteps: 0, bar: shown });
       }
       this.points.push({ time: end, index, subIndex: 0, subSteps: 0, bar: full });
       const count = this.points.length - from;
