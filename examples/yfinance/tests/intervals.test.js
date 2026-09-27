@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import * as engine from '/dist/openalgo-charts.mjs';
 import {
   CUSTOM_INTERVALS, customInterval, foldedInterval, intervalSeconds, foldToBuckets,
-  INTERVALS, intervalLabel, intervalName, periodsFor, clampPeriod, PERIODS, fillIntervalSelect,
+  INTERVALS, intervalLabel, intervalName, periodsFor, clampPeriod, PERIODS, PERIOD_DAYS, fillIntervalSelect,
   resolvePickerInterval, UnknownIntervalError,
 } from '../src/intervals.js';
 import { fakeDom, flatBar } from './helpers.js';
@@ -69,7 +69,10 @@ describe('ranges an interval can serve', () => {
   it('caps intraday frames at what the source goes back to', () => {
     expect(periodsFor('5m')).toEqual(['1mo']);
     expect(periodsFor('1h')).toEqual(['1mo', '6mo', '1y']);
-    expect(periodsFor('1d')).toEqual(PERIODS);
+    // Daily and up have no cap: weekly, which has no floor either, offers
+    // every range, and daily still reaches back as far as the source goes.
+    expect(periodsFor('1wk')).toEqual(PERIODS);
+    expect(periodsFor('1d')).toContain('max');
   });
 
   it('floors calendar frames at a range that draws more than one candle', () => {
@@ -77,11 +80,22 @@ describe('ranges an interval can serve', () => {
     expect(periodsFor('1q')).toEqual(['5y', 'max']);
   });
 
+  it('floors daily at five years, so a daily chart holds 500 candles or more', () => {
+    expect(periodsFor('1d')).toEqual(['5y', 'max']);
+    // Two years is about 495 sessions, short of 500, and the source has no
+    // three-year period: no range under five years may be offered at all.
+    expect(periodsFor('1d').filter((p) => PERIOD_DAYS[p] < 5 * 365)).toEqual([]);
+  });
+
   it('clamps to the nearest range the frame can fill', () => {
-    expect(clampPeriod('1d', '6mo')).toBe('6mo');
+    expect(clampPeriod('1h', '6mo')).toBe('6mo');
+    expect(clampPeriod('1wk', '1mo')).toBe('1mo');
     expect(clampPeriod('5m', '1y')).toBe('1mo');
     expect(clampPeriod('1mo', '1y')).toBe('5y');
     expect(clampPeriod('1q', 'max')).toBe('max');
+    for (const short of ['1mo', '6mo', '1y']) expect(clampPeriod('1d', short)).toBe('5y');
+    expect(clampPeriod('1d', '5y')).toBe('5y');
+    expect(clampPeriod('1d', 'max')).toBe('max');
   });
 });
 

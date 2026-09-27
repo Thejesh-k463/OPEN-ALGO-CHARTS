@@ -19,8 +19,9 @@ describe('reference workspace preparation', () => {
     const pending = prepareReferenceWorkspace(fixture(), { fetch });
     const finished = vi.fn(); pending.then(finished);
     await Promise.resolve(); expect(finished).not.toHaveBeenCalled();
+    // The layout saved its daily chart over one year: it loads the five year daily floor.
     expect(fetch.mock.calls.map(([request, options]) => [request, options.timezone])).toEqual([
-      [{ symbol: 'AAPL', interval: '1d', period: '1y' }, 'America/New_York'],
+      [{ symbol: 'AAPL', interval: '1d', period: '5y' }, 'America/New_York'],
       [{ symbol: 'TSLA/MSFT', interval: '15m', period: '1mo' }, 'Asia/Kolkata'],
     ]);
     second.resolve(bars);

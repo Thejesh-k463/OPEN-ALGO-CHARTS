@@ -16,6 +16,8 @@ import { initGoTo, openGoTo } from '../src/goto.js';
 
 const DAY = 86400;
 const NOW = Math.floor(Date.now() / 1000);
+// A date on a daily chart past the five years it opens with.
+const BACK = NOW - 6 * 366 * DAY;
 const flush = async () => { for (let i = 0; i < 60; i++) await Promise.resolve(); };
 const ymd = time => {
   const p = utcSecondsToZonedParts(time, 'Asia/Kolkata');
@@ -30,13 +32,16 @@ function periodBars(days) {
   for (let t = NOW - days * DAY; t < NOW; t += DAY) out.push({ time: t, open: 10, high: 11, low: 9, close: 10.5 });
   return out;
 }
+// The longest period has no length of its own: it returns what the source
+// holds, twenty years here as on the fixture server.
+const MAX_DAYS = 20 * 366;
 
 /** What render() leaves behind: a new chart and a new overlay layer for its panels. */
 function mountPane() {
   const chart = new Chart(dom.chartEl, { document: dom.doc, pixelRatio: () => 1, shortcuts: false,
     branding: false, timeNavigator: false, raf: { schedule: fn => { fn(); return 1; }, cancel() {} } });
   chart.applySize(900, 600);
-  chart.addSeries('candlestick').setData(periodBars(PERIOD_DAYS[app.req.period]));
+  chart.addSeries('candlestick').setData(periodBars(Math.min(PERIOD_DAYS[app.req.period], MAX_DAYS)));
   chart.setDataContext({ symbol: app.req.symbol, exchange: '', interval: app.req.interval });
   const overlays = createOverlayStack(dom.root, dom.doc);
   const context = { chart, root: dom.root, document: dom.doc, overlays,
@@ -46,7 +51,7 @@ function mountPane() {
   return { chart, overlays };
 }
 
-function setup(interval) {
+function setup(interval, period) {
   dom = installDom();
   vi.stubGlobal('document', dom.doc);
   vi.stubGlobal('window', dom.win);
@@ -55,9 +60,9 @@ function setup(interval) {
     node.id = id;
     dom.root.appendChild(node);
   }
-  dom.doc.getElementById('period').value = '1mo';
+  dom.doc.getElementById('period').value = period;
   gate = null;
-  app = { req: { symbol: 'AAA', interval, period: '1mo' }, focusPane: 1 };
+  app = { req: { symbol: 'AAA', interval, period }, focusPane: 1 };
   app.load = vi.fn(async () => {
     // The real load awaits its fetch before render() rebuilds, so the rebuild
     // lands while the panel's request is under way, never inside navigate().
@@ -91,24 +96,25 @@ const centre = chart => {
 afterEach(() => { pane?.overlays.destroy(); pane?.chart.destroy(); vi.unstubAllGlobals(); });
 
 describe('reference go-to panel across a chart rebuild', () => {
-  beforeEach(() => setup('1d'));
+  // Five years on screen, the shortest daily range, so six years back needs the longest.
+  beforeEach(() => setup('1d', '5y'));
 
   it('places the date on the rebuilt chart and closes the panel it reopened', async () => {
-    const first = ask(ymd(NOW - 200 * DAY));
+    const first = ask(ymd(BACK));
     await flush();
     expect(app.load).toHaveBeenCalledTimes(1);
-    expect(app.req.period).toBe('1y');
+    expect(app.req.period).toBe('max');
     expect(first.isConnected).toBe(false);
     expect(dom.doc.querySelector('.oac-goto')).toBeNull();
     expect(dom.doc.getElementById('status').textContent).toMatch(/^Showing /);
-    const expected = app.chart.primaryBars().find(bar => ymd(bar.time) === ymd(NOW - 200 * DAY)).time;
+    const expected = app.chart.primaryBars().find(bar => ymd(bar.time) === ymd(BACK)).time;
     expect(centre(app.chart)).toBe(expected);
   });
 
   it('drops the request when the user closes the panel during the load', async () => {
     let release;
     gate = { promise: new Promise(resolve => { release = resolve; }) };
-    const panel = ask(ymd(NOW - 200 * DAY));
+    const panel = ask(ymd(BACK));
     await flush();
     expect(panel.querySelector('.oac-goto__message').textContent).toBe('Loading history');
     panel.querySelector('.oac-dialog__head button').click();
@@ -116,21 +122,22 @@ describe('reference go-to panel across a chart rebuild', () => {
     release();
     await flush();
     // The longer period still loads; the view does not jump to the date.
-    expect(app.req.period).toBe('1y');
+    expect(app.req.period).toBe('max');
     expect(dom.doc.querySelector('.oac-goto')).toBeNull();
     expect(dom.doc.getElementById('status').textContent).not.toMatch(/^Showing /);
-    const target = app.chart.primaryBars().find(bar => ymd(bar.time) === ymd(NOW - 200 * DAY)).time;
+    const target = app.chart.primaryBars().find(bar => ymd(bar.time) === ymd(BACK)).time;
     expect(centre(app.chart)).not.toBe(target);
   });
 });
 
 describe('reference go-to request and the view it would move', () => {
-  beforeEach(() => setup('1d'));
+  // Five years on screen, the shortest daily range, so six years back needs the longest.
+  beforeEach(() => setup('1d', '5y'));
 
   it('drops the request when the user pans or zooms while the longer period loads', async () => {
     let release;
     gate = { promise: new Promise(resolve => { release = resolve; }) };
-    const panel = ask(ymd(NOW - 200 * DAY));
+    const panel = ask(ymd(BACK));
     await flush();
     const message = panel.querySelector('.oac-goto__message');
     expect(message.textContent).toBe('Loading history');
@@ -142,16 +149,16 @@ describe('reference go-to request and the view it would move', () => {
     expect(message.textContent).toBe('');
     release();
     await flush();
-    expect(app.req.period).toBe('1y');
+    expect(app.req.period).toBe('max');
     expect(dom.doc.querySelector('.oac-goto')).toBeNull();
     expect(dom.doc.getElementById('status').textContent).not.toMatch(/^Showing /);
-    const target = app.chart.primaryBars().find(bar => ymd(bar.time) === ymd(NOW - 200 * DAY)).time;
+    const target = app.chart.primaryBars().find(bar => ymd(bar.time) === ymd(BACK)).time;
     expect(centre(app.chart)).not.toBe(target);
   });
 });
 
 describe('reference go-to panel reporting short history', () => {
-  beforeEach(() => setup('1h'));
+  beforeEach(() => setup('1h', '1mo'));
 
   it('reports in a reopened panel where history starts when no period reaches the date', async () => {
     ask(ymd(NOW - 3 * 366 * DAY));
