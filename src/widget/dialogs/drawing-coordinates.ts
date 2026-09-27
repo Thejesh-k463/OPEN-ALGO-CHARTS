@@ -9,11 +9,13 @@
  * it sits on that grid, and in full when it does not, so opening the tab and
  * leaving it never moves an anchor by rounding it.
  *
- * An anchor is committed when its row changes (Enter, or leaving a field),
- * after the whole row validates: one row is one `update`, so one undo step,
- * and the tool's own constraint still applies (a horizontal line keeps its
- * other anchor level). A field that does not validate says why and writes
- * nothing. A drawing pinned to the screen has no time or price, and a
+ * An anchor is committed on Enter, or when the focus leaves its row, after
+ * the whole row validates: one row is one `update`, so one undo step, and
+ * the tool's own constraint still applies (a horizontal line keeps its other
+ * anchor level). Not on `change`: a date or time field reports one for every
+ * segment typed, so typing a year would write 0002, 0020 and 0202 on the way
+ * to 2026, each its own step. A field that does not validate says why and
+ * writes nothing. A drawing pinned to the screen has no time or price, and a
  * freehand stroke has a point per sample, so neither lists its anchors.
  */
 import { utcSecondsToZonedParts, zonedWallClockToUtcSeconds } from 'openalgo-charts';
@@ -157,6 +159,11 @@ export function mountDrawingCoordinates(
     if (time === point.time && price === point.price) return;
     const points = d.points.map((p, i) => (i === index ? { ...p, time, price } : { ...p }));
     draw.update(id, { points });
+    // A refresh passes over the row being typed in; this one is done, so it
+    // shows where the anchor landed, in the field's own format.
+    const now = draw.get(id);
+    const landed = now?.points[index];
+    if (now !== undefined && landed !== undefined) fill(row, now, landed);
   }
 
   function makeRow(id: string, index: number): Row {
@@ -184,13 +191,18 @@ export function mountDrawingCoordinates(
     time.setAttribute('aria-label', name(widgetText(ctx, 'Time')));
     price.setAttribute('aria-label', name(widgetText(ctx, 'Price')));
     for (const input of [date, time, price]) {
-      input.addEventListener('change', () => commit(id, index, row));
       input.addEventListener('keydown', (event) => {
         if ((event as KeyboardEvent).key !== 'Enter') return;
         event.preventDefault();
         commit(id, index, row);
       });
     }
+    // Moving between the fields of one row is still typing it.
+    line.addEventListener('focusout', (event) => {
+      const next = (event as FocusEvent).relatedTarget as Node | null;
+      if (next !== null && line.contains(next)) return;
+      commit(id, index, row);
+    });
     const fields = el(doc, 'div', 'oac-coords__fields');
     fields.append(date, time, price);
     line.append(label, fields, error);

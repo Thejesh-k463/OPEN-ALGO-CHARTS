@@ -207,7 +207,7 @@ Every mount takes the context and an optional anchor element (so it satisfies `D
 | `mountSettingsDialog(ctx, anchor?, { tab?, unavailable?, onApply?, onClose? })` | function | Chart settings, generated from `chartSettingsSchema(chart)`; Cancel and Escape revert the dirty keys. |
 | `mountIndicatorPicker(ctx, anchor?, { onAdd?, closeOnAdd? })` | function | Searchable, grouped list of every registered indicator. |
 | `mountIndicatorSettings(ctx, anchor?, { instanceId?, tab?, onChange?, onClose? })` | function | Inputs and styles for one indicator, from its descriptor. `instanceId` falls back to `anchor.dataset.instanceId`, then the chart's only indicator. |
-| `mountDrawingProperties(ctx, anchor?, { ids?, tab?, onClose? })` | function | The selected drawings' fields, from `drawingSettingsSchema`, on a Style tab, and every anchor as a date, a time and a price on a Coordinates tab (`tab: 'coordinates'` opens on it). Bottom left: Restore defaults, and Templates when the context carries `drawingTemplates`. |
+| `mountDrawingProperties(ctx, anchor?, { ids?, tab?, onClose? })` | function | The selected drawings' fields, from `drawingSettingsSchema`, on a Style tab, and (unreleased) every anchor as a date, a time and a price on a Coordinates tab (`tab: 'coordinates'` opens on it). Bottom left: Restore defaults, and (unreleased) Templates when the context carries `drawingTemplates`. |
 | `mountDrawingCoordinates(ctx, host, ids, why)` | function | (unreleased) The Coordinates tab on its own, for a host's own dialog: `ids()` names the drawings and `why()` is the reason they are read-only, or null. Returns a `DrawingCoordinatesHandle` (`el`, `refresh()`, `destroy()`). |
 | `DRAWING_COORDINATES_CSS` | const | (unreleased) Its rules, part of `WIDGET_COMPONENT_CSS`. |
 | `mountLevelEditor(ctx, anchor?, { ids? })` | function | Per-level ratio, colour and visibility for the fib and gann tools. |
@@ -1080,11 +1080,13 @@ widget.drawingTemplates?.templatesFor('trend-line');   // saved looks for one to
 time and a price. Times are on the chart's clock (`chart.timezone()`, IST unless the chart
 says otherwise), with seconds only when the anchor has them. Prices show at the pane's
 precision (two decimals at least) when that is exact, and in full when it is not. A row is
-written when it changes (Enter, or leaving a field), after it validates, as one
-`draw.update` and so one undo step; a field left as shown keeps its exact value. A date that
-names no day, a time that does not read, a price that is not a number, and a price at or
-below zero on a logarithmic scale are refused with the reason (`aria-invalid`), writing
-nothing. A drawing pinned to the screen and a freehand stroke list no anchors, with a note.
+written on Enter or when the focus leaves the row, after it validates, as one `draw.update`
+and so one undo step; a field left as shown keeps its exact value. Not on `change`: a date
+or time field reports one for each segment typed, and each would be a step of its own. A
+date that names no day, a time that does not read, a price that is not a number, and a
+price at or below zero on a logarithmic scale are refused with the reason (`aria-invalid`),
+writing nothing. A drawing pinned to the screen and a freehand stroke list no anchors, with
+a note.
 
 **Objects panel.** Each pane lists back to front (a hint line says so), a draggable row
 carries a grip, and Alt with ArrowUp or ArrowDown on a row moves it one step the way

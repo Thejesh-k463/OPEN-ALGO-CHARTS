@@ -264,6 +264,42 @@ test('the coordinates tab shows each anchor on the chart clock and moves it to a
   expect(errors).toEqual([]);
 });
 
+test('a date typed into the coordinates tab moves the anchor once, when the focus leaves the row', async ({ page, browserName }) => {
+  const errors = await mount(page);
+  await select(page, 'trend');
+  await page.locator('.oac-drawbar [data-drawbar="more"]').click();
+  await page.getByRole('menuitemradio', { name: 'Properties...' }).click();
+  const dialog = page.locator('.oac-props');
+  await dialog.getByRole('tab', { name: 'Coordinates' }).click();
+  const anchor = await style(page, 'trend');
+  const steps = () => page.evaluate(() => window.__drawUi.widget.draw.historySteps().undo.length);
+  const before = await steps();
+  const row = dialog.locator('.oac-coords__row').nth(0);
+  const date = row.locator('.oac-coords__date');
+  const shown = await date.inputValue();
+  const target = `2025${shown.slice(4)}`;
+  if (browserName === 'webkit') {
+    // This engine lays a date field out as plain text here, so it takes the whole value.
+    await date.fill(target);
+  } else {
+    // Typed the way a person does, into the year segment (last in every order this runs
+    // in): the field reports each partial year, 0002, 0020 and 0202, on the way to 2025.
+    await date.click({ position: { x: 8, y: 8 } });
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.type('2025');
+  }
+  await expect(date).toHaveValue(target);
+  expect((await style(page, 'trend')).points[0].time).toBe(anchor.points[0].time);
+  // Across the row is still the same edit; out of it is one write and one step.
+  await row.locator('.oac-coords__time').focus();
+  expect((await style(page, 'trend')).points[0].time).toBe(anchor.points[0].time);
+  await dialog.locator('.oac-coords__row').nth(1).locator('.oac-coords__price').focus();
+  await expect.poll(async () => (await style(page, 'trend')).points[0].time).toBe(anchor.points[0].time - 365 * 86400);
+  expect(await steps()).toBe(before + 1);
+  expect(errors).toEqual([]);
+});
+
 test('the objects panel reorders by dragging a row and by Alt with an arrow key', async ({ page }, info) => {
   const errors = await mount(page);
   await page.evaluate(() => window.__drawUi.widget.openObjects());

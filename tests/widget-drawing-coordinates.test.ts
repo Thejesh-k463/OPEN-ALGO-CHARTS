@@ -44,6 +44,9 @@ const trend = (w: Widget, extra: Record<string, unknown> = {}) => w.draw.add({
   points: [{ time: bars[12].time, price: bars[12].low }, { time: bars[48].time, price: 2471.123456 }], ...extra,
 });
 
+/** Take the focus out of the dialog, as a click on the chart does. */
+const leave = (w: Widget): void => { (w.root.querySelector('.oac-chart') as unknown as FakeElement).focus(); };
+
 function open(w: Widget, ids: string[]) {
   const dialog = mountDrawingProperties(w.context, undefined, { ids, tab: 'coordinates' });
   const el = dialog.el as unknown as FakeElement;
@@ -120,8 +123,9 @@ describe('the coordinates tab', () => {
     // The time was not touched, so it did not move by a rounding.
     expect(w.draw.get(d.id)!.points[1].time).toBe(bars[48].time);
     const first = row(d.id, 0);
+    first.time.focus();
     first.time.value = '10:45';
-    fire(first.time, 'change');
+    leave(w);
     const expected = zonedWallClockToUtcSeconds(...(first.date.value.split('-').map(Number) as [number, number, number]), 10, 45, 0, 'Asia/Kolkata');
     expect(w.draw.get(d.id)!.points[0].time).toBe(expected);
     // The unedited price stays exactly as placed, not rounded to the field.
@@ -146,17 +150,60 @@ describe('the coordinates tab', () => {
     expect(first.error.hidden).toBe(false);
     expect(first.error.textContent).toBe('Enter a price as a number');
     first.price.value = formatAnchorPrice(bars[12].low, 2);
+    first.date.focus();
     first.date.value = '2026-02-30';
-    fire(first.date, 'change');
+    leave(w);
     expect(first.date.getAttribute('aria-invalid')).toBe('true');
     expect(first.time.getAttribute('aria-invalid')).toBeNull();
     first.date.value = '2026-09-14';
+    first.time.focus();
     first.time.value = '9 am';
-    fire(first.time, 'change');
+    leave(w);
     expect(first.time.getAttribute('aria-invalid')).toBe('true');
     expect(first.error.textContent).toBe('Enter a date and a time on the chart clock');
     expect(JSON.stringify(w.draw.get(d.id)!.points)).toBe(before);
     expect(w.draw.historySteps().undo).toHaveLength(steps);
+  });
+
+  it('writes a row once, when the focus leaves it, however many changes its fields report on the way', () => {
+    const { w } = make();
+    const d = trend(w);
+    const steps = w.draw.historySteps().undo.length;
+    const { row } = open(w, [d.id]);
+    const first = row(d.id, 0);
+    const day = first.date.value.slice(0, 8);
+    first.date.focus();
+    // A date field typed segment by segment reports every value it passes
+    // through, the years 0002, 0020 and 0202 among them.
+    for (const typed of ['0002', '0020', '0202', '2026']) {
+      first.date.value = `${typed}${first.date.value.slice(4)}`;
+      fire(first.date, 'input');
+      fire(first.date, 'change');
+    }
+    first.date.value = `${day}15`;
+    fire(first.date, 'change');
+    // Across the row is still the same edit.
+    first.time.focus();
+    first.time.value = '11:05';
+    fire(first.time, 'change');
+    first.price.focus();
+    first.price.value = '2,455.5';
+    fire(first.price, 'change');
+    expect(w.draw.get(d.id)!.points[0]).toEqual({ time: bars[12].time, price: bars[12].low });
+    leave(w);
+    const [y, m] = day.split('-').map(Number);
+    expect(w.draw.get(d.id)!.points[0]).toEqual({ time: zonedWallClockToUtcSeconds(y, m, 15, 11, 5, 0, 'Asia/Kolkata'), price: 2455.5 });
+    expect(w.draw.historySteps().undo).toHaveLength(steps + 1);
+    // Enter writes too, and the field then shows where the anchor landed.
+    first.price.focus();
+    first.price.value = '2,460.2';
+    fireKey(first.price, 'Enter');
+    expect(w.draw.get(d.id)!.points[0].price).toBe(2460.2);
+    expect(first.price.value).toBe('2460.20');
+    expect(w.draw.historySteps().undo).toHaveLength(steps + 2);
+    // Leaving a row with nothing changed writes nothing.
+    leave(w);
+    expect(w.draw.historySteps().undo).toHaveLength(steps + 2);
   });
 
   it('refuses a price at or below zero on a logarithmic scale', () => {
