@@ -36,3 +36,6 @@ export const BEHIND_GLYPH = 'M3 13h10M8 2v7M5 6l3 3 3-3';
 
 /** Fit every bar: a double arrow across. */
 export const FIT_GLYPH = 'M2 8h12M5 5 2 8l3 3M11 5l3 3-3 3';
+
+/** A row that can be dragged: two columns of dots, the handle a hand reaches for. */
+export const GRIP_GLYPH = 'M6 4v0M10 4v0M6 8v0M10 8v0M6 12v0M10 12v0';

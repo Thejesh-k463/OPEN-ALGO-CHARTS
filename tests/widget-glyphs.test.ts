@@ -12,12 +12,13 @@
 import { describe, it, expect } from 'vitest';
 import { CHROME_ICON_STROKE, CHROME_ICON_ATTRS } from '../src/draw/icons';
 import { glyphSvg } from '../src/widget/form';
-import { ABOVE_GLYPH, BEHIND_GLYPH, FIT_GLYPH, STYLE_GLYPH, TAB_GLYPH } from '../src/widget/glyphs';
+import { ABOVE_GLYPH, BEHIND_GLYPH, FIT_GLYPH, GRIP_GLYPH, STYLE_GLYPH, TAB_GLYPH } from '../src/widget/glyphs';
 import { clotted, coords, subpaths } from './helpers/icon-geometry';
 
 const GLYPHS: [string, string][] = [
   ...Object.entries(TAB_GLYPH).map(([id, d]): [string, string] => [`tab ${id}`, d]),
   ['style', STYLE_GLYPH], ['above', ABOVE_GLYPH], ['behind', BEHIND_GLYPH], ['fit', FIT_GLYPH],
+  ['grip', GRIP_GLYPH],
 ];
 
 describe('the widget-local glyphs', () => {
