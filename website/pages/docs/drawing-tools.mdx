@@ -426,6 +426,7 @@ presses, these read the keys held during a click or a drag.
 |---|---|---|
 | Ctrl | Place an anchor, or drag a handle or a shape: the strong magnet while held, whatever `magnet` is set to | `gestures: { snapModifier: false }` |
 | Shift | Click empty chart space with no tool armed: a [temporary measure](#temporary-measure) | `gestures: { measure: false }` |
+| Ctrl | Drag on empty chart space with no tool armed: [box select](#box-select); add Shift to add to the selection | `gestures: { boxSelect: false }` |
 
 Every gesture is on by default. A host whose own chart gestures already use one of these keys
 turns it off through `gestures` (a `DrawingGestureOptions`), at construction or later with
@@ -466,6 +467,20 @@ const action = keyToDrawingAction(e, {
   placing: draw.activeTool() !== null || draw.measuring(),
 });
 ```
+
+### Box select
+
+Hold Ctrl and drag on empty chart space: every drawing on that pane the box touches is
+selected, and the selection follows the box as it grows. Hold Shift as well to add to what
+was already selected. The box touches a drawing where it meets the drawing's lines, levels,
+fills or labels, the places a click would select it, so a trend line crossing the box is
+selected though neither of its ends is inside. Hidden, locked and unselectable drawings stay
+out, as they do for a click.
+
+A drag on empty space normally pans the chart. While Ctrl is held over empty space, the
+controller puts the chart in placement mode so the press draws the box instead, and hands
+the pan back as soon as Ctrl is let go or the pointer moves onto a drawing. A Ctrl+click that
+never becomes a drag is unchanged, and a Ctrl+drag that starts on a drawing moves it.
 
 ## Drawing policies
 

@@ -35,6 +35,7 @@ import { InputAnchors, type InputAnchorHost, type InputAnchorStep } from './inpu
 import { DrawingScreen, within, type PaneProjection, type PointerSample } from './screen';
 import { barAt, magnetModeOf, magnetPoint, type SnapBar } from './snap';
 import { DrawingGestures, type GestureKeys } from './gestures';
+import { GestureLayer } from './gesture-layer';
 
 /**
  * The slice of the chart this controller needs.
@@ -204,6 +205,14 @@ export interface DrawingGestureOptions {
    * never a drawing: not saved, not an undo step, never linked.
    */
   measure?: boolean;
+  /**
+   * Ctrl plus a drag on empty chart space, with no tool armed: a box that
+   * selects every drawing whose geometry it touches, as a click there would
+   * find it, leaving out drawings that are hidden, locked or unselectable.
+   * Shift held as well adds them to the selection. While Ctrl is held over
+   * empty space the chart is in placement mode, so the press is not a pan.
+   */
+  boxSelect?: boolean;
 }
 
 /** How `DrawingController.setTool` arms a tool. */
@@ -330,7 +339,7 @@ interface CrosshairPayload extends PointerFacts {
  */
 interface PaneLayers {
   bottom: DrawingLayer;
-  top: DrawingLayer;
+  top: GestureLayer;
   series: Map<string, DrawingLayer>;
 }
 
@@ -383,8 +392,9 @@ type ControllerOptions = Required<Omit<DrawingControllerOptions, 'defaultStyle' 
 const gesturesOf = (base: Required<DrawingGestureOptions>, patch: DrawingGestureOptions = {}): Required<DrawingGestureOptions> => ({
   snapModifier: patch.snapModifier ?? base.snapModifier,
   measure: patch.measure ?? base.measure,
+  boxSelect: patch.boxSelect ?? base.boxSelect,
 });
-const ALL_GESTURES: Required<DrawingGestureOptions> = { snapModifier: true, measure: true };
+const ALL_GESTURES: Required<DrawingGestureOptions> = { snapModifier: true, measure: true, boxSelect: true };
 
 // `external` is a step of the history that is not a drawing edit, a study
 // anchor's drag: its snapshots are the drawings as they stood, unchanged by it.
@@ -416,7 +426,7 @@ export class DrawingController {
   private readonly _clipboard: DrawingClipboard;
   /** Every conversion between data space and the screen. */
   private readonly _screen: DrawingScreen;
-  /** The gestures that make no drawing: the temporary measure. */
+  /** The gestures that make no drawing: the temporary measure and box select. */
   private readonly _gestures: DrawingGestures;
   private readonly _layers = new Map<number, PaneLayers>();
   private _drawings: Drawing[] = [];
@@ -446,6 +456,8 @@ export class DrawingController {
   private _shift = false;
   /** Ctrl or Cmd as of the last pointer report: the strong magnet while held. */
   private _strong = false;
+  /** Placement mode as this controller last set it. */
+  private _placing = false;
   /** The device behind the last pointer report, for target sizing. */
   private _pointerKind: DrawingPointerKind = 'mouse';
   /** Snapshots for undo/redo; each is a full drawing list (they are small). */
@@ -496,6 +508,12 @@ export class DrawingController {
       style: () => this._opts.defaultStyle,
       preview: () => this._syncPreview(),
       emit: (event, payload) => this._chart.emit(event, payload),
+      drawings: () => this._drawings,
+      selection: () => this._selection,
+      select: (ids) => this.select(ids),
+      layer: (pane) => this._layers.get(pane)?.top,
+      plotRect: (pane) => this._chart.plotRect?.(pane) ?? null,
+      placement: () => { if (!this._destroyed && this._placementWanted() !== this._placing) this._setPlacementMode(!this._placing); },
     });
     this._opts = {
       magnet: magnetModeOf(options.magnet),
@@ -521,6 +539,8 @@ export class DrawingController {
     this._off.push(chart.on('data:context', () => { this.cancelDrag(); this._gestures.reset(); }));
     this._off.push(chart.on('dblclick', () => { this.finish(); }));
     this._off.push(chart.on('drawings:restore', document => this.fromJSON(document)));
+    this._off.push(chart.on('pick:start', () => this._gestures.picking(true)));
+    this._off.push(chart.on('pick:end', () => this._gestures.picking(false)));
     // Restore anything a previous session left in the chart state. A 1.9.x
     // save is a bare array; the migration upgrades it in place.
     const saved = chart.drawingState();
@@ -573,7 +593,7 @@ export class DrawingController {
     this._tool = toolId;
     this._toolSpace = space;
     this._pending = [];
-    this._setPlacementMode(toolId !== null);
+    this._setPlacementMode(this._placementWanted());
     this._syncPreview();
     this._syncSnapRing();
     this._emitTool();
@@ -594,8 +614,14 @@ export class DrawingController {
    * Guarded so a base bundle predating `setPlacementMode` still loads the tier.
    */
   private _setPlacementMode(active: boolean): void {
+    this._placing = active;
     const chart = this._chart as unknown as { setPlacementMode?: (a: boolean) => void };
     chart.setPlacementMode?.(active);
+  }
+
+  /** Placement mode is the armed tool's, and a gesture's that needs the press. */
+  private _placementWanted(): boolean {
+    return this._tool !== null || this._gestures.wantsPlacement();
   }
 
   public activeTool(): string | null {
@@ -1789,6 +1815,7 @@ export class DrawingController {
     this._lastBar = bar === null || barTime === null ? null : { time: barTime, ...bar };
     this._noteKeys(p);
     this._notePointer(p);
+    this._gestures.pointer({ paneIndex, point: p.point ?? null, pressed: p.pressed === true, keys: keysOf(p) });
     // The pointer left the plot: nothing is under it any more.
     if (time === null && price === null) this._setHovered(null);
     // Freehand tools ink while the pointer is held rather than on clicks.
@@ -1806,6 +1833,7 @@ export class DrawingController {
   /** The chart's hit-test answer for the pointer position, whenever it changes. */
   private _onHover(p: { id?: string | null }): void {
     const id = p.id ?? null;
+    this._gestures.hover(id);
     const hit = id !== null && id.startsWith('draw:') ? id.slice('draw:'.length).split('#')[0] : null;
     // What cannot be selected is not a target for the keys either.
     this._setHovered(hit !== null && this._selectable(hit) ? hit : null);
@@ -1892,7 +1920,7 @@ export class DrawingController {
     if (!this._opts.stayInDrawingMode) {
       this._tool = null;
       this._toolSpace = 'data';
-      this._setPlacementMode(false);   // hand panning back to the chart
+      this._setPlacementMode(this._placementWanted());   // hand panning back to the chart
     }
     this._syncPreview();
     this._syncSnapRing();
@@ -1955,7 +1983,7 @@ export class DrawingController {
     if (!hadPending || !this._opts.stayInDrawingMode) {
       this._tool = null;
       this._toolSpace = 'data';
-      this._setPlacementMode(false);
+      this._setPlacementMode(this._placementWanted());
       this._syncPreview();
       this._syncSnapRing();
       this._chart.emit('draw:tool', { tool: null });
@@ -2297,7 +2325,7 @@ export class DrawingController {
   private _layerFor(paneIndex: number): PaneLayers {
     let pair = this._layers.get(paneIndex);
     if (pair === undefined) {
-      pair = { bottom: new DrawingLayer('bottom'), top: new DrawingLayer('top'), series: new Map() };
+      pair = { bottom: new DrawingLayer('bottom'), top: new GestureLayer(), series: new Map() };
       this._chart.addPrimitive(pair.bottom, paneIndex);
       this._chart.addPrimitive(pair.top, paneIndex);
       pair.top.setBelow(pair.bottom);

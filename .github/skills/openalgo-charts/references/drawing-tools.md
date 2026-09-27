@@ -1107,6 +1107,7 @@ it flag by flag.
 |---|---|---|
 | Ctrl held | placing an anchor, dragging a handle or a shape: the strong magnet while held | `snapModifier` |
 | Shift+click | empty chart space, no tool armed: a temporary measure | `measure` |
+| Ctrl+drag | empty chart space, no tool armed: box select (Ctrl+Shift+drag adds to the selection) | `boxSelect` |
 
 ### The magnet everywhere (unreleased)
 
@@ -1158,4 +1159,35 @@ Escape to `cancel` only while `placing` is true, so a host that routes keys
 through it passes `placing: draw.activeTool() !== null || draw.measuring()`.
 Shift+click keeps its other meanings: on a drawing it adds to the selection,
 and with a tool armed Shift is the angle lock.
+
+### Box select (unreleased)
+
+Ctrl plus a drag on empty chart space, with no tool armed, draws a box on the
+pane it started on and selects every drawing on that pane the box touches,
+live as the box grows (a box whose sampling would cost more than a frame's
+budget selects once, on release). With Shift held as well it adds to the
+selection the drag started with; without, it replaces it.
+
+**Touches** means the box intersects the drawing's geometry, not merely an
+anchor: a line that crosses the box, a fib level inside it whose anchors are
+both outside, a filled shape the box sits inside, and a label all count. It is
+measured with the tool's own `distance`, the answer a click gets, sampled over
+the box finely enough that any part of a drawing inside it is found, to the
+6 px a click reaches; an outline the box sits wholly inside does not count,
+since a click there would not select it either. Hidden and locked drawings,
+and drawings whose policy sets `selectable: false`, stay out, as they do for a
+click; a read-only drawing selects, as it does for a click.
+
+The chart pans on a press over empty space, so the box is made ready before
+the press: while Ctrl is held over empty space (the chart's `hover` reports no
+hit and a `crosshair:move` carries Ctrl) with no tool armed and no pick
+waiting, the controller puts the chart in placement mode, and gives the pan
+back on the first report that no longer holds. The tier reads the keys from
+pointer reports only, so Ctrl pressed with the pointer standing still just
+before the press still pans; moving the pointer once with Ctrl held is enough.
+A Ctrl+click on empty space that
+never becomes a drag is the click it always was, and Ctrl+drag that starts on a
+drawing drags it (with the strong magnet). The box is painted by the pane's top
+layer (a `DrawingLayer` subclass), a dashed rim over a translucent fill in the
+theme's crosshair colour, and is gone on release.
 
