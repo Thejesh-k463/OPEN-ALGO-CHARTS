@@ -81,13 +81,14 @@ A whitespace item `{ time }` becomes a NaN bar: it claims a logical index, is sk
 - Line strokes are not rounded to whole device px, and use round caps and joins; `lineWidth` is honoured fractionally.
 - `volume-candle` scales the body by `volume / maxVisibleVolume` **of the currently visible bars**, clamped to `[0.05, 1]`, so the same bar changes width as you pan.
 
-## Lines across the edge of the view
+## Lines across the edge of the view (unreleased)
 
 The types that join each bar to the next (`line`, `line-markers`, `step`, `area`, `hlc-area`, `baseline`, and `kagi` from the transform tier) set `connectsBars` in the registry. Their renderers get the series' nearest bar beyond each edge of the view as well as the bars in it, so the segment that crosses an edge is drawn.
 
-- **A sparse series reaches the edges of the plot.** A level held from 09:20 to 09:40 on an axis that also carries five-second bars still spans the view once it starts at 09:30, and still spans it when none of its bars is in view at all. In 2.5.8 and before, the part entering from off screen was lost, and with no bar in view the whole line was.
+- **A sparse series reaches the edges of the plot.** A level held from 09:20 to 09:40 on an axis that also carries five-second bars still spans the view once the view starts at 09:30, and still spans it when none of its bars is in view at all. In 2.5.8 and before, the part entering from off screen was lost, and with no bar in view the whole line was.
 - **The segment is cut at the plot edge**, a few pixels out, before it is stroked or filled. The neighbour can be millions of pixels away, and neither backend walks a dash pattern, or builds GPU quads, over that distance.
 - **Dashes stay where they were.** A dashed or dotted line's pattern starts at its first bar in view, as it did before the neighbours were drawn at all, and the segments beyond the view are stroked apart from the bars' own path, so only the added segments are new pixels.
+- **A gap is never bridged.** When the bar on either side of an edge has no value (a whitespace item, or a study's NaN), the segment there is dropped, so neither the line nor a fill under it reaches out from the plot edge or across the gap. A `step` still holds its level up to a bar that is a gap, as it does in view.
 - **Nothing of the neighbour's own is drawn.** `line-markers` puts no dot on it, and autoscale still reads only the bars in view.
 - **Under the level of detail** the neighbours go straight to the renderer, unmerged; the columns in view merge exactly as they would without them.
 
