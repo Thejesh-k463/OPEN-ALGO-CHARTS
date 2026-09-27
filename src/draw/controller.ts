@@ -2304,10 +2304,10 @@ export class DrawingController {
       // Whole shape: translate every anchor of every selected shape by the
       // cursor delta. A shape on another pane cannot take the price delta (its
       // scale is a different quantity), so it takes the same screen distance.
-      let dt = p.time - start.from.time;
-      let dp = p.price - start.from.price;
-      ({ dt, dp } = this._pullShape(start, dt, dp) ?? { dt, dp });
-      const dy = this._screen.pixelDelta(start.from.price, start.from.price + dp, p.paneIndex);
+      const pull = this._pullShape(start, p.time - start.from.time, p.price - start.from.price);
+      const dt = pull?.dt ?? p.time - start.from.time;
+      const dp = pull?.dp ?? p.price - start.from.price;
+      const dy = this._screen.pixelDelta(start.from.price, pull === null ? p.price : start.from.price + dp, p.paneIndex);
       // A pinned shape takes the pointer's travel on screen, as a fraction of
       // its own pane, so it moves with the hand whatever the scales say.
       const at = this._screen.gesturePlot(p, p.paneIndex);

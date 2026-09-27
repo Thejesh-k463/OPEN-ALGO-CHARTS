@@ -37,9 +37,10 @@ export interface SnapBar {
 
 /**
  * The slice of the chart the magnet reads. Every member past the data layer
- * is optional: without the pixel mapping the weak magnet cannot judge
- * "close" and a study pane cannot be compared at all, and without the price
- * series or the studies there is nothing to snap to.
+ * is optional: without `priceToCoordinate` the weak magnet cannot judge
+ * "close" on the price pane, without a pane's own projection (`panes`) a
+ * study pane cannot be compared at all, and without the price series or the
+ * studies there is nothing to snap to.
  */
 export interface MagnetHost {
   readonly dataLayer: DataLayer;
