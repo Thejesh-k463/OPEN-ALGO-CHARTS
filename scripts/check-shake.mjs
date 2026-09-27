@@ -226,9 +226,12 @@ const BUNDLE = new URL('../dist/openalgo-charts.mjs', import.meta.url).pathname.
 // keep a frame from allocating per bar, the hit boxes behind the hit-test
 // prefilter, the time index kept across plot writes and the pane-scoped
 // repaint. 85883 bytes (83.87 KiB), up 3074; allow 83.88 KiB. Line-family
-// series carrying the bar beyond each edge of the view (connectsBars), 85954
-// bytes (83.94 KiB), up 71; allow 83.94 KiB.
-const LIMIT_BYTES = 83.94 * 1024;
+// series carrying the bar beyond each edge of the view (connectsBars), measured
+// alone at 85954 bytes (83.94 KiB), up 71. Counting how many series hold each
+// time, so the index changes only where a time enters or leaves it, measured
+// alone at 86112 bytes (84.09 KiB), up 229. Both together 86122 bytes
+// (84.10 KiB); allow 84.11 KiB.
+const LIMIT_BYTES = 84.11 * 1024;
 
 // Absent from a chart-only build. Each is a string that appears in the adapter
 // source and nowhere in the rendering core.
