@@ -423,6 +423,7 @@ step nowhere. See
 | `finish()` | Commit a `points: 0` tool at the anchors placed so far. Returns whether it committed. |
 | `cancel()` | Drop the anchors placed so far; disarms the tool unless `stayInDrawingMode` keeps it (a second call then disarms). Also ends a drag in hand or a temporary measure first. Returns whether anything changed. |
 | `measuring()` | Whether a temporary measure (Shift+click on empty space) is on the chart; `draw:measure` (`{ active }`) fires as one starts and goes. (unreleased) |
+| `setEraser(active)` / `erasing()` | Eraser mode: a click on a drawing deletes it, a drag deletes what it crosses, one undo step each; read-only, locked, unselectable and hidden drawings stay. Turning it on disarms any tool; `setTool`, `cancel()` and `setEraser(false)` turn it off. `draw:eraser` (`{ active }`) fires on each change. (unreleased) |
 | `popAnchor()` | Remove the last anchor of a `points: 0` tool still being placed (the Backspace of placement). Fixed-anchor and freehand tools have nothing to pop. |
 | `hovered()` | Id of the unselected drawing under the pointer, or `null`. Fed by the chart's `hover` event; `drawing:hover { id }` fires when it changes. |
 | `magnetMode()` | The resolved `MagnetMode` (`'off' | 'weak' | 'strong'`), after the boolean shorthand is mapped. |
@@ -445,7 +446,7 @@ step nowhere. See
 
 Events on the chart bus: `draw:tool`, `draw:add`, `draw:update`, `draw:remove`, `draw:select` (the primary id), `draw:copy`, `draw:cut`, `draw:paste`, plus the 2.0 pair `drawing:select` (`{ ids }`, the whole selection) and `drawing:change` (`{ ids, kind: 'add' | 'update' | 'remove' | 'reorder' }`, one per mutation, after the per-drawing `draw:*` events; `ids` is empty for a history step that changed no drawing, a study anchor's drag and its undo or redo), and `drawing:hover` (`{ id: string | null }`, when the unselected drawing under the pointer changes). `DrawingChangeKind` names the `kind` union.
 Events on the chart bus: `draw:tool`, `draw:add`, `draw:update`, `draw:remove`, `draw:select` (the primary id), `draw:copy`, `draw:cut`, `draw:paste`, plus the 2.0 pair `drawing:select` (`{ ids }`, the whole selection) and `drawing:change` (`{ ids, kind: 'add' | 'update' | 'remove' | 'reorder' }`, one per mutation, after the per-drawing `draw:*` events), and `drawing:hover` (`{ id: string | null }`, when the unselected drawing under the pointer changes). `DrawingChangeKind` names the `kind` union. `DrawingChangeEvent` names the whole payload: `linked: true` on a linked chart's commit, and `step` (2.5.6) on the change that closes a recorded undo step, the number `historySteps()` lists it under; a forced edit, a linked commit, a restore and an `undo`/`redo` carry none.
-The modifier gestures (unreleased) add `draw:measure` (`{ active }`), as a temporary measure starts and goes; see Modifier gestures.
+The modifier gestures (unreleased) add `draw:measure` (`{ active }`), as a temporary measure starts and goes, and `draw:eraser` (`{ active }`), as eraser mode turns on and off; see Modifier gestures.
 
 **The controller listens on `chart.on(...)`, not `subscribeClick` / `subscribeDrag`.** Those two are single-slot callbacks the host needs for its own order lines; routing drawings through the bus means the two never contend.
 
@@ -1209,4 +1210,28 @@ a pane removed) takes the copies back out and gives the selection back, with
 no step recorded. The magnet lands a copy the way it lands a moved shape, and
 Ctrl with Alt copies with the strong magnet. A handle drag with Alt is a
 handle drag.
+
+### Eraser mode (unreleased)
+
+`draw.setEraser(true)` turns eraser mode on: a click on a drawing deletes it,
+and a drag deletes every drawing it crosses, as one undo step when the pointer
+lets go (one `drawing:change`, `kind: 'remove'`, with every id). What it
+touches is measured the way a click is, within the grab radius of the path
+the pointer took (twice that for a touch), so a fast sweep takes a thin line
+it passed between two pointer reports. Drawings the drag has touched are left
+unpainted while it goes on and deleted on release; an interrupted drag (a
+change of data context, a restore) gives them back and records nothing. It
+takes only what the user could select and delete: a read-only drawing
+(`policy.editable: false`), a locked, an unselectable and a hidden one stay. A
+click on empty space does nothing.
+
+While it is on the chart is in placement mode, so a drag erases rather than
+pans, and the pane under the pointer shows a ring the size of the eraser's
+reach. Turning it on disarms any armed tool (`draw:tool` fires with `null`);
+`setTool` (with a tool or `null`), `cancel()` and `setEraser(false)` turn it
+off, and `draw:eraser` (`{ active }`) fires on each change. `erasing()` reads
+it. A host routing Escape through `keyToDrawingAction` passes
+`placing: draw.activeTool() !== null || draw.measuring() || draw.erasing()`
+so that Escape reaches `cancel()`. It is a mode, not a modifier, so it has no
+`gestures` flag: a host that offers no eraser control never turns it on.
 

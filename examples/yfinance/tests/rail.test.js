@@ -312,6 +312,50 @@ describe('magnet and stay', () => {
   });
 });
 
+describe('the eraser and the ruler', () => {
+  /** The fake controller, with the eraser and the ruler the rail reads. */
+  const withGestures = (d) => {
+    d.state.erasing = false;
+    d.state.measuring = false;
+    d.erasing = () => d.state.erasing;
+    d.measuring = () => d.state.measuring;
+    d.setEraser = (on) => { d.state.erasing = on; d.calls.push(['setEraser', on]); app.chart.emit('draw:eraser', { active: on }); };
+    return d;
+  };
+
+  it('the eraser button turns the mode on and off, and the cursor button stands against it', () => {
+    const d = withGestures(setup());
+    buildRail();
+    const eraser = page.rail.querySelector('.rail__btn--eraser');
+    const cursor = toolButtons(page)[0];
+    expect(eraser.getAttribute('aria-pressed')).toBe('false');
+    expect(cursor.getAttribute('aria-pressed')).toBe('true');
+    clickOn(eraser);
+    expect(names(d.calls, 'setEraser')).toEqual([['setEraser', true]]);
+    expect(eraser.getAttribute('aria-pressed')).toBe('true');
+    expect(eraser.classList.contains('is-on')).toBe(true);
+    expect(cursor.getAttribute('aria-pressed')).toBe('false');
+    clickOn(eraser);
+    expect(d.state.erasing).toBe(false);
+    expect(eraser.getAttribute('aria-pressed')).toBe('false');
+    expect(cursor.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('Escape reaches cancel() while the eraser or a ruler is up, and not otherwise', () => {
+    const d = withGestures(setup());
+    d.state.erasing = true;
+    pressKey('Escape');
+    expect(names(d.calls, 'cancel')).toHaveLength(1);
+    d.state.erasing = false;
+    d.state.measuring = true;
+    pressKey('Escape');
+    expect(names(d.calls, 'cancel')).toHaveLength(2);
+    d.state.measuring = false;
+    pressKey('Escape');
+    expect(names(d.calls, 'cancel')).toHaveLength(2);
+  });
+});
+
 describe('selection controls', () => {
   const byLabel = (label) => railButtons(page).find((b) => b.getAttribute('aria-label') === label);
 

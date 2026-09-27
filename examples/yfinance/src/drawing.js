@@ -38,6 +38,9 @@ export function attachDrawing() {
   app.chart.on('draw:measure', ({ active }) => {
     el('status').textContent = active ? 'measuring: click anywhere or press Esc to clear' : '';
   });
+  app.chart.on('draw:eraser', ({ active }) => {
+    el('status').textContent = active ? 'eraser: click or drag across drawings to delete them · Esc to stop' : 'eraser off';
+  });
   for (const ev of ['drawing:change', 'drawing:select']) app.chart.on(ev, syncDrawToolbar);
   syncDrawToolbar();
   // The properties bar follows the selection on its own (it subscribes to

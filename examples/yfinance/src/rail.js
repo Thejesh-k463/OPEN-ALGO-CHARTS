@@ -201,6 +201,26 @@ export function armCursor(box, tool) {
   else box.style.removeProperty('--tool-cursor');
 }
 
+// ── eraser ─────────────────────────────────────────────────────────────
+/**
+ * The eraser's glyph, on the chrome grid in the chrome stroke: a tilted
+ * block over the line it wipes. The tier ships no eraser glyph, so the rail
+ * draws its own, inline like the tier's.
+ */
+const ERASER_GLYPH = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" fill="none" '
+  + 'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+  + '<path d="M9 2.5l4.5 4.5-6 6H4.5L2.5 11zM5.75 5.75l4.5 4.5M9.5 14h4"/></svg>';
+
+const erasing = () => Boolean(app.draw && typeof app.draw.erasing === 'function' && app.draw.erasing());
+
+/** Eraser mode on the active chart's controller, or off. The controller disarms any tool. */
+export function setEraser(on) {
+  if (!app.draw || typeof app.draw.setEraser !== 'function') return;
+  setDrawLock(false);
+  app.draw.setEraser(on === true);
+  syncRail(app.draw.activeTool());
+}
+
 // ── magnet and stay ────────────────────────────────────────────────────
 export const magnetMode = () => prefs.magnet;
 
@@ -445,6 +465,20 @@ function controlsBlock() {
   });
   box.appendChild(ctl.magnet);
 
+  ctl.eraser = makeBtn({
+    cls: 'rail__btn--chrome rail__btn--eraser',
+    glyph: ERASER_GLYPH,
+    tip: () => ({
+      title: erasing() ? 'Eraser: on' : 'Eraser',
+      chord: erasing() ? 'Esc' : undefined,
+      sub: erasing() ? 'Click or drag across drawings to delete them. Click to stop'
+        : 'Click, then click or drag across drawings to delete them',
+      side: 'right',
+    }),
+    onClick: () => setEraser(!erasing()),
+  });
+  box.appendChild(ctl.eraser);
+
   ctl.stay = makeBtn({
     cls: 'rail__btn--chrome',
     glyph: chromeGlyph('link'),
@@ -575,6 +609,7 @@ export function refreshControls() {
   setState(ctl.magnet, { on: prefs.magnet === 'strong', pressed: prefs.magnet !== 'off' });
   ctl.magnet.classList.toggle('is-weak', prefs.magnet === 'weak');
   ctl.magnet.dataset.mode = prefs.magnet;
+  setState(ctl.eraser, { on: erasing(), pressed: erasing() });
   setState(ctl.stay, { on: prefs.stay, pressed: prefs.stay });
   const sel = d ? selectionOf(d) : [];
   // A read-only selection leaves these three nothing they could change.
@@ -661,6 +696,8 @@ function observe() {
     for (const ev of ['drawing:select', 'draw:select', 'drawing:change', 'draw:add', 'draw:remove', 'draw:update', 'draw:paste', 'draw:cut']) {
       c.on(ev, refreshControls);
     }
+    // The eraser is a mode the cursor button stands against, so both follow it.
+    c.on('draw:eraser', () => syncRail(app.draw ? app.draw.activeTool() : null));
     // The properties bar listens to the chart too, and the old chart is
     // gone: hand it the new one here, where the rebuild is first noticed.
     if (propertiesBar && typeof propertiesBar.attach === 'function') propertiesBar.attach();
@@ -674,7 +711,8 @@ export function syncRail(tool) {
   let armed = null;
   for (const b of rail.querySelectorAll('.rail__tool')) {
     const tools = (b.dataset.tools || '').split(',').filter(Boolean);
-    const on = tool === null ? tools.length === 0 : tools.includes(tool);
+    // The cursor is the mode with no tool armed and no eraser.
+    const on = tool === null ? tools.length === 0 && !erasing() : tools.includes(tool);
     b.classList.toggle('is-on', on);
     b.classList.toggle('is-held', on && latch && tools.length > 0);
     b.setAttribute('aria-pressed', String(on));
@@ -773,8 +811,9 @@ function onGlobalKey(e) {
     hasSelection: d.selected() !== null,
     hasTarget: typeof d.hovered === 'function' && d.hovered() !== null,
     editingText: false,
-    // A ruler on the chart takes Escape the way a tool being placed does.
-    placing: d.activeTool() !== null || (typeof d.measuring === 'function' && d.measuring()),
+    // A ruler or the eraser takes Escape the way a tool being placed does.
+    placing: d.activeTool() !== null || (typeof d.measuring === 'function' && d.measuring())
+      || (typeof d.erasing === 'function' && d.erasing()),
   });
   if (!action) {
     // The focused chart's alert is a fallback only after drawing ownership.

@@ -3,6 +3,8 @@
  * empty chart space lays down a ruler for a moment: a preview of the measure
  * tool from the click to the pointer, gone on the next click or on Escape.
  * Ctrl+drag on empty space draws a box that selects every drawing it touches.
+ * The eraser, a mode rather than a modifier, deletes what a click or a drag
+ * touches, as one undo step when the pointer lets go.
  *
  * Nothing here enters the model. A ruler is a preview, painted in the slot a
  * shape being placed uses, so it is never saved, never an undo step, never
@@ -22,7 +24,7 @@ import type { Drawing, DrawingPoint, DrawingStyle } from './types';
 import { getDrawingTool, hasDrawingTool } from './tools';
 import type { DrawingGestureOptions } from './controller';
 import type { GestureLayer } from './gesture-layer';
-import { boxSamples, normalizeBox, touchesBox } from './hit-geometry';
+import { boxSamples, normalizeBox, touchesBox, touchesPath } from './hit-geometry';
 
 /** The modifier keys a pointer report carried. `mod` is Ctrl or Cmd. */
 export interface GestureKeys {
@@ -49,6 +51,8 @@ export interface GesturePointer {
   point: { x: number; y: number } | null;
   pressed: boolean;
   keys: GestureKeys;
+  /** A fingertip: the eraser reaches as far as a touch grabs. */
+  touch: boolean;
 }
 
 /** Where the pointer is, in data space, on which pane. */
@@ -76,8 +80,12 @@ export interface GestureHost {
   /** The selection, and a replacement of it. */
   selection(): readonly string[];
   select(ids: readonly string[]): void;
-  /** A pane's top layer, when one has been made. */
-  layer(paneIndex: number): GestureLayer | undefined;
+  /** A pane's top layer, made on first use when `make` is set. */
+  layer(paneIndex: number, make?: boolean): GestureLayer | undefined;
+  /** Leave these drawings unpainted until told otherwise: what an eraser drag has touched. */
+  hide(ids: ReadonlySet<string>): void;
+  /** Delete these drawings, as one undo step. */
+  erase(ids: readonly string[]): void;
   /** A pane's plot in container px, or null for one with no plot on screen. */
   plotRect(paneIndex: number): PlotRect | null;
   /** What `wantsPlacement` answers may have changed: read it again. */
@@ -113,6 +121,14 @@ interface Box {
 
 const within = (v: number, size: number): number => Math.min(Math.max(v, 0), size);
 
+/**
+ * What the eraser may take: what the user could select and delete. A hidden
+ * drawing is not under the pointer, a locked or unselectable one cannot be
+ * picked, and a read-only one cannot be deleted by the user at all.
+ */
+const erasable = (d: Drawing): boolean =>
+  d.visible !== false && d.locked !== true && d.policy?.selectable !== false && d.policy?.editable !== false;
+
 /** The id of the ruler's preview. It is never a drawing, so it never collides with one. */
 const RULER_ID = '__measure';
 
@@ -132,6 +148,11 @@ export class DrawingGestures {
   private _ready = false;
   /** Swallow the release half of the gesture just finished. */
   private _swallow = false;
+  private _eraser = false;
+  /** An eraser drag: where it last was on its pane, in plot px, and what it has touched. */
+  private _sweep: { pane: number; last: { x: number; y: number }; ids: Set<string> } | null = null;
+  /** The pane the eraser's ring is on. */
+  private _ringPane: number | null = null;
 
   public constructor(host: GestureHost) {
     this._host = host;
@@ -154,6 +175,7 @@ export class DrawingGestures {
     if (this._box !== null) return this._boxClick(p);
     if (this._swallow && p.viaDrag === true) { this._swallow = false; return true; }
     this._swallow = false;
+    if (this._eraser) return this._eraserClick(p);
     if (this.endMeasure()) return true;
     const { shift, mod, alt } = p.keys;
     if (!this._host.options().measure || this._host.tool() !== null || p.id !== null || p.viaDrag === true
@@ -201,6 +223,95 @@ export class DrawingGestures {
   public reset(): void {
     this.endMeasure();
     this._dropBox();
+    this._dropSweep();
+  }
+
+  // ── eraser ──────────────────────────────────────────────────────────────
+
+  public erasing(): boolean {
+    return this._eraser;
+  }
+
+  /** Turn eraser mode on or off. True when that changed anything. */
+  public setEraser(active: boolean): boolean {
+    if (active === this._eraser) return false;
+    this._dropSweep();
+    this._eraser = active;
+    if (!active) this._ring(null);
+    this._host.placement();
+    this._host.emit('draw:eraser', { active });
+    return true;
+  }
+
+  /**
+   * A click in eraser mode is the eraser's, whatever it lands on. The press
+   * half of a drag ends the sweep, and its release half is swallowed; a click
+   * with no drag deletes the drawing it hit, and one on empty space nothing.
+   */
+  private _eraserClick(p: GestureClick): boolean {
+    if (this._sweep !== null) {
+      this._commitSweep();
+      this._swallow = p.viaDrag !== true;
+      return true;
+    }
+    if (p.viaDrag !== true && p.id !== null && p.id.startsWith('draw:')) {
+      const id = p.id.slice('draw:'.length).split('#')[0];
+      const d = this._host.drawings().find((x) => x.id === id);
+      if (d !== undefined && erasable(d)) this._host.erase([id]);
+    }
+    return true;
+  }
+
+  /** A pointer report in eraser mode: the ring follows it, and a pressed one sweeps. */
+  private _eraserPointer(p: GesturePointer): void {
+    const rect = p.paneIndex === null || p.point === null ? null : this._host.plotRect(p.paneIndex);
+    if (rect === null || p.paneIndex === null || p.point === null) { this._ring(null); return; }
+    const at = { x: p.point.x - rect.left, y: p.point.y - rect.top };
+    const reach = p.touch ? REACH * 2 : REACH;
+    this._ring(p.paneIndex, at, reach);
+    if (!p.pressed) {
+      this._commitSweep();   // the release went unreported
+      this._over = { pane: p.paneIndex, x: p.point.x, y: p.point.y };
+      return;
+    }
+    let sweep = this._sweep;
+    if (sweep === null || sweep.pane !== p.paneIndex) {
+      // A press lands where the pointer last hovered: the chart reports no press.
+      const from = sweep === null && this._over?.pane === p.paneIndex ? { x: this._over.x - rect.left, y: this._over.y - rect.top } : at;
+      sweep = this._sweep = { pane: p.paneIndex, last: from, ids: sweep?.ids ?? new Set() };
+    }
+    const rc = this._host.layer(sweep.pane)?.context() ?? null;
+    if (rc !== null) {
+      const before = sweep.ids.size;
+      for (const d of this._host.drawings()) {
+        if (d.paneIndex === sweep.pane && !sweep.ids.has(d.id) && erasable(d) && touchesPath(d, rc, sweep.last, at, reach)) sweep.ids.add(d.id);
+      }
+      if (sweep.ids.size !== before) this._host.hide(sweep.ids);
+    }
+    sweep.last = at;
+  }
+
+  /** Delete what the sweep touched, as one step. */
+  private _commitSweep(): void {
+    const sweep = this._sweep;
+    if (sweep === null) return;
+    this._sweep = null;
+    if (sweep.ids.size > 0) this._host.erase([...sweep.ids]);
+    this._host.hide(new Set());
+  }
+
+  /** Give back what an interrupted sweep hid, deleting nothing. */
+  private _dropSweep(): void {
+    if (this._sweep === null) return;
+    this._sweep = null;
+    this._host.hide(new Set());
+  }
+
+  /** Put the eraser's ring on `pane` at `at`, or take it off. */
+  private _ring(pane: number | null, at?: { x: number; y: number }, radius?: number): void {
+    if (this._ringPane !== null && this._ringPane !== pane) this._host.layer(this._ringPane)?.setRing(null);
+    this._ringPane = pane;
+    if (pane !== null && at !== undefined) this._host.layer(pane, true)?.setRing(at, radius);
   }
 
   // ── box select ──────────────────────────────────────────────────────────
@@ -219,15 +330,16 @@ export class DrawingGestures {
 
   /** Whether a gesture needs the chart's press: a box in hand, or one ready to start. */
   public wantsPlacement(): boolean {
-    this._ready = this._box === null && this._host.options().boxSelect && this._host.tool() === null
+    this._ready = this._box === null && this._host.options().boxSelect && this._host.tool() === null && !this._eraser
       && this._measure === null && !this._picking && this._keys.mod && this._hit === null && this._over !== null;
-    return this._box !== null || this._ready;
+    return this._eraser || this._box !== null || this._ready;
   }
 
   /** A crosshair report: follow the keys and the hover position, and grow a box in hand. */
   public pointer(p: GesturePointer): void {
     this._swallow = false;
     this._keys = p.keys;
+    if (this._eraser) { this._eraserPointer(p); return; }
     if (this._box !== null) {
       // Past the plot the chart reports no point; the box waits for the pointer's return.
       if (p.point === null) return;

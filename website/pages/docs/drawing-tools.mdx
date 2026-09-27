@@ -350,6 +350,7 @@ chart has a different interval loaded.
 | `setOptions(patch)` | `magnet`, `stayInDrawingMode`, `historyLimit`, `defaultStyle`, `pasteOffsetBars`, `pasteOffsetPixels`, `clipboard`, `gestures` (see [Modifier gestures](#modifier-gestures)). |
 | `cancel()` / `popAnchor()` | Drop the anchors placed so far (the tool disarms unless `stayInDrawingMode` keeps it), or take away a temporary measure; remove the last anchor of a variable-anchor shape still being placed. Escape and Backspace, once the host wires them. |
 | `measuring()` | Whether a [temporary measure](#temporary-measure) is on the chart. |
+| `setEraser(active)` / `erasing()` | [Eraser mode](#eraser-mode) on or off, and whether it is on. |
 | `hovered()` / `magnetMode()` | The unselected drawing under the pointer, or `null` (`drawing:hover { id }` fires when it changes); the resolved `'off' \| 'weak' \| 'strong'`. |
 | `destroy()` | Detach layers and listeners. |
 
@@ -367,7 +368,8 @@ button refreshes on the event it already listens to.
 closes a recorded undo step carries that step's number as `step`; a host's forced edit, a
 linked chart's commit, a restore and a move along the branches carry none
 (`DrawingChangeEvent` names the payload). `draw:measure` (`{ active }`) fires as a
-[temporary measure](#temporary-measure) starts and goes.
+[temporary measure](#temporary-measure) starts and goes, and `draw:eraser` (`{ active }`) as
+[eraser mode](#eraser-mode) turns on and off.
 
 <Callout type="info">
 The controller listens on the **event bus** (`click`, `crosshair:move`, `drag`, `drag:end`),
@@ -491,6 +493,23 @@ plain drag would move. The copy is one undo step, carries no policy, and reaches
 chart once, where it was dropped. A copy is only made once the pointer has moved a few
 pixels, so an unsteady click does not leave one hidden under the drawing, and Escape during
 the drag takes it back.
+
+### Eraser mode
+
+`draw.setEraser(true)` turns the pointer into an eraser: click a drawing to delete it, or drag
+across several to delete them all as one undo step. Drawings the drag touches disappear as it
+passes and are deleted when the pointer lets go. A read-only, locked, unselectable or hidden
+drawing survives it, and a click on empty space does nothing. While it is on, a drag erases
+instead of panning, and a ring at the pointer shows how far it reaches.
+
+Turning it on disarms any tool. Arming a tool, `cancel()` (Escape) and `setEraser(false)` turn
+it off, and `draw:eraser` (`{ active }`) fires on each change, so a toolbar button can follow
+it:
+
+```ts
+eraserButton.addEventListener('click', () => draw.setEraser(!draw.erasing()));
+chart.on('draw:eraser', ({ active }) => eraserButton.setAttribute('aria-pressed', String(active)));
+```
 
 ## Drawing policies
 

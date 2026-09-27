@@ -435,7 +435,7 @@ export class DrawingController {
   private readonly _clipboard: DrawingClipboard;
   /** Every conversion between data space and the screen. */
   private readonly _screen: DrawingScreen;
-  /** The gestures that make no drawing: the temporary measure and box select. */
+  /** The gestures that make no drawing: the temporary measure, box select and the eraser. */
   private readonly _gestures: DrawingGestures;
   private readonly _layers = new Map<number, PaneLayers>();
   private _drawings: Drawing[] = [];
@@ -467,6 +467,8 @@ export class DrawingController {
   private _strong = false;
   /** Placement mode as this controller last set it. */
   private _placing = false;
+  /** Drawings an eraser drag has touched: still in the model, left unpainted until it lets go. */
+  private _hidden: ReadonlySet<string> = new Set();
   /** The device behind the last pointer report, for target sizing. */
   private _pointerKind: DrawingPointerKind = 'mouse';
   /** Snapshots for undo/redo; each is a full drawing list (they are small). */
@@ -524,7 +526,9 @@ export class DrawingController {
       drawings: () => this._drawings,
       selection: () => this._selection,
       select: (ids) => this.select(ids),
-      layer: (pane) => this._layers.get(pane)?.top,
+      layer: (pane, make) => make === true ? this._layerFor(pane).top : this._layers.get(pane)?.top,
+      hide: (ids) => { this._hidden = ids; this._syncLayers(); },
+      erase: (ids) => { this._removeIds(ids, true); },
       plotRect: (pane) => this._chart.plotRect?.(pane) ?? null,
       placement: () => { if (!this._destroyed && this._placementWanted() !== this._placing) this._setPlacementMode(!this._placing); },
     });
@@ -603,6 +607,7 @@ export class DrawingController {
     }
     this.cancelDrag();
     this._gestures.reset();
+    this._gestures.setEraser(false);
     this._tool = toolId;
     this._toolSpace = space;
     this._pending = [];
@@ -667,6 +672,37 @@ export class DrawingController {
    */
   public measuring(): boolean {
     return this._gestures.measuring();
+  }
+
+  /**
+   * Eraser mode: a click on a drawing deletes it, and a drag deletes every
+   * drawing it crosses, as one undo step on release. What the user could not
+   * delete by selecting it (read-only, locked, unselectable or hidden) stays.
+   * While it is on the chart is in placement mode, so a drag erases rather
+   * than pans. Turning it on disarms any tool; arming a tool, `cancel()` and
+   * `setEraser(false)` turn it off. `draw:eraser` (`{ active }`) fires on
+   * each change.
+   */
+  public setEraser(active: boolean): void {
+    if (this._destroyed || active === this._gestures.erasing()) return;
+    if (active) {
+      this.cancelDrag();
+      this._gestures.reset();
+      if (this._tool !== null) {
+        this._tool = null;
+        this._toolSpace = 'data';
+        this._pending = [];
+        this._syncPreview();
+        this._syncSnapRing();
+        this._emitTool();
+      }
+    }
+    this._gestures.setEraser(active);
+  }
+
+  /** Whether eraser mode is on. */
+  public erasing(): boolean {
+    return this._gestures.erasing();
   }
 
   /**
@@ -1793,6 +1829,7 @@ export class DrawingController {
     if (this._destroyed) return;
     this.cancelDrag();
     this._gestures.reset();
+    this._gestures.setEraser(false);
     this._destroyed = true;
     this._linkedPreviews.clear();
     this._chart.emit('draw:destroy', { controller: this });
@@ -1829,7 +1866,7 @@ export class DrawingController {
     this._lastBar = bar === null || barTime === null ? null : { time: barTime, ...bar };
     this._noteKeys(p);
     this._notePointer(p);
-    this._gestures.pointer({ paneIndex, point: p.point ?? null, pressed: p.pressed === true, keys: keysOf(p) });
+    this._gestures.pointer({ paneIndex, point: p.point ?? null, pressed: p.pressed === true, keys: keysOf(p), touch: this._pointerKind === 'touch' });
     // The pointer left the plot: nothing is under it any more.
     if (time === null && price === null) this._setHovered(null);
     // Freehand tools ink while the pointer is held rather than on clicks.
@@ -1990,7 +2027,7 @@ export class DrawingController {
    * did nothing.
    */
   public cancel(): boolean {
-    if (this.cancelDrag() || this._gestures.endMeasure()) return true;
+    if (this.cancelDrag() || this._gestures.endMeasure() || this._gestures.setEraser(false)) return true;
     if (this._tool === null) return false;
     const hadPending = this._pending.length > 0;
     this._pending = [];
@@ -2433,6 +2470,7 @@ export class DrawingController {
     const byPane = new Map<number, { below: Drawing[]; above: Drawing[]; series: Map<string, Drawing[]> }>();
     const stacks = new Map<number, readonly string[]>();
     for (const committed of this._drawings) {
+      if (this._hidden.has(committed.id)) continue;
       const d = this._linkedPreviews.get(committed.id) ?? committed;
       let lists = byPane.get(d.paneIndex);
       if (lists === undefined) {
