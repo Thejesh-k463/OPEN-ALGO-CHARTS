@@ -2,7 +2,7 @@
 
 *When to read this: wiring or rebinding keyboard shortcuts, changing crosshair behaviour, supporting touch, arming a placement gesture, or making the chart keyboard-accessible.*
 
-Source of truth: `src/core/chart.ts` (`_attachInput` and the pointer/wheel/key handlers), `src/input/wheel.ts`, `src/input/shortcuts.ts`, `src/input/kinetic.ts`, `src/input/touch.ts`, `src/input/crosshair.ts`, `src/primitives/time-navigator.ts`. Tests: `tests/wheel-navigation.test.ts`, `tests/price-scale-transitions.test.ts`, `tests/shortcuts.test.ts`, `tests/interaction.test.ts`, `tests/pointer-button-guard.test.ts`, `tests/placement-mode.test.ts`, `tests/time-navigator.test.ts`.
+Source of truth: `src/core/chart-input.ts` (`_attachInput` and the pointer/wheel/key handlers; `src/core/chart.ts` keeps the listener fields that delegate to it), `src/core/chart-motion.ts` (the eased wheel zoom, the kinetic glide and the autoscale easing), `src/input/wheel.ts`, `src/input/shortcuts.ts`, `src/input/kinetic.ts`, `src/input/touch.ts`, `src/input/crosshair.ts`, `src/primitives/time-navigator.ts`. Tests: `tests/wheel-navigation.test.ts`, `tests/price-scale-transitions.test.ts`, `tests/shortcuts.test.ts`, `tests/interaction.test.ts`, `tests/pointer-button-guard.test.ts`, `tests/placement-mode.test.ts`, `tests/time-navigator.test.ts`.
 
 Everything is built on Pointer Events, so mouse, touch and pen share one code path. Listeners are attached to the container in the constructor and removed in `destroy()`; `keydown` goes on `document` when available, else on the container.
 
@@ -36,7 +36,7 @@ or Meta-wheel zooms at the pointer even when `zoomAnchor: 'right'` is configured
 inline in a scrolling page traps wheel movement while the pointer is over it; give it its
 own scroll region when the page must retain wheel scrolling.
 
-Kinetic scrolling: a release faster than `triggerSpeed` decelerates as `velocity(t) = v0 · e^(−k·t)`. `DEFAULT_KINETIC_OPTIONS` is `friction: 0.0055` (1/ms, larger stops sooner), `minSpeed: 0.02` px/ms (animation ends), `triggerSpeed: 0.08` px/ms (slower flicks ignored). `KineticAnimation` uses no `Date` or `rAF` internally, so it is deterministic; the next `pointerdown` cancels it.
+Kinetic scrolling: a release faster than `triggerSpeed` decelerates as `velocity(t) = v0 · e^(−k·t)`. `DEFAULT_KINETIC_OPTIONS` is `friction: 0.0055` (1/ms, larger stops sooner), `minSpeed: 0.02` px/ms (animation ends), `triggerSpeed: 0.08` px/ms (slower flicks ignored). `KineticAnimation` uses no `Date` or `rAF` internally, so it is deterministic; the next `pointerdown` cancels it. Since 2.5.8 the chart steps the kinetic glide and the eased wheel zoom at the top of its own render frame, before the study flush, and schedules no frames for them: each frame paints the step it made, a glide asks for one animation frame per frame, and its `pan` or `zoom` event fires in the frame that paints it.
 
 Pinch: a second pointer aborts any single-pointer drag. Each frame compares two `pinchState` snapshots (`factor` (distance ratio) zooms time at the midpoint, `dx` pans time, `dy` pans the pinched pane's price scale) all in the same frame, so spreading while sliding zooms and pans at once.
 

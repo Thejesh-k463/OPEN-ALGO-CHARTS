@@ -141,7 +141,7 @@ test('the main page hands a layout it cannot draw to the grid view, which opens 
   });
   await page.goto(ORIGIN + '/examples/yfinance/index.html?test=1');
   await page.waitForFunction(() => (window as any).__oac?.app.chart && !(window as any).__oac.app.loading);
-  const desk = deskOf([handPane('a', 'AAPL'), handPane('b', 'MSFT', '5y'), handPane('c', 'TSLA', '6mo'), handPane('d', 'NVDA')]);
+  const desk = deskOf([handPane('a', 'AAPL'), handPane('b', 'MSFT', 'max'), handPane('c', 'TSLA', '6mo'), handPane('d', 'NVDA')]);
   await page.getByRole('button', { name: 'Layouts', exact: true }).click();
   await page.locator('#ws-file').setInputFiles({ name: 'desk.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(desk)) });
   await expect(page.locator('#ws-notice')).toContainText('grid view');
@@ -151,8 +151,10 @@ test('the main page hands a layout it cannot draw to the grid view, which opens 
   await expect(page.locator('.oac-grid__cell')).toHaveCount(4);
   await expect(page.locator('#grid-status')).toContainText('Opened the layout from the main view: 4 charts');
   await expect(page.locator('.oac-grid__cell').nth(2)).toHaveAttribute('data-active', 'true');
-  // Each chart loads the history period the layout saved, or its interval's usual one.
-  await expect.poll(() => ['MSFT:5y', 'TSLA:6mo', 'NVDA:2y'].every(ask => asked.includes(ask)), { timeout: 20_000 }).toBe(true);
+  // Each chart loads the history period the layout saved, or its interval's usual one: a
+  // daily chart saved over six months is under 500 candles, so it loads five years too.
+  await expect.poll(() => ['MSFT:max', 'TSLA:5y', 'NVDA:5y'].every(ask => asked.includes(ask)), { timeout: 20_000 }).toBe(true);
+  expect(asked).not.toContain('TSLA:6mo');
   await expect(page.locator('.oac-grid__cell .oac-data-status').first()).not.toContainText('Loading');
   await page.screenshot({ path: info.outputPath('yfinance-grid-opened.png') });
   // The saved IBM desk was built first and then replaced. A feed that started
@@ -160,7 +162,7 @@ test('the main page hands a layout it cannot draw to the grid view, which opens 
   expect(asked.filter(ask => ask.startsWith('IBM:'))).toEqual([]);
   // The periods stay with the charts, so the saved grid and an exported layout carry them back.
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('oac-widget:yfinance-grid:grid')!).panes
-    .map((pane: { historyPeriod?: string }) => pane.historyPeriod ?? null))).toEqual([null, '5y', '6mo', null]);
+    .map((pane: { historyPeriod?: string }) => pane.historyPeriod ?? null))).toEqual([null, 'max', '6mo', null]);
   expect(errors).toEqual([]);
 });
 
@@ -181,11 +183,12 @@ test('a one or two chart layout the grid view exports opens on the main page', a
   await page.getByRole('button', { name: 'Layouts', exact: true }).click();
   await page.locator('#ws-file').setInputFiles(file);
   await expect(page.locator('#ws-current')).toHaveText('Current: Chart grid');
-  // The widget's weekly code opens as the page's own, beside the second chart.
+  // The widget's weekly code opens as the page's own, beside the second chart, which
+  // saved no period and so opens on the daily five years.
   await expect.poll(() => page.evaluate(() => {
     const app = (window as any).__oac.app;
     return app.chart2 && !app.workspaceLoading ? { primary: app.req, secondary: { symbol: app.p2.symbol, interval: app.p2.interval, period: app.p2.period } } : null;
-  }), { timeout: 20_000 }).toEqual({ primary: { symbol: 'AAPL', interval: '1wk', period: '1y' }, secondary: { symbol: 'MSFT', interval: '1d', period: '1y' } });
+  }), { timeout: 20_000 }).toEqual({ primary: { symbol: 'AAPL', interval: '1wk', period: '1y' }, secondary: { symbol: 'MSFT', interval: '1d', period: '5y' } });
   // Each chart shows its newest bars, not an empty plot: the grid view's window counted other bars.
   await page.getByRole('button', { name: 'Close', exact: true }).first().click();
   for (const key of ['chart', 'chart2']) await expect.poll(() => onNewest(page, key), { timeout: 20_000 }).toBe(true);

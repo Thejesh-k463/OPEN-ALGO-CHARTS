@@ -1,7 +1,7 @@
 import { parseWorkspacePayload, WorkspaceDocumentError } from '/dist/openalgo-charts.workspace.mjs';
 import { stripView } from '/dist/openalgo-charts.widget.mjs';
 import { primaryLayoutSelection, datasetKey, LAYOUT_SCHEMA } from './persist.js';
-import { clampPeriod, foldedInterval, PERIODS } from './intervals.js';
+import { clampPeriod, foldedInterval, PERIODS, PERIOD_DAYS } from './intervals.js';
 import { EXTENDED, extendedSessionAvailable } from './session.js';
 import { VOLUME_DEFAULTS, volumeValues } from './volume.js';
 import { normalizeLegendIconSize } from './chart-settings.js';
@@ -140,8 +140,14 @@ export function validateReferenceWorkspace(input) {
     }
     primaryLayoutSelection({ request: { symbol: pane.symbol, interval: pane.interval, period },
       chartType: pane.chartType, pfmode: pane.settings['reference.pfmode'], timezone: pane.chart.timezone });
-    if (clampPeriod(pane.interval, period) !== period) fail('The saved history period is unavailable at this interval');
-    pane.historyPeriod = period;
+    // A period longer than the interval can serve would reopen with less
+    // history than was saved, so it is refused. One shorter than the
+    // interval's floor (a daily chart saved over a year, before daily charts
+    // loaded five) reopens with more history and the same view, so it is
+    // raised to the floor.
+    const served = clampPeriod(pane.interval, period);
+    if (served !== period && PERIOD_DAYS[period] > PERIOD_DAYS[served]) fail('The saved history period is unavailable at this interval');
+    pane.historyPeriod = served;
     for (const key of Object.keys(pane.settings)) {
       if (!HOST_SETTINGS.includes(key) && !Object.prototype.hasOwnProperty.call(VOLUME_DEFAULTS, key)) {
         fail(`Unsupported workspace setting: ${key}`);

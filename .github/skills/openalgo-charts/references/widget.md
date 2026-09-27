@@ -86,6 +86,7 @@ Everything `src/widget/index.ts` exports at runtime. The shell (`createWidget` a
 | `DEFAULT_LOOKBACK_BARS` | const `500` | Bars per load when `lookbackBars` is not given. |
 | `SAVE_DEBOUNCE_MS` | const `250` | Debounce on writing the persisted layout. |
 | `STATE_KEY` | const `'state'` | The storage entry the layout lives under. |
+| `DRAWINGS_KEY_PREFIX` | const `'drawings:'` | (unreleased) With `persist`, each instrument's drawings live beside the layout under this prefix and the instrument key: `oac-widget:<namespace>:drawings:NSE:INFY`. |
 | `WIDGET_STATE_VERSION` | const `1` | `WidgetState.version`. |
 | `Widget`, `WidgetOptions`, `WidgetState`, `WidgetChartState`, `WidgetRestoreReport`, `WidgetEventName` | types | See the sections below. |
 | `mountMobile(ctx, options)` | function | Mount the narrow header, bottom bar and sheets against an existing `WidgetContext`. Returns `MobileHandle`. |
@@ -297,7 +298,7 @@ Color swatches stay compact. Theme overrides should target these tokens.
 | `exchange` | `string` | `''` | Passed to the feed with the symbol. |
 | `interval` | `string` | `'1d'` (or the saved one) | Must be a code the interval registry knows; an unknown code throws the engine's `UnknownIntervalError` at the call site. A saved code this build does not know falls back to `'1d'`. |
 | `intervals` | `readonly string[]` | `DEFAULT_INTERVALS` plus every registered code | The pill list. Each is validated the same way. |
-| `variant` | `DataVariant` | the feed's default series (or the saved one) | Which of the feed's series to show: `{ session: 'extended' }`, `{ adjustment: 'raw' }`, a currency or a unit. A malformed one throws a `TypeError` at the call site. The feed must declare it through `dataVariants`, or the data status reads "Not available from this source: ..." with no retry. Unreleased. |
+| `variant` | `DataVariant` | the feed's default series (or the saved one) | Which of the feed's series to show: `{ session: 'extended' }`, `{ adjustment: 'raw' }`, a currency or a unit. A malformed one throws a `TypeError` at the call site. The feed must declare it through `dataVariants`, or the data status reads "Not available from this source: ..." with no retry. Since 2.5.6. |
 | `chartType` | `string` | `'candlestick'` | The primary series type; must be a registered chart type. |
 | `theme` | `'dark' \| 'light' \| ChartTheme` | `'dark'` | Drives the canvas and the chrome tokens. Note the engine's own default is light; the widget's is dark. |
 | `rail` | `boolean \| RailOptions` | on | `false` hides it. `RailOptions.tools` restricts which ids appear (order still follows `RAIL_GROUPS`); `favorites` seeds the pins when nothing is stored. |
@@ -307,6 +308,8 @@ Color swatches stay compact. Theme overrides should target these tokens.
 | `indicators` | `boolean` | on | The Indicators button. |
 | `persist` | `boolean \| string` | off | `true` uses the `default` namespace; a string names one, so two widgets on a page keep separate layouts. |
 | `storage` | `StorageLike \| null` | the page's `localStorage` | The store behind `persist`. |
+| `drawingScope` | `'instrument' \| 'chart'` | `'instrument'` | (unreleased) Whose drawings the chart shows. `'instrument'`: each symbol and exchange keeps its own, swapped by `setSymbol`, a restored layout or a watchlist pick. `'chart'`: one set that stays whatever symbol is loaded, as before; `widget.instrumentDrawings` is then null. See Drawings per instrument, below. |
+| `drawingStore` | `DrawingDocumentStore` | beside the layout with `persist`, else in memory | (unreleased) Where each instrument's drawings are kept in `'instrument'` scope. Not a `ChartGridOptions` field: the grid gives each cell its own. |
 | `locale` | `string` | the runtime's | BCP 47 tag for the numbers on the status line. |
 | `symbolSearch` | `(query) => SymbolMatch[] \| Promise<SymbolMatch[]>` | none | Called as the user types in the symbol box, after `SEARCH_DEBOUNCE_MS`. |
 | `lookbackBars` | `number` | `DEFAULT_LOOKBACK_BARS` | Bars per load. |
@@ -346,6 +349,7 @@ ordinary hosts should let `createWidget` wire and destroy it.
 ```ts
 widget.chart;                        // Chart
 widget.draw;                         // DrawingController
+widget.instrumentDrawings;           // InstrumentDrawings, or null with drawingScope 'chart' (unreleased)
 widget.root;                         // the .oac-widget element
 widget.context;                      // the WidgetContext every mounted piece was handed
 widget.objects;                      // the owned base-tier ChartObjects inventory
@@ -374,7 +378,7 @@ widget.destroy();                    // saves if persisting, removes the chrome,
 widget.isDestroyed;
 ```
 
-`getState()` returns `{ version: 1, symbol, exchange, interval, chartType, theme, variant?, chart: chart.getState(), rail: RailPrefs | null }`; `variant` is present only for a non-default series, so a state without one (including every record saved before variants) restores onto the feed's default series, whatever variant the widget shows at the time, while one this build cannot read is refused before anything is applied. A persisted record whose variant this build cannot read opens on the default series without its saved view. The variant is part of the dataset, so a saved viewport lands only on the same variant too, and a `variant` bus event announces a change. The status line names a non-default variant (`.oac-statusline__variant`: localized "Regular hours", "Extended hours", "Adjusted prices", "Raw prices", then the provider's currency and unit names). `restoreState` validates field by field and returns `{ applied, reason?, chart?: RestoreReport }`; a saved viewport is applied only when the state was captured on the same symbol and interval, otherwise `stripView` drops it and the indicators, drawings and panes still land. With `persist`, the state is written under `oac-widget:<namespace>:state` (debounced by `SAVE_DEBOUNCE_MS`, flushed on `pagehide` and on `destroy`) and the rail's preferences under `oac-widget:<namespace>:rail`.
+`getState()` returns `{ version: 1, symbol, exchange, interval, chartType, theme, variant?, chart: chart.getState(), rail: RailPrefs | null }`; `variant` is present only for a non-default series, so a state without one (including every record saved before variants) restores onto the feed's default series, whatever variant the widget shows at the time, while one this build cannot read is refused before anything is applied. A persisted record whose variant this build cannot read opens on the default series without its saved view. The variant is part of the dataset, so a saved viewport lands only on the same variant too, and a `variant` bus event announces a change. The status line names a non-default variant (`.oac-statusline__variant`: localized "Regular hours", "Extended hours", "Adjusted prices", "Raw prices", then the provider's currency and unit names). `restoreState` validates field by field and returns `{ applied, reason?, chart?: RestoreReport }`; a saved viewport is applied only when the state was captured on the same symbol and interval, otherwise `stripView` drops it and the indicators and panes still land, and the drawings land on the state's own symbol (see Drawings per instrument). With `persist`, the state is written under `oac-widget:<namespace>:state` (debounced by `SAVE_DEBOUNCE_MS`, flushed on `pagehide` and on `destroy`) and the rail's preferences under `oac-widget:<namespace>:rail`.
 
 ### Objects panel
 
@@ -775,6 +779,48 @@ const report = grid.applyWorkspace(parseWorkspacePayload(fileText)); // { applie
   and BSE) reaches the followers.
 - Below `compactWidth` only the active cell shows, with a tab strip to switch; splitters
   hide. `CHART_GRID_CSS` is part of `WIDGET_COMPONENT_CSS`.
+
+## Drawings per instrument (unreleased)
+
+A widget keeps drawings per instrument by default (`drawingScope: 'instrument'`):
+a trend line drawn on one symbol stays with that symbol, comes back when it is
+loaded again, and a delete on another symbol leaves it alone. The widget builds
+the draw tier's `InstrumentDrawings` (see drawing-tools.md, Drawings per
+instrument) over `drawingStore`, or over its own storage with `persist`
+(`DRAWINGS_KEY_PREFIX`), or in memory. The swap follows the chart's data
+context, so `setSymbol`, the symbol box, quick entry, a watchlist row and a
+linked symbol in a grid all move the drawings with the instrument; an interval
+or a data variant keeps them.
+
+- **The layout.** `getState().chart.drawings` holds the drawings of
+  `getState().symbol` and `exchange`, the ones on screen, exactly as before.
+  `restoreState` of a layout for the symbol on screen replaces its drawings. A
+  layout for another symbol keeps the drawings on screen for the symbol they
+  belong to, stores the layout's for its own symbol, and then switches, so the
+  alerts the layout restores are judged against their own drawings.
+- **Migration.** A persisted layout from before (one drawing set, no per
+  instrument entries) holds the drawings of the symbol it was saved on: they
+  are attached to that symbol the first time the widget opens, so opening on
+  another symbol (`symbol` option) neither shows them there nor loses them.
+- **Undo.** A symbol change is not a step. The widget's `history` drops every
+  drawing step recorded before it, and the drawings a removed pane took with it,
+  so no Ctrl+Z on one symbol restores or removes a drawing of another; steps of
+  studies, panes, settings and the chart type stay, since those belong to the chart.
+- **Alerts.** An alert anchored to a drawing stays with that drawing's symbol:
+  kept and idle on another symbol (availability says the instrument context
+  differs), and evaluated again when its symbol is back.
+- **Failures.** A refused write shows "The drawings for {instrument} could not
+  be saved" on the status line (and the `status` event); the drawings stay for
+  the session and the next change tries again.
+- **Chart grid.** Each cell keeps its own documents, keyed by its pane id: two
+  cells on one symbol never overwrite each other's lines through one shared
+  entry. With the grid's `persist` the documents of the instruments a cell is
+  not showing are written beside the workspace, under `oac-widget:<namespace>:grid-drawings`;
+  the workspace payload itself still carries only what each chart shows. A cell
+  a preset drops takes its documents with it, and a workspace the host applies
+  starts each cell from its own payload.
+- **Keeping the old behaviour.** `drawingScope: 'chart'` keeps one drawing set
+  per widget (per cell in a grid), shown whatever symbol is loaded.
 
 ## Watchlist and news panels (2.5.5)
 

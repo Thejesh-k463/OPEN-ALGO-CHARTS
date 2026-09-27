@@ -38,6 +38,16 @@ export type {
 } from './analysis';
 export { DrawingLinkGroup, createDrawingLinkGroup } from './drawing-link';
 export type { DrawingLinkContext, DrawingLinkContextSource, DrawingLinkOptions, DrawingLinkChart } from './drawing-link';
+// Drawings per instrument. DOM-free: the store is the host's, localStorage
+// only when the host hands it over.
+export {
+  InstrumentDrawings, createInstrumentDrawings, instrumentDrawingsKey, memoryDrawingStore, webStorageDrawingStore,
+  migrateUnscopedDrawings,
+} from './instrument-drawings';
+export type {
+  DrawingInstrument, DrawingDocumentStore, DrawingTextStorage, InstrumentDrawingsChart, InstrumentDrawingsError,
+  InstrumentDrawingsOptions,
+} from './instrument-drawings';
 
 registerBuiltinDrawingTools(); // side effect on tier import
 

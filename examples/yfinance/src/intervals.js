@@ -149,9 +149,12 @@ export const PERIOD_DAYS = { '1mo': 31, '6mo': 186, '1y': 366, '5y': 1830, max: 
 export const INTERVAL_MAX_DAYS = { '1m': 7, '2m': 60, '5m': 60, '15m': 60, '30m': 60, '90m': 60, '1h': 730 };
 /* A calendar frame needs years of source bars to draw anything: a quarter
    chart over one month is a single candle, which reads as a broken load
-   rather than as a range the frame cannot fill. */
-export const INTERVAL_MIN_DAYS = { '1mo': 1500, '1q': 1800 };
-/** Periods this interval can serve, longest last. Daily and up: all of them. */
+   rather than as a range the frame cannot fill. A daily chart loads at least
+   five years, so it always holds 500 candles or more where the instrument has
+   that much history: two years is about 495 sessions on NSE, and the source
+   has no three-year period. */
+export const INTERVAL_MIN_DAYS = { '1d': 1830, '1mo': 1500, '1q': 1800 };
+/** Periods this interval can serve, longest last: up to an intraday frame's cap, from a daily or calendar frame's floor. */
 export function periodsFor(interval) {
   const cap = INTERVAL_MAX_DAYS[interval];
   const floor = INTERVAL_MIN_DAYS[interval];

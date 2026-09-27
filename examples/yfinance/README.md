@@ -136,6 +136,16 @@ one JSON endpoint. It is the standard library plus yfinance, and yfinance is
 imported on the first real request, so static serving and fixture mode work
 without it.
 
+Live bars are prices as they traded: the server asks the source for unadjusted
+OHLC (`auto_adjust=False`), which keeps its split adjustment but not the
+dividend adjustment its default applies to every past bar, so an old candle
+matches the exchange's record. Fixture mode (`--fixture`) serves synthetic bars
+for the tests and for offline work; its prices are not market data.
+
+A daily chart loads at least five years (about 1,240 sessions on NSE), so it
+always holds 500 candles or more where the instrument has that much history;
+its range menu offers 5y and max.
+
 ```
 GET /api/history?symbol=AAPL&interval=1d&period=1y
 GET /api/history?symbol=AAPL&interval=5m&from=<utc seconds>&to=<utc seconds>
@@ -326,6 +336,7 @@ examples/yfinance/
     level-editor.js   the level editor popover for ladder tools (fibs, channels, fans, Gann)
     text-editor.js    inline text editing for a drawing, laid over the painted text
     drawing.js        the drawing controller, the tool picker, the clipboard chords
+    drawing-scope.js  drawings per symbol: one document per chart and symbol, swapped with the symbol
     persist.js        the layout document, its schema and migrations, storage, export and import
     workspace-document.js  portable named-layout snapshots and reference-host support validation
     workspace-transition.js  cancellable history preparation and guarded publication
@@ -373,10 +384,11 @@ chart is a complete widget with its own top bar, loading status and retry.
   saved layout the page cannot restore is kept, and the status line says why.
 - Each chart loads the history period its layout saved (`historyPeriod`, the
   main page's range) through the grid's `feed` function, when its interval can
-  serve it. Otherwise, and for a chart with no saved period, it loads its
-  interval's usual one (1m 5d; 5m, 15m and 30m 1mo; 1h 6mo; 1d 2y; 1w 10y). A chart
-  keeps its period when its interval changes, for when it changes back, and a
-  preset copies the active chart's period to the charts it adds. The grid writes
+  serve it and, for a daily chart, when it reaches five years. Otherwise, and for
+  a chart with no saved period, it loads its interval's usual one (1m 5d; 5m, 15m
+  and 30m 1mo; 1h 6mo; 1d 5y; 1w 10y). A chart keeps its period when its
+  interval changes, for when it changes back, and a preset copies the active
+  chart's period to the charts it adds. The grid writes
   the periods back into its saved layout and exports. No older history is paged,
   since the server answers by period.
 - Each chart's top bar opens the Watchlist and News panels in its own dock, through
@@ -519,6 +531,7 @@ exists to show one engine surface carrying real use, not just being present.
 | `replay.js`, `replay-timing.js` | One replay transport drives the captured chart or all captured charts from a shared availability clock. Scope controls appear in the picker and transport. Finer history uses separate request slots and each chart's captured instrument, interval and timezone. Cancellation discards late responses; exit restores data and viewports. A coarse candle appears only when complete, or forms from a contiguous prefix of finer observations. Missing finer history has a visible completed-candle fallback. |
 | `compare.js`, `split.js`, `link.js` | Each selected chart owns its comparison symbols, scale mode, hidden rows and history requests. Each source has an independent scale, rebased at the first visible timestamp shared by all visible sources. Missing overlap shows "No common starting bar" and draws gaps. Replay readouts withhold forming comparison closes. The dialog retains its owner across focus changes; changing or closing a chart cancels stale loads. Source failures remain visible with Retry. The linked second chart has independent switches for crosshair, viewport, symbol and interval. Interval sync is off by default. |
 | `drawing.js`, `rail.js`, `rail-flyout.js` | The 2.0 drawing model from the host's side: the controller, the tool picker built from `BUILTIN_DRAWING_TOOLS` with the tier's own icon sprite and cursors, keyboard chords from `drawingShortcuts()`, and a rail whose flyouts and tooltips are host chrome built from the shipped glyphs. The toolbar's Del, Clear, Undo and Redo are off whenever pressing them would do nothing: Del and Clear leave read-only drawings alone, and Undo and Redo follow the main chart's timeline (its `ChartHistory`'s `canUndo()` and `canRedo()`, the controller's own before the chart has one). |
+| `drawing-scope.js` | Drawings per instrument from the host's side: `InstrumentDrawings` over `webStorageDrawingStore`, one per chart. The chart's data context names the symbol, and the helper swaps the drawings as it changes; the host only chooses the store and passes `prefer: 'live'` when it rebuilds a chart from the state of the one it replaces. A layout for another symbol goes to that symbol through `setDocument`. See Persistence. |
 | `properties.js` | The floating properties bar is generated from `drawingSettingsSchema`, which declares only the fields a tool's `draw` reads: a field in the schema is a control with something behind it, a field absent from it is a control not shown. With several drawings selected it edits the fields their schemas share, as one undo entry. A read-only selection shows "Read-only" and a Duplicate button instead of controls the controller would refuse. For text, rectangle, ellipse and table the schema's `space` field becomes a pin toggle: pinned, the drawing keeps its place on screen through pan and zoom and scales with the chart, and unpinning puts it back on the bars under it. The bar and the inline text editor place themselves by `draw.screenPoints(id)`, since a pinned drawing has no time and price to map. |
 | `host-study.js` | Study policies from the host's side. **Add Protected VWAP** in the right-click menu adds a VWAP with `policy: { removable: false, configurable: false, movable: false }`. Hide it, read it and raise an alert on it as usual; its legend row has no gear and no close button, its Objects dock row has no remove, settings, move, Earlier or Later and does not drag, its chip has no remove button, and the settings dialog and menu rows say it is protected. The policy is saved with the layout, so a reload brings the study back protected, and importing or loading a layout keeps it (a layout file's own restricted studies are left out, `untrustedStudies` in `persist.js`); a saved indicator template leaves it out, so applying one never copies it. If the host locks a study while its settings are open, Apply and Reset say so instead of closing as if they had applied. The same row, now **Remove Protected VWAP**, takes it away with `removeIndicator(id, { force: true })`, the one call in the host that overrides the policy. |
 | `session-marks.js` | Drawing policies from the host's side. **Mark ... for This Session** in the right-click menu places a dashed price line with `policy: { editable: false, persistent: false, listed: false }`. Select it to read it, copy it, duplicate it into your own drawing or raise an alert from it; it cannot be dragged, nudged, restyled, cut or deleted, undo does not remove it, it is left out of saved layouts and it is absent from the Objects dock. The host keeps the marks per symbol for the life of the page and puts them back, with their ids, after every chart-type switch, reload and layout restore. **Clear Session Marks** removes them with `removeMany(ids, { force: true })`, the one call in the host that overrides the policy. |
@@ -820,8 +833,22 @@ kept in memory for the session, the user is told once, and Save tries storage
 again. Autosave is debounced 250 ms, skipped during replay (a viewport over a
 truncated session would restore the user into a truncated chart), and flushed
 on `pagehide`. Restoring onto a different dataset keeps the workspace
-(indicators, drawings, pane sizes, styles) and drops the view (viewport and
-pinned price ranges), because a bar-index range means nothing on other bars.
+(indicators, pane sizes, styles) and drops the view (viewport and pinned price
+ranges), because a bar-index range means nothing on other bars.
+
+**Drawings per symbol.** A line drawn on AAPL belongs to AAPL (`drawing-scope.js`,
+over the draw tier's `InstrumentDrawings`). Loading MSFT into the same chart saves
+AAPL's drawings and shows MSFT's own; AAPL's come back with AAPL, and deleting
+everything on MSFT leaves them alone. Each symbol's drawings sit in local storage
+under `oa-charts:drawings:<chart>:<symbol>`, written on every change, and each chart
+of the split view keeps its own set. The layout carries the drawings of the symbol
+it was captured on: restored onto that symbol they are its drawings, and a layout
+file captured on another symbol keeps them for that symbol rather than laying them
+over the one on screen. A layout saved before drawings were per symbol attaches
+them to its own symbol the first time it loads. A symbol change is not an undo step
+and clears the drawing steps of the timeline, so an undo on MSFT never brings back a
+line of AAPL; the steps of studies and panes stay. When storage refuses a write the
+page says so once and keeps the drawings for the session.
 
 **Files.** The Layouts dialog exports portable workspace documents and imports each
 with a fresh identity. It also accepts older wrapped or bare reference snapshots

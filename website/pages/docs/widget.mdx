@@ -12,7 +12,7 @@ import { Callout } from 'nextra/components'
 with a top bar (symbol, interval, chart type, theme, settings, indicators, objects, alerts), a drawing rail
 down the left, a status line, the dialogs behind each of those buttons, keyboard shortcuts
 with a `?` panel that lists them, and optional persistence of the layout. It is one of nine
-loadable tiers (**92.72 kB** Brotli in 2.5.6) and the only tier that supplies
+loadable tiers (**92.72 kB** Brotli in 2.5.8) and the only tier that supplies
 application controls.
 
 The drawing rail includes Anchored VWAP and fixed-range Volume Profile. They use
@@ -406,6 +406,8 @@ passes through to `createChart` unchanged.
 | `indicators` | `boolean` | The Indicators button and picker. Turn it off for a host that manages indicators itself. |
 | `persist` | `boolean` \| `string` | `true` saves the state under the `default` namespace (`oac-widget:default:state`) and restores it on the next `createWidget`; a string names the namespace, for more than one widget per origin. |
 | `storage` | `StorageLike` \| `null` | The store behind `persist`. Default: the page's `localStorage`. |
+| `drawingScope` | `'instrument'` \| `'chart'` | Whose drawings the chart shows (unreleased). Default `'instrument'`: each symbol and exchange keeps its own. `'chart'` keeps one set on screen whatever symbol is loaded. See [Drawings per instrument](#drawings-per-instrument). |
+| `drawingStore` | `DrawingDocumentStore` | Where each instrument's drawings are kept (unreleased). Default: beside the layout with `persist`, else in memory. |
 | `locale` | `string` | A BCP 47 tag the status line formats numbers with. |
 | `symbolSearch` | `(query) => SymbolMatch[] \| Promise<SymbolMatch[]>` | Called as the user types in the symbol box; the results open as a menu under it. |
 | `lookbackBars` | `number` | Bars per load. Default 500. |
@@ -432,6 +434,38 @@ the price pane always stays open in whatever slot it sits. Moving the price pane
 studies is saved with the layout and reported as a `layout` event with reason `paneMoved`.
 The Objects panel names it **Price pane** in its headings and move targets, wherever it sits.
 </Callout>
+
+## Drawings per instrument
+
+A trend line drawn on one symbol belongs to that symbol (unreleased). Loading another symbol,
+from the symbol box, direct typing, a watchlist row or `setSymbol`, saves the drawings of
+the symbol on screen and shows the new symbol's own; the first symbol's come back with it,
+and deleting everything on the second leaves them alone. A new interval or data variant
+keeps them. The widget builds the draw tier's
+[`InstrumentDrawings`](/docs/drawing-tools#drawings-per-instrument) for this and
+exposes it as `widget.instrumentDrawings`.
+
+```ts
+const widget = createWidget(el, { feed, symbol: 'INFY', exchange: 'NSE', persist: 'desk' });
+widget.draw.add(line);          // INFY's
+widget.setSymbol('TCS');        // INFY's saved under oac-widget:desk:drawings:NSE:INFY
+widget.instrumentDrawings?.document({ symbol: 'INFY', exchange: 'NSE' });   // read it back
+```
+
+- **Storage.** With `persist`, each instrument's drawings sit beside the layout under
+  `oac-widget:<namespace>:drawings:<exchange>:<symbol>` (`DRAWINGS_KEY_PREFIX`), written on
+  every change. Without it they live in memory for the life of the widget. `drawingStore`
+  puts them anywhere else.
+- **Layouts.** `getState()` carries the drawings of the symbol it names, the ones on screen.
+  A layout restored for another symbol keeps its drawings for that symbol. A layout saved
+  before drawings were per instrument attaches its drawings to the symbol it was saved on,
+  so opening the widget on another symbol neither shows them there nor loses them.
+- **Undo.** A symbol change is not a step, and no Ctrl+Z on one symbol restores or removes a
+  drawing of another. Steps of studies, panes and settings stay: those belong to the chart.
+- **Alerts.** An alert anchored to a drawing stays with that drawing's symbol and waits,
+  without evaluating, while another symbol is on screen.
+- **The old behaviour.** `drawingScope: 'chart'` keeps one set of drawings on screen whatever
+  symbol is loaded, for a host that wants drawings to follow the chart.
 
 ## Live history and reconnect recovery
 
@@ -612,13 +646,13 @@ widget: a tier loaded beside it would import its own second engine. See
 
 ## Size
 
-Budgets from `.size-limit.json` and measurements from the 2.5.6 build, decimal
+Budgets from `.size-limit.json` and measurements from the 2.5.8 build, decimal
 Brotli kB, enforced by `npm run size`:
 
 | Row | Files | Budget | Measured |
 |---|---|--:|--:|
 | Widget tier | `openalgo-charts.widget.mjs` | 92.72 kB | 92.72 kB |
-| Widget terminal | base + draw + indicators + widget | 302.97 kB | 302.96 kB |
+| Widget terminal | base + draw + indicators + widget | 311.90 kB | 311.90 kB |
 
 The widget is a tier because of these rows. A host that never calls `createWidget`
 downloads none of it, and the base engine's own budget is unchanged.

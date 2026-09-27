@@ -30,7 +30,7 @@ describe('grid view feed', () => {
     const signal = new AbortController().signal;
     for (const interval of GRID_INTERVALS) await feed.getBars({ symbol: 'AAPL', exchange: '', interval, from: 0, to: 1, signal });
     expect(asked.map(req => [req.interval, req.period])).toEqual([
-      ['1m', '5d'], ['5m', '1mo'], ['15m', '1mo'], ['1h', '6mo'], ['1d', '2y'], ['1wk', '10y'],
+      ['1m', '5d'], ['5m', '1mo'], ['15m', '1mo'], ['1h', '6mo'], ['1d', '5y'], ['1wk', '10y'],
     ]);
     expect(asked.every(req => req.signal === signal && req.symbol === 'AAPL')).toBe(true);
   });
@@ -39,23 +39,27 @@ describe('grid view feed', () => {
     const asked = [];
     const source = { getBars: async req => { asked.push([req.interval, req.period]); return []; } };
     const signal = new AbortController().signal;
-    const cases = [['1d', '5y'], ['1h', '1y'], ['5m', '5y'], ['1m', '5d'], ['1d', undefined], ['1w', 'max'], ['1d', 'toString']];
+    const cases = [['1d', '10y'], ['1h', '1y'], ['5m', '5y'], ['1m', '5d'], ['1d', undefined], ['1w', 'max'], ['1d', 'toString'], ['1d', '1y'], ['1w', '1y']];
     for (const [interval, period] of cases) await gridFeed(source, { period }).getBars({ symbol: 'AAPL', exchange: '', interval, signal });
     // Five years of 5m bars is more than the source keeps, so that chart loads its usual month.
-    expect(asked).toEqual([['1d', '5y'], ['1h', '1y'], ['5m', '1mo'], ['1m', '5d'], ['1d', '2y'], ['1wk', 'max'], ['1d', '2y']]);
+    // A year of daily bars is under 500 candles, so that chart loads its usual five years;
+    // a weekly chart has no such floor and keeps the year.
+    expect(asked).toEqual([['1d', '10y'], ['1h', '1y'], ['5m', '1mo'], ['1m', '5d'], ['1d', '5y'], ['1wk', 'max'], ['1d', '5y'], ['1d', '5y'], ['1wk', '1y']]);
     expect(gridPeriod('1h', '2y')).toBe('6mo');
+    for (const short of ['1d', '5d', '1mo', '3mo', '6mo', 'ytd', '1y', '2y']) expect(gridPeriod('1d', short)).toBe('5y');
+    expect(['5y', '10y', 'max'].map(long => gridPeriod('1d', long))).toEqual(['5y', '10y', 'max']);
   });
 
   it('gives the charts of one period one feed, so they still share a request', async () => {
     const asked = [];
     const feeds = gridFeeds({}, { getBars: async req => { asked.push(req.period); return []; } });
-    const long = feeds({ id: 'a', historyPeriod: '5y' });
-    expect(feeds({ id: 'b', historyPeriod: '5y' })).toBe(long);
+    const long = feeds({ id: 'a', historyPeriod: 'max' });
+    expect(feeds({ id: 'b', historyPeriod: 'max' })).toBe(long);
     expect(feeds({ id: 'c' })).toBe(feeds({ id: 'd' }));
     expect(feeds({ id: 'c' })).not.toBe(long);
     await long.getBars({ symbol: 'AAPL', exchange: '', interval: '1d' });
     await feeds({ id: 'c' }).getBars({ symbol: 'AAPL', exchange: '', interval: '1d' });
-    expect(asked).toEqual(['5y', '2y']);
+    expect(asked).toEqual(['max', '5y']);
   });
 
   it('tells history paging there is nothing older, so a left edge downloads nothing again', async () => {
@@ -65,7 +69,7 @@ describe('grid view feed', () => {
     const controller = new DataLoadingController(feed);
     await controller.load({ symbol: 'AAPL', exchange: '', interval: '1d', from: 1_700_000_000, to: 1_705_000_000 });
     for (let i = 0; i < 3; i++) await controller.loadMore();
-    expect(asked).toEqual(['2y']);
+    expect(asked).toEqual(['5y']);
     expect(controller.getState()).toMatchObject({ hasMore: false, historyStatus: 'exhausted' });
     controller.destroy();
   });
@@ -177,13 +181,14 @@ describe('grid view documents', () => {
 
   it('opens a grid layout on the main page with the page range nearest each server period it saved', () => {
     // Per interval: the server's periods the main page has no range for, and the range each opens with.
-    const daily = { '1d': '1mo', '5d': '1mo', '3mo': '6mo', ytd: '1y', '2y': '1y', '10y': '5y' };
+    const nearest = { '1d': '1mo', '5d': '1mo', '3mo': '6mo', ytd: '1y', '2y': '1y', '10y': '5y' };
     const expected = {
       '5m': { '1d': '1mo', '5d': '1mo', '3mo': '1mo', ytd: '1mo', '2y': '1mo', '10y': '1mo' },
       '15m': { '1d': '1mo', '5d': '1mo', '3mo': '1mo', ytd: '1mo', '2y': '1mo', '10y': '1mo' },
-      '1h': { ...daily, '10y': '1y' },
-      '1d': daily,
-      '1w': daily,
+      '1h': { ...nearest, '10y': '1y' },
+      // Every nearest range under five years is raised to the daily floor.
+      '1d': { '1d': '5y', '5d': '5y', '3mo': '5y', ytd: '5y', '2y': '5y', '10y': '5y' },
+      '1w': nearest,
     };
     const opened = {};
     for (const [interval, periods] of Object.entries(expected)) {

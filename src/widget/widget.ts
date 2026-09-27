@@ -17,7 +17,9 @@
  * - **Persisted state is validated field by field and applied to the dataset
  *   it was captured on.** A viewport is a range of bar indices and means
  *   nothing on different bars, so a saved layout landing on another symbol
- *   keeps its indicators, drawings and panes and drops its view.
+ *   keeps its indicators and panes and drops its view. Its drawings belong
+ *   to the symbol it was saved on (`drawingScope`): each instrument keeps its
+ *   own, and a layout from before that attaches its drawings to its symbol.
  * - **Every chord goes through one keymap in the capture phase.** The rail,
  *   the editing keys and the tool chords register there with a scope, so a
  *   dialog being open or the focus being in the rail is decided once, not in
@@ -29,7 +31,10 @@ import {
   type Chart, type ChartOptions, type ChartTheme, type DataFeed, type Bar, type SeriesApi, type SeriesType, type DataVariant,
   type RestoreReport, type BarsRequest, type DataLoadingOptions, type DataLoadingSnapshot, type AlertTriggeredPayload, type TradingCapabilityRequest, type TradingCapabilitySource,
 } from 'openalgo-charts';
-import { DrawingController, drawingShortcuts, keyToDrawingAction, type DrawingKeyContext } from 'openalgo-charts/draw';
+import {
+  DrawingController, InstrumentDrawings, drawingShortcuts, instrumentDrawingsKey, keyToDrawingAction, memoryDrawingStore, migrateUnscopedDrawings,
+  type DrawingDocumentStore, type DrawingKeyContext,
+} from 'openalgo-charts/draw';
 import {
   WidgetBus, WidgetStorage, createOverlayStack, createTipController, defaultStorage, h, historyPress, widgetDialog,
   type OverlayOptions, type StorageLike, type WidgetBusEvents, type WidgetContext, type WidgetDialogName,
@@ -69,6 +74,11 @@ export const DEFAULT_LOOKBACK_BARS = 500;
 export const SAVE_DEBOUNCE_MS = 250;
 /** The storage entry the layout lives under. */
 export const STATE_KEY = 'state';
+/**
+ * Where each instrument's drawings live beside the layout: this prefix, then
+ * the instrument's key (`instrumentDrawingsKey`), as in `drawings:NSE:INFY`.
+ */
+export const DRAWINGS_KEY_PREFIX = 'drawings:';
 export const WIDGET_STATE_VERSION = 1;
 
 /** Named lists and their quotes for the docked watchlist. A chosen row charts that instrument. */
@@ -125,6 +135,21 @@ export interface WidgetOptions extends Omit<ChartOptions, 'theme'> {
   persist?: boolean | string;
   /** The store behind `persist`. Default: the page's `localStorage`. */
   storage?: StorageLike | null;
+  /**
+   * Whose drawings the chart shows. `'instrument'` (default): each symbol and
+   * exchange keeps its own, saved when the chart moves to another instrument
+   * and brought back when it returns, which is what a trader drawing levels
+   * expects. `'chart'`: one drawing set that stays on screen whatever
+   * instrument is loaded, as earlier releases did, for a host that wants
+   * drawings to follow the chart.
+   */
+  drawingScope?: 'instrument' | 'chart';
+  /**
+   * Where the drawings of each instrument are kept in `'instrument'` scope.
+   * Default: beside the layout in `storage` when `persist` is on
+   * (`DRAWINGS_KEY_PREFIX`), else in memory for the life of the widget.
+   */
+  drawingStore?: DrawingDocumentStore;
   /** BCP 47 tag for the numbers on the status line. Default: the runtime's. */
   locale?: string;
   /** Host translations for widget chrome and dialogs, with English fallback. */
@@ -194,6 +219,12 @@ export interface Widget {
   readonly dataController: DataLoadingController | null;
   readonly chart: Chart;
   readonly draw: DrawingController;
+  /**
+   * What keeps the drawings per instrument, or null in `'chart'` scope. A
+   * host reads another instrument's drawings through it (`document`), or
+   * writes them now (`save`).
+   */
+  readonly instrumentDrawings: InstrumentDrawings | null;
   readonly alerts: AlertController;
   /** Shared inventory and supported actions for drawings, indicators and registered profiles. */
   readonly objects: ChartObjects;
@@ -275,7 +306,7 @@ function savedVariant(value: unknown): Readonly<DataVariant> | undefined | null 
 /** The options the shell consumes; the rest of `WidgetOptions` is the chart's. */
 const WIDGET_ONLY_KEYS: ReadonlyArray<keyof WidgetOptions> = [
   'feed', 'symbol', 'exchange', 'interval', 'variant', 'intervals', 'chartType', 'theme', 'rail', 'topbar', 'statusline',
-  'mobile', 'loading', 'persist', 'storage', 'locale', 'translate', 'indicators', 'symbolSearch', 'lookbackBars', 'now', 'onOrder', 'styleNonce',
+  'mobile', 'loading', 'persist', 'storage', 'drawingScope', 'drawingStore', 'locale', 'translate', 'indicators', 'symbolSearch', 'lookbackBars', 'now', 'onOrder', 'styleNonce',
   'tradingCapabilities', 'tradingMode', 'tradingLocked', 'account',
   'eventDetails',
   'panels', 'typingNavigation', 'keyboardRoute', 'watchlist', 'news',
@@ -394,6 +425,7 @@ class WidgetImpl implements Widget {
   public readonly dataController: DataLoadingController | null;
   public readonly chart: Chart;
   public readonly draw: DrawingController;
+  public readonly instrumentDrawings: InstrumentDrawings | null;
   public readonly objects: ChartObjects;
   public readonly alerts: AlertController;
   public readonly history: ChartHistory;
@@ -549,6 +581,9 @@ class WidgetImpl implements Widget {
     this._series = this.chart.addSeries(this._chartType as SeriesType);
     this._publishDataContext();
     this.draw = new DrawingController(this.chart, {});
+    // Before the alerts and before the saved layout lands: the drawings on the
+    // chart are the current instrument's from the first moment anything reads them.
+    this.instrumentDrawings = options.drawingScope === 'chart' ? null : this._scopeDrawings(saved);
     this.alerts = new AlertController(this.chart, { drawings: this.draw });
     this.objects = new ChartObjects(this.chart, {
       drawings: this.draw,
@@ -732,7 +767,13 @@ class WidgetImpl implements Widget {
     if (saved?.chart !== undefined) {
       const same = saved.symbol === this._symbol && saved.exchange === this._exchange && saved.interval === this._interval
         && dataVariantKey(saved.variant) === dataVariantKey(this._variant);
-      const report = this.chart.restoreState(same ? saved.chart : stripView(saved.chart));
+      let layout = same ? saved.chart : stripView(saved.chart);
+      // The layout's own drawings were attached to its instrument above; the
+      // chart keeps the ones the current instrument has, already on it. A
+      // layout that names no instrument has nowhere else to keep them, so they
+      // land as they always did and go to the first instrument charted.
+      if (this.instrumentDrawings !== null && this._savedKey(saved) !== null) layout = { ...layout, drawings: this.draw.toJSON() };
+      const report = this.chart.restoreState(layout);
       if (report.applied) {
         this._keepView = same;
         this._pendingView = same ? saved.chart.viewport ?? null : null;
@@ -754,6 +795,41 @@ class WidgetImpl implements Widget {
       if (doc.hidden) visibility();
       if (this._symbol !== '') void this.reload();
     }
+  }
+
+  /**
+   * Drawings per instrument, from the store the host named or the one the
+   * persisted layout sits in. A layout saved before drawings were per
+   * instrument holds the drawings of the instrument it was saved on, which
+   * are attached to that instrument here, so opening on another symbol
+   * neither shows them there nor loses them.
+   */
+  private _scopeDrawings(saved: WidgetState | null): InstrumentDrawings {
+    const storage = this._storage;
+    const store: DrawingDocumentStore = this._opts.drawingStore ?? (storage.enabled ? {
+      get: key => storage.get(DRAWINGS_KEY_PREFIX + key),
+      set: (key, document) => storage.set(DRAWINGS_KEY_PREFIX + key, document),
+      remove: key => storage.remove(DRAWINGS_KEY_PREFIX + key),
+    } : memoryDrawingStore());
+    if (saved?.chart?.drawings !== undefined) migrateUnscopedDrawings(store, this._savedKey(saved), saved.chart.drawings);
+    return new InstrumentDrawings(this.chart, this.draw, {
+      store,
+      // Reported on the status line, as a failed layout write is: the drawings
+      // stay in memory for the session and the next change tries again. The
+      // shell may still be under construction, so this does what the
+      // context's own status call does rather than going through it.
+      onError: ({ operation, key }) => {
+        if (operation === 'read' || this._destroyed) return;
+        const text = widgetText(this._opts, 'The drawings for {instrument} could not be saved', { instrument: decodeURIComponent(key) });
+        this._statusline?.setMessage(text, 'error');
+        this._bus.emit('status', { text, kind: 'error' });
+      },
+    });
+  }
+
+  /** The key the drawings of a persisted layout belong under, or null when it names no instrument. */
+  private _savedKey(saved: WidgetState): string | null {
+    return instrumentDrawingsKey({ symbol: saved.symbol.toUpperCase(), exchange: saved.exchange });
   }
 
   // ── facts ────────────────────────────────────────────────────────────
@@ -1102,9 +1178,19 @@ class WidgetImpl implements Widget {
     const same = symbol === this._symbol && exchange === this._exchange && interval === this._interval && sameVariant;
     let chart: RestoreReport | undefined;
     if (isRecord(state.chart)) {
-      const doc = state.chart as unknown as WidgetChartState;
+      let doc = state.chart as unknown as WidgetChartState;
+      const scoped = this.instrumentDrawings;
+      // A layout for another instrument brings that instrument's drawings.
+      // They wait in its store while the chart restore keeps the ones on
+      // screen, which are this instrument's until the switch below, so the
+      // alerts the layout restores are judged against their own drawings.
+      const moving = scoped !== null && (symbol !== this._symbol || exchange !== this._exchange)
+        && instrumentDrawingsKey({ symbol, exchange }) !== null;
+      const incoming = doc.drawings;
+      if (moving) doc = { ...doc, drawings: this.draw.toJSON() };
       chart = this.chart.restoreState(same ? doc : stripView(doc));
       if (!chart.applied) return { applied: false, reason: chart.reason, chart };
+      if (moving && scoped !== null) scoped.setDocument({ symbol, exchange }, incoming ?? []);
       this._keepView = same;
       this._pendingView = same ? doc.viewport ?? null : null;
     }
@@ -1359,6 +1445,7 @@ class WidgetImpl implements Widget {
     this.history.destroy();
     this.objects.destroy();
     this.alerts.destroy();
+    this.instrumentDrawings?.destroy();
     this.draw.destroy();
     this.chart.destroy();
     this.root.remove();

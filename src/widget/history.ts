@@ -54,6 +54,7 @@ import type {
   PriceScaleOptions, SeriesApi, SeriesType,
 } from 'openalgo-charts';
 import { DRAWING_STATE_VERSION, type Drawing, type DrawingChangeEvent, type DrawingController, type DrawingsDocument } from 'openalgo-charts/draw';
+import { isSource, renameSources, same } from './history-values';
 
 /** What a step changes, for a label or a test. */
 export type ChartHistoryChange =
@@ -244,35 +245,6 @@ interface Entry {
 // transaction's full capture, and an observed one finds nothing there.
 const OBSERVED = ['objects:change', 'indicatorRemoved', 'paneAdded', 'paneRemoved', 'paneMoved', 'paneCollapsed',
   'paneResized', 'priceAxisMoved', 'priceAxisPlacementChanged', 'layout:change'];
-
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
-
-/** Structural equality for the plain data a capture holds. */
-function same(a: unknown, b: unknown): boolean {
-  if (Object.is(a, b)) return true;
-  if (typeof a === 'number' && typeof b === 'number') return Math.abs(a - b) < 1e-9;
-  if (Array.isArray(a) || Array.isArray(b)) {
-    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => same(v, b[i]));
-  }
-  if (!isRecord(a) || !isRecord(b)) return false;
-  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
-  for (const key of keys) if (!same(a[key], b[key])) return false;
-  return true;
-}
-
-const isSource = (v: unknown): v is { kind: 'indicator'; instanceId: string; plotKey: string } =>
-  isRecord(v) && v.kind === 'indicator' && typeof v.instanceId === 'string';
-
-/** Settings with every study-source reference renamed, as a detached copy. */
-function renameSources(settings: Readonly<IndicatorSettings>, rename: (id: string) => string): IndicatorSettings {
-  const out: IndicatorSettings = {};
-  for (const [key, value] of Object.entries(settings)) {
-    out[key] = isSource(value) ? { ...value, instanceId: rename(value.instanceId) }
-      : Array.isArray(value) ? value.map(item => (isRecord(item) ? { ...item } : item)) as never
-      : isRecord(value) ? { ...value } as never : value;
-  }
-  return out;
-}
 
 /**
  * What the chart lets a step do, read against the chart the stretch starts
@@ -734,6 +706,7 @@ export class ChartHistory {
       if (drawing !== undefined && this._applying === 0) this._dropped.push(drawing);
     });
     on('drawing:change', payload => this._drawingChange(payload as DrawingChangeEvent));
+    on('draw:restore', () => this._forgetDrawings());
     on('draw:destroy', payload => {
       if ((payload as { controller?: unknown } | null)?.controller !== this._draw) return;
       this._detachSteps();
@@ -808,6 +781,27 @@ export class ChartHistory {
 
   private _document(): DrawingsDocument {
     return this._draw?.toJSON() ?? { version: DRAWING_STATE_VERSION, drawings: [] };
+  }
+
+  /**
+   * The controller loaded a whole other document (another instrument's
+   * drawings, a layout), and cleared its own history. No drawing step or
+   * orphan recorded before describes it: taking one back would put a drawing
+   * of the other document on this one, a line of one symbol on another. The
+   * studies, panes and settings of those steps still describe this chart.
+   */
+  private _forgetDrawings(): void {
+    if (this._destroyed || this._applying > 0) return;
+    const group = this._group, keep = (e: Entry): boolean => e.changes.length > 0 || e.commands.length > 0;
+    for (const e of [...this._undo, ...this._redo, ...group?.redo ?? [], group?.entry, group?.shifted]) if (e) { e.steps = []; e.orphans = []; }
+    if (this._tx !== null) this._tx.steps = [];
+    this._undo = this._undo.filter(keep);
+    this._redo = this._redo.filter(keep);
+    if (group?.entry && !keep(group.entry)) group.entry = null;
+    this._orphans = [];
+    this._dropped = [];
+    this._prune();
+    this._notify();
   }
 
   /** Whether a pane the last capture held has gone from the chart since. */

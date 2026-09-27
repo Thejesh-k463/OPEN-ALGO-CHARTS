@@ -216,10 +216,24 @@ const BUNDLE = new URL('../dist/openalgo-charts.mjs', import.meta.url).pathname.
 // undo history's reconciliation on top of them, again in the draw and widget
 // tiers, leaves it there; allow 79.27 KiB. Keeping a canvas's reported device
 // size only while its new box can snap to it moves it to 81148 bytes
-// (79.25 KiB); the budget follows it down to 79.25 KiB. Finding the bar under
-// each drawn series marker by binary search, instead of indexing the whole
-// history on every paint, moves it to 81267 bytes (79.36 KiB); allow 79.37 KiB.
-const LIMIT_BYTES = 79.37 * 1024;
+// (79.25 KiB); the budget follows it down to 79.25 KiB.
+// 2.5.7 splits chart.ts into collaborator classes (ARCHITECTURE.md, Chart
+// internals) with no change in behaviour. The class shells, the delegates the
+// chart keeps for its public methods and the extra member reads cost 1661
+// bytes: 82809 bytes (80.87 KiB) at 2.5.7; allow 80.87 KiB.
+// 2.5.8 is the rendering release, and all of it runs on every chart: the level
+// of detail's column reducer, the per-series draw items and point buffers that
+// keep a frame from allocating per bar, the hit boxes behind the hit-test
+// prefilter, the time index kept across plot writes and the pane-scoped
+// repaint. 85883 bytes (83.87 KiB), up 3074; allow 83.88 KiB. Line-family
+// series carrying the bar beyond each edge of the view (connectsBars), measured
+// alone at 85954 bytes (83.94 KiB), up 71. Counting how many series hold each
+// time, so the index changes only where a time enters or leaves it, measured
+// alone at 86112 bytes (84.09 KiB), up 229. Both together 86122 bytes
+// (84.10 KiB); allow 84.11 KiB. Finding the bar under each drawn series
+// marker by binary search, instead of indexing the whole history on every
+// paint (#31), 86189 bytes (84.17 KiB); allow 84.17 KiB.
+const LIMIT_BYTES = 84.17 * 1024;
 
 // Absent from a chart-only build. Each is a string that appears in the adapter
 // source and nowhere in the rendering core.
