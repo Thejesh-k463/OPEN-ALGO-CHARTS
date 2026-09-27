@@ -228,7 +228,9 @@ ratios instead of printing non-finite values. All anchors remain independently e
 
 ## Existing layouts
 
-Saved documents remain version 2. Existing tool IDs and anchor formats are
+Saved documents remained version 2 in 2.2.0 (version 3 adds only an
+[interval range](#visibility-per-interval), and a document without one is still written as
+version 2). Existing tool IDs and anchor formats are
 preserved, including forward projections beyond the latest candle. Drawing
 bodies, guides and handles stay clipped to the plot, including with a left price
 axis. The new descriptor arrays `ADVANCED_LINE_TOOLS`, `ADVANCED_GEOMETRY_TOOLS`
@@ -346,7 +348,8 @@ chart has a different interval loaded.
 | `historySteps()` | `{ undo, redo }`: the steps each branch holds, oldest first, by the number `drawing:change` reported them under. For a host that keeps one timeline across drawings and its own edits, such as [`ChartHistory`](/docs/undo-history): a step in neither branch was taken away by a reset, a trim or a host's forced edit. |
 | `untracked(fn)` | Run `fn` as the host's own act: an edit it makes records no undo step and leaves both branches as they are, and every recorded step takes it in, as a forced edit does, so no undo or redo reverses it. It reaches no read-only drawing, and `undo` or `redo` inside it still moves along the branches. [`ChartHistory`](/docs/undo-history) runs its `ignore` and every press through it. |
 | `delegateInputAnchorSteps(record)` | Hand the step each study input anchor move makes (a drag, `moveInputAnchor`) to a timeline of the host's: `record` receives the move's `InputAnchorStep`, its own `undo()` and `redo()`, as the move ends, and this history records nothing for it. The returned function gives the steps back. [`ChartHistory`](/docs/undo-history) takes them, since it records the settings patch the move writes, and one move must be one step. A point written through the study's settings (a settings dialog's Pick point), which this history otherwise holds as a step of its own, is not handed over: the host's timeline sees that write itself. A move inside `untracked` is a step nowhere. |
-| `toJSON()` / `fromJSON(data)` | Explicit serialisation: a `{ version: 2, drawings }` document out; a document or a 1.9.x bare array in, upgraded by `migrateDrawings`. |
+| `toJSON()` / `fromJSON(data)` | Explicit serialisation: a `{ version, drawings }` document out, version 3 when a drawing carries an [interval range](#visibility-per-interval) and 2 otherwise; a document or a 1.9.x bare array in, upgraded by `migrateDrawings`. |
+| `interval()` / `shownOnInterval(id)` | The chart interval drawings are shown for, and whether a drawing's range admits it. See [Visibility per interval](#visibility-per-interval). |
 | `setOptions(patch)` | `magnet`, `stayInDrawingMode`, `historyLimit`, `defaultStyle`, `pasteOffsetBars`, `pasteOffsetPixels`, `clipboard`, `gestures` (see [Modifier gestures](#modifier-gestures)). |
 | `cancel()` / `popAnchor()` | Drop the anchors placed so far (the tool disarms unless `stayInDrawingMode` keeps it), or take away a temporary measure; remove the last anchor of a variable-anchor shape still being placed. Escape and Backspace, once the host wires them. |
 | `measuring()` | Whether a [temporary measure](#temporary-measure) is on the chart. |
@@ -885,6 +888,100 @@ How it behaves:
 - **A store that fails loses nothing for the session.** `onError` hears it, the document is
   held in memory, and the next change tries again. The store is synchronous: a swap happens
   inside the context change, so an answer arriving later would land on the wrong symbol.
+
+## Visibility per interval
+
+<Callout type="info">Unreleased: on the main branch, not in 2.5.8.</Callout>
+
+A level drawn on hourly bars is often noise on the one minute chart and too fine to matter
+on the weekly one. A drawing can carry the range of chart intervals it is shown on,
+`intervals: { from, to }`, both ends included, and it is on the chart only while the chart's
+interval lies inside it.
+
+```ts
+import { DrawingController, drawingShownOnInterval } from 'openalgo-charts/draw';
+
+chart.setDataContext({ symbol: 'INFY', exchange: 'NSE', interval: '15m' });
+const draw = new DrawingController(chart);
+const level = draw.add({
+  tool: 'horizontal-line', paneIndex: 0, style: {}, points: [{ time, price }],
+  intervals: { from: '1m', to: '1h' },
+});
+
+draw.update(level.id, { intervals: { to: '4h' } });   // replace the range: one undo step
+draw.update(level.id, { intervals: null });            // every interval again
+
+chart.setDataContext({ symbol: 'INFY', exchange: 'NSE', interval: 'D' });
+draw.shownOnInterval(level.id);      // false while the chart is on daily bars
+drawingShownOnInterval(level, '5m'); // the same test for any interval
+```
+
+| API | What it does |
+|---|---|
+| `Drawing.intervals` | A `DrawingIntervalRange`, `{ from?, to? }`, of interval codes. Absent: every interval. An absent end is no limit on that side. |
+| `DrawingPatch.intervals` | Replaces the range; `null` or `{}` clears it. One undo step, like any edit. |
+| `interval()` | The interval the controller shows drawings for: the data context's `interval`, or `null`. |
+| `shownOnInterval(id)` | Whether a drawing's range admits the chart's interval. |
+| `drawingShownOnInterval(drawing, interval)` | The same test with no controller, for any interval. |
+| `INTERVAL_FIELDS` | The settings pair `intervals.from` and `intervals.to`, kind `'interval'`, group `'visibility'`. |
+
+How intervals compare:
+
+- **By bar length, from the [interval registry](/docs/custom-intervals).** `60m` and `1h` are one
+  interval, and codes a host registers take part like the built-in ones. A calendar month
+  sorts above a week and below a quarter.
+- **Either way round.** The range is the span between its ends.
+- **A comparison that cannot be made hides nothing.** An end nothing resolves (an unknown
+  code, a tick or volume interval) is no limit, and so is a chart interval of that kind, or
+  none at all.
+
+The chart's interval is its data context's: the controller reads `getDataContext()` when it
+is built and follows every `data:context`, so a new interval applies the moment the chart
+announces it. A drawing outside its range is kept, saved and undone like any other, but it
+is not on the chart:
+
+- nothing paints it, and the vector export and screenshots leave it out;
+- a click passes through it, and a box select or an eraser drag does not reach it;
+- an interval change drops it from the selection. Picked on purpose, from an objects panel
+  say, it is selectable all the same, so its settings can widen the range;
+- the [object inventory](/docs/objects) keeps its row, marked `hiddenOnInterval: true`, with
+  no `focus`. Its `visible` stays the user's own show and hide switch, and an alert on it
+  keeps firing.
+
+A duplicate, a drag to copy and the clipboard carry the range. A paste never lands hidden:
+a copy whose range leaves out the receiving chart's interval is pasted without it. Linked
+charts share the range, and each shows the drawing by its own interval.
+
+**Settings.** No tool declares the interval fields, because only the host knows which
+intervals it offers. Add them to a tool's schema and render your own interval list, with an
+empty choice for no limit:
+
+```ts
+import { composeSettings, drawingSettingsSchema, readDrawingSettings, applyDrawingSettings, INTERVAL_FIELDS } from 'openalgo-charts/draw';
+
+const schema = composeSettings([drawingSettingsSchema(d.tool).fields, INTERVAL_FIELDS]);
+readDrawingSettings(d, schema);   // { ..., 'intervals.from': '1m', 'intervals.to': '1h' }
+draw.update(d.id, applyDrawingSettings(d, { 'intervals.to': 'D' }, schema));
+```
+
+The reference host puts the pair under **Visibility** in the properties bar's More
+settings, and the bar says **Hidden on 1D** when the selected drawing is off the interval
+on screen.
+
+**Document version 3.** The range is the one field drawing document version 3 added.
+
+- A version 2 document is a valid version 3 one and loads unchanged, version and all.
+- A document, and a clipboard copy, is written as version 3 only while a drawing in it
+  carries a range, and as version 2 otherwise, so a save without one is exactly what 2.5.8
+  wrote. [Drawings per instrument](#drawings-per-instrument) stores whichever version the
+  controller writes, and a stored version 2 document is not rewritten until something in
+  it changes.
+- **An older build and a version 3 document.** A build before this one reads version 2.
+  Its clipboard refuses a newer payload, so it pastes nothing from a copy that carries a
+  range. Its layout loading never refused a document: it keeps what it knows, so it opens a
+  version 3 layout with every drawing, shows the ranged ones on every interval, and saves
+  them without their ranges. Keep a layout with ranges away from an older build, or set the
+  ranges again after one has saved it.
 
 ## Building your own tool
 

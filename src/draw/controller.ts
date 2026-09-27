@@ -23,7 +23,6 @@ import type {
   Drawing, DrawingInput, DrawingPatch, DrawingPoint, DrawingStyle, DrawingTool, DrawingsDocument,
   MagnetMode, ScreenPoint, DrawingGroup, DrawingSpace, DrawingStackTarget, ViewportPoint,
 } from './types';
-import { DRAWING_STATE_VERSION } from './types';
 import type {
   DrawingChartHost, DrawingControllerOptions, DrawingGestureOptions, DrawingPlacementOptions,
   DrawingChangeKind, DrawingChangeEvent, DrawingEditOptions,
@@ -38,6 +37,7 @@ import { DrawingScreen, within, type PaneProjection, type PointerSample } from '
 import { barAt, magnetModeOf, magnetPoint, type SnapBar } from './snap';
 import { DrawingGestures, type GestureKeys } from './gestures';
 import { GestureLayer } from './gesture-layer';
+import { drawingsDocumentVersion, intervalFilter, readIntervalRange } from './intervals';
 
 export type {
   DrawingChartHost, DrawingControllerOptions, DrawingGestureOptions, DrawingPlacementOptions,
@@ -225,6 +225,10 @@ export class DrawingController {
   private _placing = false;
   /** Drawings an eraser drag has touched: still in the model, left unpainted until it lets go. */
   private _hidden: ReadonlySet<string> = new Set();
+  /** The interval the last `data:context` named, for a host that cannot be asked for its context. */
+  private _contextInterval: string | null = null;
+  /** The drawings the chart's interval hid when the layers were last listed; see `_followInterval`. */
+  private _offInterval = '';
   /** The device behind the last pointer report, for target sizing. */
   private _pointerKind: DrawingPointerKind = 'mouse';
   /** Snapshots for undo/redo; each is a full drawing list (they are small). */
@@ -279,7 +283,8 @@ export class DrawingController {
       style: () => this._opts.defaultStyle,
       preview: () => this._syncPreview(),
       emit: (event, payload) => this._chart.emit(event, payload),
-      drawings: () => this._drawings,
+      // What the interval hides is not on the chart, so no box or sweep reaches it.
+      drawings: () => this._drawings.filter(this._shownFilter()),
       selection: () => this._selection,
       select: (ids) => this.select(ids),
       layer: (pane, make) => make === true ? this._layerFor(pane).top : this._layers.get(pane)?.top,
@@ -309,7 +314,7 @@ export class DrawingController {
     this._off.push(chart.on('drag', (p) => this._onDrag(p as DragPayload)));
     this._off.push(chart.on('drag:end', () => this._onDragEnd()));
     this._off.push(chart.on('drag:cancel', () => { this.cancelDrag(); }));
-    this._off.push(chart.on('data:context', () => { this.cancelDrag(); this._gestures.reset(); }));
+    this._off.push(chart.on('data:context', context => { this.cancelDrag(); this._gestures.reset(); this._followInterval(context); }));
     this._off.push(chart.on('dblclick', () => { this.finish(); }));
     this._off.push(chart.on('drawings:restore', document => this.fromJSON(document)));
     this._off.push(chart.on('pick:start', () => this._gestures.picking(true)));
@@ -695,6 +700,50 @@ export class DrawingController {
     return this._drawings.find((d) => d.id === id);
   }
 
+  /**
+   * The chart interval drawings are shown for: the data context's `interval`,
+   * or null when the host names none, and then every drawing shows. Each
+   * drawing's `intervals` range is read against it, and `data:context`
+   * applies a change the moment the chart announces it.
+   */
+  public interval(): string | null {
+    const read = this._chart.getDataContext;
+    const interval = read === undefined ? this._contextInterval : read.call(this._chart)?.interval;
+    return typeof interval === 'string' ? interval : null;
+  }
+
+  /**
+   * Whether a drawing is on the chart at the chart's interval: false for an
+   * unknown id and for one whose `intervals` range leaves that interval out.
+   * `visible` is not read; it is the user's own switch.
+   */
+  public shownOnInterval(id: string): boolean {
+    const d = this.get(id);
+    return d !== undefined && this._shownFilter()(d);
+  }
+
+  /** The test of whether a drawing is shown at the chart's interval, resolved once for a pass over many. */
+  private _shownFilter(): (d: Pick<Drawing, 'intervals'>) => boolean {
+    return intervalFilter(this.interval());
+  }
+
+  /**
+   * Follow a change of the chart's interval: what it hides leaves the layers
+   * and the selection, what it shows comes back. The layers are listed again
+   * only when that set changed, since a list under the series costs the
+   * series a repaint and a new symbol on the same interval changes nothing.
+   */
+  private _followInterval(context: unknown): void {
+    const interval = (context as { interval?: unknown } | null | undefined)?.interval;
+    this._contextInterval = typeof interval === 'string' ? interval : null;
+    const shown = this._shownFilter();
+    if (this._destroyed || this._drawings.filter(d => !shown(d)).map(d => d.id).join('\u0000') === this._offInterval) return;
+    this._syncLayers();
+    const kept = this._selection.filter(id => { const d = this.get(id); return d !== undefined && shown(d); });
+    if (!sameIds(kept, this._selection)) this._setSelection(kept);
+    if (this._hovered !== null && !this.shownOnInterval(this._hovered)) this._setHovered(null);
+  }
+
   public get isDestroyed(): boolean { return this._destroyed; }
 
   /** Apply a linked commit without adding to this chart's local undo history. */
@@ -835,6 +884,10 @@ export class DrawingController {
       delete created.space;
       delete created.viewportPoints;
     }
+    // A copy, and only a range that names a bound: an empty one limits nothing.
+    const intervals = readIntervalRange(drawing.intervals);
+    if (intervals === null) delete created.intervals;
+    else created.intervals = intervals;
     if (created.props?.[DRAWING_LINK_METADATA_KEY] !== undefined) {
       created.props = { ...created.props };
       delete created.props[DRAWING_LINK_METADATA_KEY];
@@ -897,6 +950,8 @@ export class DrawingController {
       if (rest.space !== undefined) held.space = rest.space;
       // Likewise a drawing taken out of the series band.
       if (rest.stackAbove !== undefined) (held as DrawingPatch).stackAbove = rest.stackAbove;
+      // And a range, cleared or set, as the drawing now holds it.
+      if (rest.intervals !== undefined) (held as DrawingPatch).intervals = d.intervals === undefined ? null : { ...d.intervals };
       if (points) held.points = d.points;
       this._hostPatches.set(d.id, held);
       // History cannot reach a read-only drawing's content until its policy
@@ -954,6 +1009,11 @@ export class DrawingController {
     if (patch.props !== undefined) d.props = { ...d.props, ...patch.props };
     if (patch.locked !== undefined) d.locked = patch.locked;
     if (patch.visible !== undefined) d.visible = patch.visible;
+    if (patch.intervals !== undefined) {
+      const range = patch.intervals === null ? null : readIntervalRange(patch.intervals);
+      if (range === null) delete d.intervals;
+      else d.intervals = range;
+    }
     if (patch.zIndex !== undefined && Number.isFinite(patch.zIndex)) d.zIndex = patch.zIndex;
     if (patch.policy !== undefined) d.policy = { ...d.policy, ...patch.policy };
     if (typeof patch.stackAbove === 'string' && patch.stackAbove !== '') d.stackAbove = patch.stackAbove;
@@ -1257,9 +1317,12 @@ export class DrawingController {
     for (const e of entries) {
       if (!hasDrawingTool(e.tool)) return [];
     }
+    const shown = this._shownFilter();
     const prepared = entries.map((e) => {
       const paneIndex = this._clampPane(e.paneIndex);
-      return { ...e, paneIndex, ...this._offsetAnchors(e, paneIndex) };
+      // A paste never lands hidden: a range leaving out this chart's interval
+      // would make the paste look like it did nothing, so it is not carried.
+      return { ...e, paneIndex, ...this._offsetAnchors(e, paneIndex), ...(shown(e) ? {} : { intervals: undefined }) };
     });
     this._pushUndo();
     const created = prepared.map((p) => this._insert(p));
@@ -1555,7 +1618,7 @@ export class DrawingController {
   /** `drawings` as a document, with the groups narrowed to them. */
   private _document(drawings: readonly Drawing[]): DrawingsDocument {
     const groups = migrateGroups(this._groups, drawings);
-    return { version: DRAWING_STATE_VERSION, drawings: drawings.map(cloneDrawing), ...(groups.length ? { groups } : {}) };
+    return { version: drawingsDocumentVersion(drawings), drawings: drawings.map(cloneDrawing), ...(groups.length ? { groups } : {}) };
   }
 
   /** Every drawing, transient ones too: an undo in the session reaches them. */
@@ -2207,7 +2270,7 @@ export class DrawingController {
     // been made unselectable, would otherwise outlive it until the pointer
     // next moves.
     this._pruneSelection();
-    if (this._hovered !== null && !this._selectable(this._hovered)) this._setHovered(null);
+    if (this._hovered !== null && (!this._selectable(this._hovered) || !this.shownOnInterval(this._hovered))) this._setHovered(null);
     this._chart.setDrawingState(this.toJSON());
   }
 
@@ -2229,7 +2292,10 @@ export class DrawingController {
     this._slotKey = this._slotSignature();
     const byPane = new Map<number, { below: Drawing[]; above: Drawing[]; series: Map<string, Drawing[]> }>();
     const stacks = new Map<number, readonly string[]>();
+    const shown = this._shownFilter();
+    const off: string[] = [];
     for (const committed of this._drawings) {
+      if (!shown(committed)) { off.push(committed.id); continue; }
       if (this._hidden.has(committed.id)) continue;
       const d = this._linkedPreviews.get(committed.id) ?? committed;
       let lists = byPane.get(d.paneIndex);
@@ -2262,6 +2328,7 @@ export class DrawingController {
       }
       for (const layer of [l.bottom, l.top, ...l.series.values()]) layer.setSelected(this._selection);
     }
+    this._offInterval = off.join('\u0000');
   }
 
   /**
@@ -2303,10 +2370,11 @@ export class DrawingController {
     const start = this._dragStart;
     if (start === null) return;
     const panes = new Set(start.items.map((i) => i.paneIndex));
+    const shown = this._shownFilter();
     for (const pane of panes) {
       const l = this._layers.get(pane);
       if (l === undefined) continue;
-      l.top.setDrawings(this._drawings.filter((d) => d.paneIndex === pane && this._onTop(d)));
+      l.top.setDrawings(this._drawings.filter((d) => d.paneIndex === pane && this._onTop(d) && shown(d)));
     }
     this._chart.setDrawingState(this.toJSON());
   }

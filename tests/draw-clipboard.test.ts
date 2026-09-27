@@ -566,9 +566,17 @@ describe('payload encoding', () => {
       id: 'x', tool: 'trend-line', paneIndex: 0, zIndex: 0, style: {},
       points: [{ time: 1, price: 2 }, { time: 3, price: 4 }],
     }])) as Record<string, { version: number }>;
-    expect(parsed[DRAWING_CLIPBOARD_KEY].version).toBe(DRAWING_CLIPBOARD_VERSION);
+    // The lowest version that holds it, so a build reading only version 2
+    // still pastes a copy with no interval range.
+    expect(parsed[DRAWING_CLIPBOARD_KEY].version).toBe(2);
     // The body is a drawings document, so it tracks the model version.
-    expect(DRAWING_CLIPBOARD_VERSION).toBe(2);
+    expect(DRAWING_CLIPBOARD_VERSION).toBe(3);
+    const ranged = JSON.parse(encodeClipboardPayload([{
+      id: 'x', tool: 'trend-line', paneIndex: 0, zIndex: 0, style: {}, intervals: { from: '1m', to: '1h' },
+      points: [{ time: 1, price: 2 }, { time: 3, price: 4 }],
+    }])) as Record<string, { version: number; drawings: { intervals?: unknown }[] }>;
+    expect(ranged[DRAWING_CLIPBOARD_KEY].version).toBe(DRAWING_CLIPBOARD_VERSION);
+    expect(ranged[DRAWING_CLIPBOARD_KEY].drawings[0].intervals).toEqual({ from: '1m', to: '1h' });
   });
 
   it('still accepts a version 1 body, and refuses one from the future', () => {

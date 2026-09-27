@@ -89,7 +89,9 @@ Each `ChartObjectSnapshot` has `id`, `sourceId`, `kind`, `name`, `paneIndex`, `v
 `visibility`, `lock`, `remove`, `settings`, `focus`, `reorder`, `move` and `place`. A
 row that is part of its pane's stack also has `band` (`'below'`, `'series'` or
 `'above'`), and a drawing placed in the series band has `stackAbove`, the id of the row
-it paints directly above. Use the snapshot's `id` for
+it paints directly above. A drawing whose interval range leaves out the chart's
+interval keeps its row with `hiddenOnInterval: true` and offers no `focus`; its
+`visible` stays the user's switch (see the drawing tools page). Use the snapshot's `id` for
 inventory actions; `sourceId` identifies the existing indicator, drawing, or provider.
 The primary row is `source:primary`; indicator and drawing IDs have their kind prefix.
 Host registrations use `custom:<provider.id>` and cannot replace a built-in row.

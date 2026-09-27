@@ -5,8 +5,9 @@ import { installDom } from './fake-dom.js';
 import { makeApp, line, rect, text, fib, hover, timeToX, priceToY, T0 } from './draw-host.js';
 
 const dist = await import('/dist/openalgo-charts.draw.mjs');
-const { BUILTIN_DRAWING_TOOLS, drawingSettingsSchema, readDrawingSetting, DEFAULT_FIB } = dist;
-const { mountPropertiesBar, commonSchema, colorControls, PALETTE, PROPBAR_POS_KEY } = await import('../src/properties.js');
+const { BUILTIN_DRAWING_TOOLS, drawingSettingsSchema, readDrawingSetting, DEFAULT_FIB, INTERVAL_FIELDS } = dist;
+const { mountPropertiesBar, commonSchema, colorControls, withIntervalFields, PALETTE, PROPBAR_POS_KEY } = await import('../src/properties.js');
+const { INTERVALS } = await import('../src/intervals.js');
 
 const paths = (schema) => schema.fields.map((f) => f.path);
 
@@ -93,7 +94,8 @@ describe('the properties bar', () => {
       const points = Array.from({ length: n }, (_, i) => ({ time: T0 + 600 * (i + 1), price: 100 + i * 10 }));
       const d = draw.add({ tool: tool.id, paneIndex: 0, style: {}, points });
       draw.select(d.id);
-      const declared = new Set(paths(drawingSettingsSchema(tool.id)));
+      // The tool's own fields, and the interval range this page adds to every tool.
+      const declared = new Set(paths(withIntervalFields(drawingSettingsSchema(tool.id))));
       const found = new Set();
       const collect = (root) => { for (const n of root.querySelectorAll('[data-path]')) found.add(n.dataset.path); };
       collect(bar.el);
@@ -211,6 +213,36 @@ describe('the properties bar', () => {
     cb.checked = true;
     cb.fire('change');
     expect(draw.get(a.id).style.showStats).toBe(true);
+  });
+
+  it('limits a drawing to a range of the page intervals from the More button, and says when it is hidden', () => {
+    const a = line(draw);
+    chart.emit('data:context', { symbol: 'AAPL', interval: '1d' });
+    draw.select(a.id);
+    const note = q('[data-note="interval"]');
+    expect(note.hidden).toBe(true);
+    const p = open('[data-pop="more"]');
+    const from = p.querySelector('[data-path="intervals.from"]');
+    const to = p.querySelector('[data-path="intervals.to"]');
+    expect([...to.querySelectorAll('option')].map((o) => o.value)).toEqual([''].concat(INTERVALS));
+    expect(to.value).toBe('');
+    from.value = '5m';
+    from.fire('change');
+    to.value = '1h';
+    to.fire('change');
+    expect(draw.get(a.id).intervals).toEqual({ from: '5m', to: '1h' });
+    // The chart is on daily bars, outside the range: the drawing is kept and the bar says so.
+    expect(draw.shownOnInterval(a.id)).toBe(false);
+    expect(note.hidden).toBe(false);
+    expect(note.textContent).toBe('Hidden on 1D');
+    to.value = '';
+    to.fire('change');
+    from.value = '';
+    from.fire('change');
+    expect(draw.get(a.id).intervals).toBeUndefined();
+    expect(note.hidden).toBe(true);
+    expect(draw.undo()).toBe(true);
+    expect(draw.get(a.id).intervals).toEqual({ from: '5m' });
   });
 
   it('locks, hides and reorders through the controller', () => {

@@ -322,14 +322,15 @@ Tool-specific `defaultStyle` values that change behaviour, not just colour:
 
 ## The 2.0 drawing model
 
-`Drawing` is `{ id, tool, points, style, text?, props?, paneIndex, locked?, visible?, zIndex, createdAt? }`.
+`Drawing` is `{ id, tool, points, style, text?, props?, paneIndex, locked?, visible?, intervals?, zIndex, createdAt? }`.
 
 - **`text` is its own block (`DrawingText`)**, not a set of keys on `style`: `{ value, color?, fontSize?, fontFamily?, bold?, italic?, align?, valign?, wrap?, wrapWidth?, background?, backgroundColor?, backgroundOpacity?, border?, borderColor?, position? }`. A 1.9.x `style.text` / `fontColor` / `textAlign` / `textVAlign` / `textPosition` / `fontWeight` / `fontStyle` is lifted into it on load and paste. The text tool is its content; a shape's text is a label placed by `position`.
 - **`style.levels` is `FibLevel[]`** (`{ ratio, color?, enabled?, label? }`; `enabled: false` hides a rung without forgetting it, `label` prints instead of the ratio), not `number[]`. A bare ratio takes the conventional colour from `levelColor(ratio)` (`LEVEL_NEUTRAL` for 0, 1, 2, 3 and anything unnamed); the migration attaches those colours, and `cloneLevels` copies a ladder so a tool default is never shared. `formatRatio` prints a level label, `CYCLE_PALETTE` / `cycleColor(i)` colour a sequence, and `DEFAULT_FIB`, `DEFAULT_FIB_FAN`, `DEFAULT_GANN_BOX`, `DEFAULT_GANN_FAN`, `DEFAULT_FIB_TIME_ZONE` are the frozen defaults.
 - **`zIndex` is paint order.** Below zero paints under the series, at or above zero over it; ties break by list order, so `drawings()` is the paint order. `sortByZIndex(list)` is the stable sort the layer uses, and `DrawingLayerOrder` (`'bottom' | 'series' | 'top'`) is which layer a pane primitive is. A default of 0 paints exactly where 1.9.2 painted.
 - **`stackAbove` places a drawing in the series band.** It names an entry of `chart.seriesStack(paneIndex)` (`'source:primary'` or `'indicator:<id>'`); the drawing paints right after that entry's series and before the next entry's, and `zIndex` orders the drawings on the same entry. The controller keeps a `'series'` layer per used entry, placed with `chart.setPrimitiveStackAbove`, and the front layer answers hits for every layer of the pane, front to back (body hits from a lower layer carry `paintedBy`). While the entry plots no series on the drawing's pane it paints in front by `zIndex`; `stackAbove` is kept, saved, migrated (a non-string is dropped) and carried by duplicate and the clipboard. `DrawingPatch.stackAbove` sets it or, with `null`, clears it. A host without `seriesStack` / `setPrimitiveStackAbove` (both optional on `DrawingChartHost`) paints every drawing by `zIndex`.
 - **`props`** is a JSON-safe bag for a tool's extras (a table's cells, a callout's tail side), persisted verbatim.
-- **`DRAWING_STATE_VERSION`** (`2`) is the document version `toJSON` writes.
+- **`intervals`** (`DrawingIntervalRange`, `{ from?, to? }`) is the range of chart intervals the drawing is shown on; absent means every interval. See the Visibility per interval section below.
+- **`DRAWING_STATE_VERSION`** (`3`) is the newest document version this build reads and writes. A document is written as the lowest version that holds it: `3` when a drawing carries an interval range, else `2`, so a save without one is byte for byte what 2.5.8 wrote.
 
 ### Settings schema
 
@@ -343,7 +344,7 @@ const values = readDrawingSettings(d, schema);         // { 'style.color': '#..'
 draw.update(d.id, applyDrawingSettings(d, formState, schema));
 ```
 
-`SettingsField` is `{ path, label, kind, min?, max?, step?, options?, group? }`; `FieldKind` is `'color' | 'number' | 'select' | 'lineStyle' | 'boolean' | 'text' | 'opacity' | 'levels'` and `FieldGroup` is `'line' | 'fill' | 'text' | 'levels' | 'behavior'`. `textIsContent` is true for `text`, `callout`, `note`, `balloon`, `comment`, `signpost`, `price-note` and `table`: ask for the text the moment the tool is placed. `readDrawingSetting(d, path)` reads one value (`levels` comes back as a copy). `coerceSettingValue(field, raw)` turns a form string into what the kind stores. `applyDrawingSettings` returns whole `style` / `text` bags; with a schema it coerces and drops undeclared paths, and a value of `undefined` deletes the key (the host's "reset to default"). A custom tool builds its own with `composeSettings([LINE_FIELDS, FILL_FIELDS], { textIsContent })`, from the shared lists `LINE_FIELDS`, `FILL_FIELDS`, `EXTEND_FIELDS`, `LEVEL_FIELDS`, `TEXT_FIELDS`, `FONT_FIELDS`, `SHAPE_TEXT_FIELDS`, `PLATE_TEXT_FIELDS`, the single fields `COLOR_FIELD`, `LINE_WIDTH_FIELD`, `LINE_STYLE_FIELD`, `SHOW_LABELS_FIELD`, `TEXT_VALUE_FIELD`, and the option lists `LINE_STYLE_OPTIONS`, `ALIGN_OPTIONS`, `VALIGN_OPTIONS`, `TEXT_POSITION_OPTIONS`, `FONT_OPTIONS`. `drawingSettingsSchema` is a registry lookup (a tool without a declaration gets the line fields), which is why it lives in tools.ts rather than with the pure schema helpers.
+`SettingsField` is `{ path, label, kind, min?, max?, step?, options?, group? }`; `FieldKind` is `'color' | 'number' | 'select' | 'lineStyle' | 'boolean' | 'text' | 'opacity' | 'levels' | 'interval'` and `FieldGroup` is `'line' | 'fill' | 'text' | 'levels' | 'behavior' | 'visibility'`. A path is two segments under `style`, `text`, `props` or `intervals`, or one of `locked`, `visible`, `zIndex`, `space`. `textIsContent` is true for `text`, `callout`, `note`, `balloon`, `comment`, `signpost`, `price-note` and `table`: ask for the text the moment the tool is placed. `readDrawingSetting(d, path)` reads one value (`levels` comes back as a copy). `coerceSettingValue(field, raw)` turns a form string into what the kind stores. `applyDrawingSettings` returns whole `style` / `text` bags; with a schema it coerces and drops undeclared paths, and a value of `undefined` deletes the key (the host's "reset to default"). A custom tool builds its own with `composeSettings([LINE_FIELDS, FILL_FIELDS], { textIsContent })`, from the shared lists `LINE_FIELDS`, `FILL_FIELDS`, `EXTEND_FIELDS`, `LEVEL_FIELDS`, `TEXT_FIELDS`, `FONT_FIELDS`, `SHAPE_TEXT_FIELDS`, `PLATE_TEXT_FIELDS`, the single fields `COLOR_FIELD`, `LINE_WIDTH_FIELD`, `LINE_STYLE_FIELD`, `SHOW_LABELS_FIELD`, `TEXT_VALUE_FIELD`, the interval pair `INTERVAL_FIELDS` (no tool declares it; a host that lists intervals adds it, see the Visibility per interval section below), and the option lists `LINE_STYLE_OPTIONS`, `ALIGN_OPTIONS`, `VALIGN_OPTIONS`, `TEXT_POSITION_OPTIONS`, `FONT_OPTIONS`. `drawingSettingsSchema` is a registry lookup (a tool without a declaration gets the line fields), which is why it lives in tools.ts rather than with the pure schema helpers.
 
 ## DrawingController API
 
@@ -440,8 +441,9 @@ step nowhere. See
 | `delegateInputAnchorSteps(record)` | Hands the step each study input anchor move makes (a drag, `moveInputAnchor`) to `record` instead of this history, until the returned function gives them back; a later call takes them from an earlier one. `record` receives an `InputAnchorStep` (`{ undo(): boolean; redo(): boolean }`) once the patch is written. For a timeline that already records the settings patch the move writes, such as `ChartHistory`, which would otherwise see one move as two steps. A point written through the study's settings, which this history otherwise holds as a step, is not handed over: the timeline sees that write itself. (2.5.6) |
 | `copy(target?)` / `cut(target?)` / `paste()` | **Async.** See the clipboard section. |
 | `clipboard()` | The `DrawingClipboard` behind them, for reporting failures. |
-| `toJSON()` / `fromJSON(data)` | `{ version: 2, drawings }` (a `DrawingsDocument`) out, deep-copied, without transient drawings (`policy.persistent: false`); replace-all in (and clears history + selection, transient drawings included). `fromJSON` accepts a 1.9.x bare `Drawing[]` too and upgrades it. |
-| `migrateDrawings(input)` | The upgrade `fromJSON` runs, exported for a host reading a saved layout on its own: any 1.9.x array or v2 document in, a v2 `DrawingsDocument` out, never throws. |
+| `toJSON()` / `fromJSON(data)` | `{ version, drawings, groups? }` (a `DrawingsDocument`, `version` 3 when a drawing carries an interval range, else 2) out, deep-copied, without transient drawings (`policy.persistent: false`); replace-all in (and clears history + selection, transient drawings included). `fromJSON` accepts a 1.9.x bare `Drawing[]` too and upgrades it. |
+| `migrateDrawings(input)` | The upgrade `fromJSON` runs, exported for a host reading a saved layout on its own: any 1.9.x array or v2 or v3 document in, a current `DrawingsDocument` out (a v2 document comes back unchanged, version and all), never throws. |
+| `interval()` / `shownOnInterval(id)` | The chart interval drawings are shown for (the data context's `interval`, or `null`), and whether a drawing's `intervals` range admits it. See the Visibility per interval section below. |
 | `destroy()` | Unhooks listeners, removes every pane layer, releases placement mode. |
 
 Events on the chart bus: `draw:tool`, `draw:add`, `draw:update`, `draw:remove`, `draw:select` (the primary id), `draw:copy`, `draw:cut`, `draw:paste`, plus the 2.0 pair `drawing:select` (`{ ids }`, the whole selection) and `drawing:change` (`{ ids, kind: 'add' | 'update' | 'remove' | 'reorder' }`, one per mutation, after the per-drawing `draw:*` events; `ids` is empty for a history step that changed no drawing, a study anchor's drag and its undo or redo), and `drawing:hover` (`{ id: string | null }`, when the unselected drawing under the pointer changes). `DrawingChangeKind` names the `kind` union.
@@ -780,8 +782,9 @@ The 2.0 entry also names the measurement, shape, freehand, fib and cycle familie
 through `getDrawingTool(id)` / `hasDrawingTool(id)` / `registeredDrawingTools()`.
 
 Clipboard persistence uses `DRAWING_CLIPBOARD_KEY` (`'openalgo-charts/drawings'`)
-and `DRAWING_CLIPBOARD_VERSION` (`2`, tracking `DRAWING_STATE_VERSION`; a version 1 body is
-accepted and upgraded); `systemClipboard` and
+and `DRAWING_CLIPBOARD_VERSION` (`3`, tracking `DRAWING_STATE_VERSION`: the newest payload version
+read. A payload is written as the lowest version that holds it, 3 only when a drawing carries an
+interval range, and a version 1 body is accepted and upgraded); `systemClipboard` and
 `clearMemoryClipboard` are the two backing stores. `cloneDrawing` is the deep copy a
 copy or a `duplicate` makes. `DRAW_TIER` is the tier constant.
 
@@ -1236,3 +1239,113 @@ it. A host routing Escape through `keyToDrawingAction` passes
 so that Escape reaches `cancel()`. It is a mode, not a modifier, so it has no
 `gestures` flag: a host that offers no eraser control never turns it on.
 
+## Visibility per interval (unreleased)
+
+A drawing can carry the range of chart intervals it is shown on:
+`Drawing.intervals`, a `DrawingIntervalRange` of interval codes, `{ from?, to? }`,
+both ends included. Absent means every interval. A level drawn on hourly bars
+is often noise on the one minute chart and too fine to matter on the weekly
+one, so `{ from: '1m', to: '1h' }` keeps it to those.
+
+```ts
+import { DrawingController, drawingShownOnInterval, INTERVAL_FIELDS, composeSettings } from 'openalgo-charts/draw';
+
+chart.setDataContext({ symbol: 'INFY', exchange: 'NSE', interval: '15m' });
+const draw = new DrawingController(chart);
+const level = draw.add({ tool: 'horizontal-line', paneIndex: 0, style: {}, points: [{ time, price }],
+  intervals: { from: '1m', to: '1h' } });
+draw.update(level.id, { intervals: { to: '4h' } });   // replaces the range, one undo step
+draw.update(level.id, { intervals: null });            // every interval again ({} does the same)
+
+chart.setDataContext({ symbol: 'INFY', exchange: 'NSE', interval: 'D' });
+draw.shownOnInterval(level.id);      // false while the chart is on daily bars
+drawingShownOnInterval(level, '5m'); // the same test for any interval, no controller needed
+```
+
+How intervals compare:
+
+- **By bar length, from the interval registry.** `60m` and `1h` are one interval,
+  and a host's own codes (`registerInterval`) take part like the built-in
+  tokens. A calendar interval counts a mean month per month: it has no fixed
+  length, but a month still sorts above a week and below a quarter.
+- **The ends either way round.** The range is the span between them; an absent
+  end is no limit on that side (`{ to: '1h' }` is everything up to hourly).
+- **A comparison that cannot be made hides nothing.** An end nothing resolves
+  to a length (an unknown code, a tick or volume interval) is no limit, and a
+  chart interval of that kind, or none at all, shows every drawing.
+- A stored or requested range keeps only ends that are non-blank strings, and
+  one naming neither end is no range.
+
+**The chart's interval is its data context's.** The controller reads
+`chart.getDataContext()?.interval` (optional on `DrawingChartHost`) when it is
+built, and follows every `data:context`; a host with no `getDataContext` is
+followed through the event's payload. `interval()` reads it. The change applies
+the moment the chart announces it, and the layers are listed again only when
+the set of hidden drawings changed, so a new symbol on the same interval
+repaints nothing.
+
+**Outside its range a drawing is kept but not on the chart.** It stays in
+`drawings()`, `toJSON()`, the undo history and every link, but no layer lists
+it, so:
+
+- nothing paints it, and `chart.exportSVG()` and `takeScreenshot()` leave it out;
+- a click passes through it, and a box select or an eraser drag does not reach it;
+- an interval change drops it from the selection and the hover. Picked on
+  purpose (`select(id)`, an objects panel row) it is selectable all the same,
+  so a settings panel can widen its range; it has no handles to show.
+- the object inventory lists it with `hiddenOnInterval: true` and withholds
+  `focus`, which would bring into view a place where nothing is drawn. A group
+  row is marked when every drawing in it is hidden. The row's `visible` stays
+  the user's own switch. The controller answers the inventory through the
+  optional `ChartObjectDrawingSource.shownOnInterval(id)`.
+- `visible` is untouched: the range is not the user's show and hide switch.
+  An alert on the drawing keeps firing, since a display choice is not a
+  change of the level it watches. `clear()` still takes every drawing the user
+  may delete, hidden ones included.
+
+A copy carries the range: `duplicate`, Alt+drag and the clipboard keep it.
+**A paste never lands hidden:** a copy whose range leaves out the receiving
+chart's interval is pasted without it, since a paste that shows nothing looks
+like a paste that failed. A `DrawingLinkGroup` shares the range, and each linked
+chart shows the drawing by its own interval.
+
+**Settings.** The pair is two dot paths, `intervals.from` and `intervals.to`,
+of kind `'interval'` in the `'visibility'` group: `INTERVAL_FIELDS`. No tool
+declares them, because the engine cannot list a host's intervals. A host that
+offers the control adds them and renders its own interval list, with an empty
+choice for no limit:
+
+```ts
+const schema = composeSettings([drawingSettingsSchema(d.tool).fields, INTERVAL_FIELDS]);
+readDrawingSettings(d, schema);          // { ..., 'intervals.from': '1m', 'intervals.to': '1h' }
+draw.update(d.id, applyDrawingSettings(d, { 'intervals.to': 'D' }, schema));
+```
+
+`coerceSettingValue` trims an `'interval'` value and turns an empty one into
+`undefined`, which removes that end; `applyDrawingSettings` returns the pair
+whole as `intervals`, and `{}` once neither end is left, which the controller
+takes as no range. `DrawingPatch.intervals` replaces the range; `null` or `{}`
+clears it. A forced patch on a read-only drawing is held and taken into the
+history like any other forced patch.
+
+**Document version 3.** The range is the one field version 3 added.
+
+- A version 2 document is a valid version 3 one and loads unchanged, version
+  and all: `migrateDrawings` keeps `version: 2` for a document with no range.
+- `toJSON()`, `migrateDrawings` and a clipboard payload are written as version
+  3 only while a drawing carries a range, and as version 2 again once none
+  does. `InstrumentDrawings` stores what the controller writes, so a stored
+  version 2 document is read through the migration and written back only when
+  something in it changes, then as whichever version holds it.
+- **An older reader and a version 3 document.** A build before this one reads
+  version 2. Its clipboard refuses a payload newer than it reads, so it pastes
+  nothing from a copy that carries a range, and still pastes a copy without
+  one (written as version 2). Its migration never refused a document: it keeps
+  the fields it knows and drops the rest, so it opens a version 3 layout with
+  every drawing, shows the ranged ones on every interval, and writes the next
+  save without their ranges. Keep a layout with ranges away from an older
+  build, or expect to set the ranges again.
+- This build reads a document from a later version the same lenient way:
+  what it knows is kept and the rest dropped, since refusing it would empty
+  the chart on load. The clipboard, which can refuse without losing anything,
+  refuses a payload newer than `DRAWING_CLIPBOARD_VERSION`.

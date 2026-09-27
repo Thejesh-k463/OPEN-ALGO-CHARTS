@@ -11,7 +11,9 @@ import { fakeDocument } from './helpers/fake-dom';
 import { DrawingController, DRAWING_STATE_VERSION, migrateDrawings as fromTier } from '../src/draw/index';
 import { migrateDrawings } from '../src/draw/migrate';
 import { levelColor, cycleColor, LEVEL_NEUTRAL } from '../src/draw/levels';
-import { decodeClipboardPayload, DRAWING_CLIPBOARD_KEY } from '../src/draw/clipboard';
+import {
+  decodeClipboardPayload, encodeClipboardPayload, DRAWING_CLIPBOARD_KEY, DRAWING_CLIPBOARD_VERSION,
+} from '../src/draw/clipboard';
 import type { Bar } from '../src/model/bar';
 import type { Drawing, DrawingsDocument, FibLevel } from '../src/draw/types';
 
@@ -111,8 +113,9 @@ const byId = (doc: DrawingsDocument, id: string): Drawing => {
 describe('a 1.9.2 layout', () => {
   it('keeps every drawing, its id and its order', () => {
     const doc = migrateDrawings(v1Layout());
+    // No drawing carries an interval range, so the lowest version that holds it.
     expect(doc.version).toBe(2);
-    expect(doc.version).toBe(DRAWING_STATE_VERSION);
+    expect(DRAWING_STATE_VERSION).toBe(3);
     expect(doc.drawings.map((d) => d.id)).toEqual(['d1', 'd2', 'd3', 'd4', 'd5', 'd6']);
     expect(doc.drawings.map((d) => d.tool)).toEqual([
       'text', 'callout', 'fib-retracement', 'long-position', 'trend-line', 'brush',
@@ -297,6 +300,148 @@ describe('a version 2 document', () => {
       }],
     });
     expect(doc.drawings[0].style.levels).toEqual([]);
+  });
+});
+
+/**
+ * A document exactly as 2.5.8 persisted one: version 2, a note pinned to the
+ * screen, a shape placed in the series band with a policy, a group, and every
+ * optional field a drawing then had. Fresh objects on every call.
+ */
+function v2Document(): DrawingsDocument {
+  return {
+    version: 2,
+    drawings: [
+      {
+        id: 'd1', tool: 'rectangle', paneIndex: 0, zIndex: 1, createdAt: 1727400000000,
+        points: [{ time: 1700000000, price: 2140.5 }, { time: 1700003600, price: 2162.25 }],
+        style: { color: '#089981', fill: true, fillOpacity: 0.12 },
+        text: { value: 'Demand', color: '#ffffff', position: 'outside' },
+        props: { note: 'weekly low' }, locked: true, stackAbove: 'source:primary',
+        policy: { editable: false, listed: true },
+      },
+      {
+        id: 'd2', tool: 'text', paneIndex: 0, zIndex: 0, createdAt: 1727400001000, points: [],
+        space: 'viewport', viewportPoints: [{ x: 0.05, y: 0.08 }],
+        style: {}, text: { value: 'Plan: fade the open', fontSize: 14 },
+      },
+      {
+        id: 'd3', tool: 'trend-line', paneIndex: 0, zIndex: -1, createdAt: 1727400002000, visible: false,
+        points: [{ time: 1700000900, price: 2138 }, { time: 1700009000, price: 2171.75 }],
+        style: { lineWidth: 2, lineStyle: 'dashed', extendRight: true },
+      },
+    ],
+    groups: [{ id: 'group-1', name: 'Morning', members: ['d1', 'd3'] }],
+  };
+}
+
+describe('version 2 to version 3', () => {
+  it('loads a version 2 document unchanged, version and all', () => {
+    const doc = v2Document();
+    expect(migrateDrawings(doc)).toEqual(v2Document());
+    expect(migrateDrawings(JSON.parse(JSON.stringify(doc)))).toEqual(v2Document());
+    // Through a controller and the chart state, and back out: nothing moves.
+    const chart = makeChart();
+    chart.setDrawingState(doc);
+    const draw = new DrawingController(chart);
+    expect(draw.toJSON()).toEqual(v2Document());
+    expect(chart.drawingState()).toEqual(v2Document());
+    const again = new DrawingController(makeChart());
+    again.fromJSON(JSON.parse(JSON.stringify(draw.toJSON())));
+    expect(JSON.stringify(again.toJSON())).toBe(JSON.stringify(draw.toJSON()));
+  });
+
+  it('writes version 3 only while a drawing carries a range', () => {
+    const draw = new DrawingController(makeChart());
+    draw.fromJSON(v2Document());
+    draw.update('d3', { intervals: { from: '1m', to: '1h' } });
+    expect(draw.toJSON().version).toBe(3);
+    expect(draw.toJSON().version).toBe(DRAWING_STATE_VERSION);
+    draw.update('d3', { intervals: null });
+    expect(draw.toJSON()).toEqual(v2Document());
+  });
+
+  it('round-trips a version 3 document through a controller, text, history and the migration', () => {
+    const v3 = v2Document();
+    v3.version = 3;
+    v3.drawings[0].intervals = { from: '15m', to: 'D' };
+    v3.drawings[2].intervals = { to: '1h' };
+    expect(migrateDrawings(v3)).toEqual(v3);
+    expect(migrateDrawings(migrateDrawings(v3))).toEqual(v3);
+    const draw = new DrawingController(makeChart());
+    draw.fromJSON(JSON.parse(JSON.stringify(v3)));
+    expect(draw.toJSON()).toEqual(v3);
+    const again = new DrawingController(makeChart());
+    again.fromJSON(JSON.parse(JSON.stringify(draw.toJSON())));
+    expect(again.toJSON()).toEqual(v3);
+    // An undo restores a snapshot through the same migration: the ranges stay.
+    again.update('d2', { style: { color: '#2962ff' } });
+    expect(again.undo()).toBe(true);
+    expect(again.toJSON()).toEqual(v3);
+  });
+
+  it('drops a range that names no usable bound on load, and keeps the drawing', () => {
+    const doc = migrateDrawings({
+      version: 3, drawings: [
+        { id: 'a', tool: 'trend-line', paneIndex: 0, points: [{ time: 1, price: 2 }, { time: 3, price: 4 }], intervals: { from: 7 } },
+        { id: 'b', tool: 'trend-line', paneIndex: 0, points: [{ time: 1, price: 2 }, { time: 3, price: 4 }], intervals: '1m-1h' },
+        { id: 'c', tool: 'trend-line', paneIndex: 0, points: [{ time: 1, price: 2 }, { time: 3, price: 4 }], intervals: { from: 7, to: '1h' } },
+      ],
+    });
+    expect(doc.drawings.map((d) => d.id)).toEqual(['a', 'b', 'c']);
+    expect(doc.drawings[0]).not.toHaveProperty('intervals');
+    expect(doc.drawings[1]).not.toHaveProperty('intervals');
+    expect(doc.drawings[2].intervals).toEqual({ to: '1h' });
+    expect(doc.version).toBe(3);
+  });
+
+  it('pastes a range whole or not at all, where a load is lenient', () => {
+    const payload = (intervals: unknown) => JSON.stringify({
+      [DRAWING_CLIPBOARD_KEY]: { version: 3, drawings: [{ tool: 'trend-line', paneIndex: 0, intervals, points: [{ time: 1, price: 2 }, { time: 3, price: 4 }] }] },
+    });
+    expect(decodeClipboardPayload(payload({ from: '1m', to: '1h' }))?.[0].intervals).toEqual({ from: '1m', to: '1h' });
+    expect(decodeClipboardPayload(payload({ from: 7, to: '1h' }))).toBeNull();
+    expect(decodeClipboardPayload(payload({}))).toBeNull();
+    expect(decodeClipboardPayload(payload('1m'))).toBeNull();
+  });
+});
+
+/**
+ * What a reader older than the document does with it. An older build's
+ * clipboard refuses a payload newer than it reads, which this build's gate
+ * shows for a version from the future; a copy is written as the lowest
+ * version that holds it, so only a copy carrying a range is one an older
+ * build refuses. An older build's migration never refused a document: it
+ * keeps what it knows, which this build shows for a later version, so an
+ * older build shows a version 3 drawing on every interval and drops its
+ * range when it next saves. The skill reference and the website say so.
+ */
+describe('an older reader and a newer document', () => {
+  const entry = { tool: 'trend-line', paneIndex: 0, points: [{ time: 1, price: 2 }, { time: 3, price: 4 }] };
+
+  it('writes a copy as version 3 only when it carries a range, so a version 2 reader takes the rest', () => {
+    const version = (drawings: Drawing[]) =>
+      (JSON.parse(encodeClipboardPayload(drawings)) as Record<string, { version: number }>)[DRAWING_CLIPBOARD_KEY].version;
+    expect(version([{ ...entry, id: 'a', zIndex: 0, style: {} }])).toBe(2);
+    expect(version([{ ...entry, id: 'a', zIndex: 0, style: {} }, { ...entry, id: 'b', zIndex: 0, style: {}, intervals: { to: '1h' } }])).toBe(3);
+  });
+
+  it('refuses a clipboard payload newer than it reads', () => {
+    const text = (version: number) => JSON.stringify({ [DRAWING_CLIPBOARD_KEY]: { version, drawings: [entry] } });
+    expect(decodeClipboardPayload(text(DRAWING_CLIPBOARD_VERSION))).toHaveLength(1);
+    expect(decodeClipboardPayload(text(DRAWING_CLIPBOARD_VERSION + 1))).toBeNull();
+  });
+
+  it('reads a document newer than it knows by keeping what it knows, never by emptying the chart', () => {
+    const later = {
+      version: DRAWING_STATE_VERSION + 1, layers: ['a later field'],
+      drawings: [{ ...entry, id: 'x', style: { color: '#f23645' }, intervals: { to: '1h' }, laterField: { any: 1 } }],
+    };
+    const doc = migrateDrawings(later);
+    expect(doc.version).toBe(3);
+    expect(doc.drawings).toHaveLength(1);
+    expect(doc.drawings[0]).toEqual({ ...entry, id: 'x', zIndex: 0, style: { color: '#f23645' }, intervals: { to: '1h' } });
+    expect(doc).not.toHaveProperty('layers');
   });
 });
 

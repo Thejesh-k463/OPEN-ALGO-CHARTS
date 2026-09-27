@@ -58,6 +58,17 @@ describe('reference workspace preparation', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('takes a drawing document of every version this build reads, and refuses a newer one', async () => {
+    const line = { id: 'l1', tool: 'trend-line', paneIndex: 0, zIndex: 0, style: {},
+      points: [{ time: 1700000000, price: 101 }, { time: 1700086400, price: 104 }] };
+    const withDrawings = (drawings) => { const doc = fixture(); doc.panes[0].chart.drawings = drawings; return doc; };
+    const fetch = async () => bars;
+    // A save with no interval range is still version 2; one with a range is 3.
+    await expect(prepareReferenceWorkspace(withDrawings({ version: 2, drawings: [line] }), { fetch })).resolves.toBeTruthy();
+    await expect(prepareReferenceWorkspace(withDrawings({ version: 3, drawings: [{ ...line, intervals: { to: '1h' } }] }), { fetch })).resolves.toBeTruthy();
+    await expect(prepareReferenceWorkspace(withDrawings({ version: 4, drawings: [line] }), { fetch })).rejects.toThrow(/drawing document version/);
+  });
+
   it('stops waiting promptly on cancellation and consumes a late rejected request', async () => {
     const gate = deferred(), controller = new AbortController();
     const pending = prepareReferenceWorkspace(fixture(), { fetch: () => gate.promise, signal: controller.signal });

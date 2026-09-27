@@ -21,6 +21,14 @@
  * their own so a time or a price never has to mean a pixel. The field is
  * optional and additive, which is why the document stays version 2: a save
  * with no viewport drawing is byte for byte what it was.
+ *
+ * Version 3 added one field, {@link Drawing.intervals}: the range of chart
+ * intervals a drawing is shown on. A version 2 document is a valid version 3
+ * one and loads unchanged, and a document is written as version 3 only when a
+ * drawing in it carries a range, so a save without one is still version 2.
+ * The version is raised for a range because an earlier build would not keep
+ * it: its migration drops the field, and the drawing would show on every
+ * interval there and lose its range on the next save.
  */
 import type { PrimitiveRenderContext, AlertDrawingValue, AlertDrawingLevel } from 'openalgo-charts';
 import type { SettingsSchema } from './schema';
@@ -187,6 +195,20 @@ export interface DrawingPolicy {
   listed?: boolean;
 }
 
+/**
+ * The chart intervals a drawing is shown on, both ends included, as interval
+ * codes the chart's data context names (`'1m'`, `'1h'`, `'D'`, or a code the
+ * host registered). An absent end is no limit on that side, so `{ to: '1h' }`
+ * shows the drawing up to hourly bars. Intervals compare by bar length, so the
+ * two ends may be written either way round. See `drawingShownOnInterval`.
+ */
+export interface DrawingIntervalRange {
+  /** The shortest interval the drawing is shown on. */
+  from?: string;
+  /** The longest interval the drawing is shown on. */
+  to?: string;
+}
+
 export interface Drawing {
   id: string;
   /** Registered tool id. */
@@ -220,6 +242,13 @@ export interface Drawing {
   policy?: DrawingPolicy;
   /** Default true. */
   visible?: boolean;
+  /**
+   * The chart intervals the drawing is shown on. Absent means every interval.
+   * On an interval outside the range the drawing is kept and saved but not
+   * on the chart: it is not painted, hit-tested, boxed or erased there, and
+   * the object inventory marks it. `visible` stays the user's own switch.
+   */
+  intervals?: DrawingIntervalRange;
   /**
    * Paint order. Below zero paints under the series, at or above zero paints
    * over it. Ties break by array order, so two drawings at 0 paint in the
@@ -269,6 +298,11 @@ export type DrawingPatch = Partial<Pick<Drawing,
   & {
     /** A series-band entry to paint directly above, or null to leave the series band. */
     stackAbove?: string | null;
+    /**
+     * The intervals to show the drawing on, replacing any range it had, or
+     * null (or a range with neither end) to show it on every interval.
+     */
+    intervals?: DrawingIntervalRange | null;
   };
 
 /**
@@ -277,13 +311,13 @@ export type DrawingPatch = Partial<Pick<Drawing,
  */
 export type DrawingStackTarget = { drawing: string } | { entry: string };
 
-/** The persisted shape's version; bumped when {@link Drawing} changes. */
-export const DRAWING_STATE_VERSION = 2;
-
 /**
- * What `toJSON` returns and `ChartState.drawings` carries. Versioned so a 1.9.x
- * save (a bare `Drawing[]`) is recognisable and upgraded rather than misread.
+ * The newest document version this build reads and writes; bumped when
+ * {@link Drawing} changes in a way an earlier build would lose. A document is
+ * written as the lowest version that holds it (see {@link DrawingsDocument}).
  */
+export const DRAWING_STATE_VERSION = 3;
+
 /** A named set of drawing ids. A drawing belongs to at most one group. */
 export interface DrawingGroup {
   id: string;
@@ -291,8 +325,17 @@ export interface DrawingGroup {
   members: string[];
 }
 
+/**
+ * What `toJSON` returns and `ChartState.drawings` carries. Versioned so a 1.9.x
+ * save (a bare `Drawing[]`) is recognisable and upgraded rather than misread.
+ */
 export interface DrawingsDocument {
-  version: 2;
+  /**
+   * 3 when a drawing carries an interval range, else 2: the lowest version
+   * that holds the content, so an earlier build reads a document without a
+   * range exactly as it wrote one.
+   */
+  version: 2 | 3;
   drawings: Drawing[];
   groups?: DrawingGroup[];
 }

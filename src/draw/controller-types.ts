@@ -106,6 +106,16 @@ export interface DrawingChartHost {
    */
   seriesStack?(paneIndex: number): readonly string[];
   setPrimitiveStackAbove?(primitive: IPrimitive, above: string | null): boolean;
+  /**
+   * Optional: the host's data context, whose `interval` decides which
+   * drawings with an interval range are shown (`Drawing.intervals`). Read
+   * when the controller is built and on every `data:context`, whose payload
+   * is the context itself; a host without it that emits `data:context` is
+   * followed through the payload alone. With no interval every drawing shows.
+   * The instrument is declared too, as the chart's context carries it, so one
+   * host object also satisfies `DrawingLinkChart`.
+   */
+  getDataContext?(): { readonly symbol?: string; readonly exchange?: string; readonly interval?: string } | undefined;
 }
 
 export interface DrawingControllerOptions {
