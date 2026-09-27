@@ -158,8 +158,14 @@ describe('panes at a whole-number device pixel ratio', () => {
 });
 
 // Recorded on v2.5.5 (b282ae1), and the same on a9ee498, the base of this change.
+// The frames were recorded again for 2.5.9, where the last-price tag is drawn
+// in a second pass through its strip's clip, after the pane's price lines
+// (tests/pane-axis-tags.test.ts). Against the 8071693 streams the only new ops
+// are one restore, save, beginPath, rect, clip and translate per pane, where
+// the first pass now ends and the second begins: no op that draws moved or
+// changed, and no tick label here sits near enough to an edge to be dropped.
 const RATIO_1_LAYOUT = 'bd1455549dc7857ae92474247590dc228a56c18ccb554149d23045aeee3e73f2';
-const RATIO_1_FRAME = '39e842fa65a59d889a9aeff9d10eb2c86f7be550ef88fd5f954fbbdb4283953c';
+const RATIO_1_FRAME = '519a178b6b9d57c9226f49078f81432f35e8f89a61f52255677b6de0fb2a4541';
 const RATIO_1_COORDINATES = 'e040a4f3863f6dc97925f6bd5af6871c5700c9e1062810a2b99caa3855968e03';
 const RATIO_2_LAYOUT = '9e5b14d0efc2eb945d62b04efceb2b8a5fb986a1d3d0073f22a7ce3bbb7f4b97';
-const RATIO_2_FRAME = 'b4791a46d7452455b1e1727755579b6c10c6c8be7d180cc460d18bed540525f8';
+const RATIO_2_FRAME = '90ca0eaaa801ad3d6e1dc1ccb87a1fb636c2db03ff3a5ecf84465d3bae200361';

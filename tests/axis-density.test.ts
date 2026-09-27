@@ -64,7 +64,10 @@ describe('the price ladder follows the pane height', () => {
     const ps = scale(23980, 24200, 700);
     const rec = new RecordingContext();
     drawPriceAxis(rec as unknown as CanvasRenderingContext2D, ps, layout(700), 1);
-    expect(drawn(rec).length).toBeGreaterThan(10);
+    // Twelve rungs, 23980 to 24200: the two on the pane's edges are left out,
+    // since the edges would cut their labels in half, which leaves ten whole
+    // prices where the old ladder printed six.
+    expect(drawn(rec).length).toBeGreaterThanOrEqual(10);
   });
 });
 

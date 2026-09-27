@@ -106,10 +106,12 @@ for (const scale of [1, 1.25]) {
 }
 
 // The corner clock and the bar countdown have no timer: each reads the
-// injected wall clock as its pane paints. The fixture's bottom pane is a host
-// line that no tick here writes to, and it carries both the clock and, as a
-// price series, a countdown in its last-price tag. The clock moves on before
-// each tick, and that pane must show the new reading after it.
+// injected wall clock as its pane paints, and must show the new reading on a
+// pane the tick does not write to. The clock sits in the corner of the bottom
+// pane, a host line, and a tick to the price series leaves that pane alone.
+// The countdown sits in the price source's tag, on the price pane, so there
+// the tick goes to the host line at the bottom instead. The clock moves on
+// before each tick.
 for (const reading of ['sessionClock', 'barCountdown'] as const) {
   test(`a live tick keeps the ${reading} reading the time on a pane the tick does not write to`, async ({ page }) => {
     await page.evaluate(reading => {
@@ -118,6 +120,9 @@ for (const reading of ['sessionClock', 'barCountdown'] as const) {
       // Inside the forming bar, so the countdown has a close to count to.
       api.clockAt = data[data.length - 1].time + 10;
       api.chart.setAxisChromeOptions({ [reading]: true, clock: () => api.clockAt });
+      // A second host line on the bottom pane, for the countdown's ticks to write to.
+      api.bottom = api.chart.addSeries('line', { paneIndex: 2, style: { color: '#7e57c2' } });
+      api.bottom.setData(data.map((b: { time: number; close: number }) => ({ time: b.time, value: b.close % 40 + 30 })));
       api.paints = api.chart.panes().map(() => 0);
       api.chart.panes().forEach((pane: any, i: number) => {
         const paint = pane.paintBase;
@@ -127,16 +132,22 @@ for (const reading of ['sessionClock', 'barCountdown'] as const) {
     await frames(page);
     expect(await page.evaluate(() => (window as any).__api.chart.panes().length)).toBe(3);
     for (let step = 1; step <= 3; step++) {
-      await page.evaluate(step => {
+      await page.evaluate(([step, reading]) => {
         const api = (window as any).__api;
         api.clockAt += 7;
         api.paints.fill(0);
-        const data = api.price.getData();
-        const last = data[data.length - 1];
-        api.price.update({ ...last, close: last.close + step / 10 });
-      }, step);
+        if (reading === 'sessionClock') {
+          const data = api.price.getData();
+          const last = data[data.length - 1];
+          api.price.update({ ...last, close: last.close + (step as number) / 10 });
+        } else {
+          const data = api.bottom.getData();
+          const last = data[data.length - 1];
+          api.bottom.update({ ...last, value: last.value + (step as number) / 10 });
+        }
+      }, [step, reading] as const);
       await frames(page);
-      // The price pane for the tick, the bottom pane for the reading, and not the histogram between them.
+      // The tick's pane, the reading's pane, and not the histogram between them.
       expect(await page.evaluate(() => [...(window as any).__api.paints]), `paints after tick ${step}`).toEqual([1, 0, 1]);
       const local = await canvases(page);
       await page.evaluate(() => (window as any).__api.chart.invalidate((m: any) => m.invalidateGlobal(3)));

@@ -608,6 +608,10 @@ export class ChartInput {
 
   public _onPointerMove(e: PointerEvent): void {
     this._unfreezeOverlay();
+    // A move here is the pointer over the chart. Not every engine sends a
+    // pointerenter to a container put back under a pointer that entered it
+    // before it was parked, and the hover was forgotten while it was away.
+    this._pointerInside = true;
     // Hover from a second device must not move or release the pointer that owns the gesture.
     if (this._pointers.size > 0 && !this._pointers.has(e.pointerId)) return;
     // Safety: if the primary button is no longer held (missed pointerup, e.g.
@@ -1141,10 +1145,26 @@ export class ChartInput {
     this._host._updateAccessibleSummary();
   }
 
+  /**
+   * Whether the pointer is over the chart, as far as its keys are concerned.
+   * A container taken out of the document under a still pointer, as a
+   * framework does when it parks a view it keeps alive, is sent no
+   * pointerleave, so the chart would go on answering hover-scoped keys
+   * typed at whatever replaced it. Once seen out of the document the hover
+   * is forgotten, and the chart back in place waits for the pointer to come
+   * in again rather than trusting where it last was.
+   */
+  private _hovered(): boolean {
+    if (!this._pointerInside) return false;
+    if (this._host._container.isConnected !== false) return true;
+    this._pointerInside = false;
+    return false;
+  }
+
   /** Scope gating: hover keeps keys chart-local; global always acts. */
   private _shortcutsActive(): boolean {
     if (this._host._shortcuts === null) return false;
-    if (this._host._shortcuts.scope === 'global' || this._pointerInside) return true;
+    if (this._host._shortcuts.scope === 'global' || this._hovered()) return true;
     const active = this._host._doc.activeElement as Node | null;
     return active !== null && (active === this._host._container || this._host._container.contains?.(active) === true);
   }

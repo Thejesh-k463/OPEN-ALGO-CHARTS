@@ -274,7 +274,9 @@ clock draws nothing rather than painting into the plot.
 
 A second row inside the last-price tag, counting down to the close of the bar being built.
 The tag grows from one row to two and widens to the wider of them, so the price stays on the
-price line and the countdown sits under it.
+price line and the countdown sits under it. Only the pane that shows the chart's price source
+carries it: the countdown is that bar's, and a study pane's tag, which is the study's value,
+stays one row rather than growing into the study's own level tags.
 
 The cadence is **read back from the bars**, not configured: the chart is never told its own
 timeframe, and a chart that switched timeframe mid-session has to follow within a screen of

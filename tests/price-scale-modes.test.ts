@@ -445,7 +445,13 @@ describe('the drawn axis reads the scale ladder', () => {
     const ps = makeScale('linear');
     const { ctx, rec } = makeCtx();
     drawPriceAxis(ctx, ps, layout, 1);
+    // Less the rungs within half a tag of the pane's edges (90 and 110 here),
+    // whose labels the edges would cut in half.
+    const whole = (p: number): boolean => {
+      const y = Math.round(ps.priceToY(p));
+      return y >= 8 && y <= layout.plotHeight - 8;
+    };
     expect(labels(rec))
-      .toEqual(niceTicks(90, 110, priceTickCount(layout.plotHeight)).map((p) => ps.format(p)));
+      .toEqual(niceTicks(90, 110, priceTickCount(layout.plotHeight)).filter(whole).map((p) => ps.format(p)));
   });
 });

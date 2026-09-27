@@ -39,7 +39,11 @@ function paneFixture(specs: { id: PriceScaleId; value: number; style?: SeriesSty
     const id = dataLayer.createSeries();
     dataLayer.setSeriesData(id, [0, 1, 2].map(index => ({ time: 1000 + index * 60,
       open: spec.value, high: spec.value, low: spec.value, close: spec.value })));
-    pane.addSeries(createSeriesRecord(id, 'line', { color: '#2277cc', ...spec.style }, spec.id));
+    const record = createSeriesRecord(id, 'line', { color: '#2277cc', ...spec.style }, spec.id);
+    pane.addSeries(record);
+    // The first series is the chart's price source, as a chart's first price
+    // series is, and the pane holding the source is the one with the countdown.
+    if (spec === specs[0]) pane.setSourceSeries(record);
   }
   pane.resize(712, 400, 1);
   timeScale.setBaseIndex(dataLayer.baseIndex); timeScale.setWidth(600);

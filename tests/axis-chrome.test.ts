@@ -40,6 +40,17 @@ function scale(): PriceScale {
 const texts = (rec: RecordingContext): (string | undefined)[] =>
   rec.ops.filter((o) => o.type === 'fillText').map((o) => o.text);
 
+/**
+ * The rungs the axis labels: a label within half a tag of the pane's top or
+ * bottom edge would be cut by it, and is left out. On this scale the top and
+ * bottom rungs sit on the edges themselves.
+ */
+const labelled = (ps: PriceScale, height = LAYOUT.plotHeight): number[] =>
+  ps.ticks(priceTickCount(height)).filter((p) => {
+    const y = Math.round(ps.priceToY(p));
+    return y >= AXIS_TAG_HEIGHT / 2 && y <= height - AXIS_TAG_HEIGHT / 2;
+  });
+
 const ofType = (rec: RecordingContext, type: string): Op[] => rec.ops.filter((o) => o.type === type);
 
 /** UTC seconds for a UTC wall clock. */
@@ -446,7 +457,7 @@ describe('price-axis label overlap suppression', () => {
 
   it('drops the tick a reserved last-price tag lands on, and only that one', () => {
     const ps = scale();
-    const ticks = ps.ticks(priceTickCount(LAYOUT.plotHeight));
+    const ticks = labelled(ps);
     const all = ticks.map((p) => ps.format(p));
     const collide = ticks[2];
 
@@ -484,12 +495,12 @@ describe('price-axis label overlap suppression', () => {
     drawPriceAxis(ctx, ps, LAYOUT, 1, undefined, [
       { y: Math.round(midway), height: 16, priority: AXIS_LABEL_PRIORITY.lastPrice },
     ]);
-    expect(texts(rec)).toEqual(ps.ticks(priceTickCount(LAYOUT.plotHeight)).map((p) => ps.format(p)));
+    expect(texts(rec)).toEqual(labelled(ps).map((p) => ps.format(p)));
   });
 
   it('consults the priority rather than letting any reservation win', () => {
     const ps = scale();
-    const ticks = ps.ticks(priceTickCount(LAYOUT.plotHeight));
+    const ticks = labelled(ps);
     const { ctx, rec } = makeCtx();
     drawPriceAxis(ctx, ps, LAYOUT, 1, undefined, [{
       y: Math.round(ps.priceToY(ticks[2])),
@@ -501,7 +512,7 @@ describe('price-axis label overlap suppression', () => {
 
   it('applies the same rule to a left axis', () => {
     const ps = scale();
-    const ticks = ps.ticks(priceTickCount(LAYOUT.plotHeight));
+    const ticks = labelled(ps);
     const { ctx, rec } = makeCtx();
     drawLeftPriceAxis(ctx, ps, 60, LAYOUT.plotHeight, 1, undefined, [{
       y: Math.round(ps.priceToY(ticks[1])),
@@ -509,6 +520,72 @@ describe('price-axis label overlap suppression', () => {
       priority: AXIS_LABEL_PRIORITY.lastPrice,
     }]);
     expect(texts(rec)).toEqual(ticks.map((p) => ps.format(p)).filter((_, i) => i !== 1));
+  });
+});
+
+describe('a tick label at a pane edge', () => {
+  /**
+   * 400 px over a range nudged so the 110 rung sits `gap` px under the top
+   * edge and the 90 rung `gap` px over the bottom one.
+   */
+  const nudged = (gap: number): PriceScale => {
+    const ps = new PriceScale();
+    ps.setHeight(400);
+    const per = 20 / (400 - 2 * gap);
+    ps.setPriceRange({ min: 90 - gap * per, max: 110 + gap * per });
+    return ps;
+  };
+  const drawn = (ps: PriceScale, left = false, dpr = 1): (string | undefined)[] => {
+    const { ctx, rec } = makeCtx();
+    const layout = { ...LAYOUT, plotHeight: 400 };
+    if (left) drawLeftPriceAxis(ctx, ps, 60, 400, dpr);
+    else drawPriceAxis(ctx, ps, layout, dpr);
+    return texts(rec);
+  };
+
+  it('is left out when the edge would cut it, top and bottom', () => {
+    const ps = scale();
+    // 110 sits on the top edge and 90 on the bottom one: half of each would be cut off.
+    expect(Math.round(ps.priceToY(110))).toBe(0);
+    expect(Math.round(ps.priceToY(90))).toBe(400);
+    const labels = drawn(ps);
+    expect(labels).not.toContain('110.0');
+    expect(labels).not.toContain('90.0');
+    expect(labels).toContain('100.0');
+  });
+
+  it('is kept once half a tag clears the edge, and left out a pixel nearer', () => {
+    const clear = nudged(AXIS_TAG_HEIGHT / 2), near = nudged(AXIS_TAG_HEIGHT / 2 - 1);
+    expect(Math.round(clear.priceToY(110))).toBe(8);
+    expect(Math.round(clear.priceToY(90))).toBe(392);
+    expect(Math.round(near.priceToY(110))).toBe(7);
+    expect(Math.round(near.priceToY(90))).toBe(393);
+    const kept = drawn(clear), cut = drawn(near);
+    expect(kept).toContain('110.0');
+    expect(kept).toContain('90.0');
+    expect(cut).not.toContain('110.0');
+    expect(cut).not.toContain('90.0');
+    // Only the edge rungs: every other one is well clear either way.
+    expect(cut.length).toBe(kept.length - 2);
+  });
+
+  it('is judged the same way on a left axis', () => {
+    expect(drawn(scale(), true)).not.toContain('110.0');
+    expect(drawn(scale(), true)).not.toContain('90.0');
+    expect(drawn(nudged(AXIS_TAG_HEIGHT / 2), true)).toContain('110.0');
+    expect(drawn(nudged(AXIS_TAG_HEIGHT / 2 - 1), true)).not.toContain('110.0');
+  });
+
+  it('keeps its margin in device pixels at a fractional pixel ratio', () => {
+    // At 1.5 the rung 7 media px under the top edge is 10.5 device px down,
+    // under the 12 px that half a tag takes there.
+    const ps = nudged(7);
+    const { ctx, rec } = makeCtx();
+    drawPriceAxis(ctx, ps, { ...LAYOUT, plotHeight: 400 }, 1.5);
+    expect(texts(rec)).not.toContain('110.0');
+    const at8 = makeCtx();
+    drawPriceAxis(at8.ctx, nudged(8), { ...LAYOUT, plotHeight: 400 }, 1.5);
+    expect(texts(at8.rec)).toContain('110.0');
   });
 });
 
@@ -534,7 +611,7 @@ describe('a chart that configures no chrome draws exactly what it drew before', 
       { type: 'moveTo', args: [600.5, 0] },
       { type: 'lineTo', args: [600.5, 400] },
       { type: 'stroke', args: [], strokeStyle: '#2a3046', lineWidth: 1 },
-      ...ps.ticks(priceTickCount(LAYOUT.plotHeight)).map((p) => ({
+      ...labelled(ps).map((p) => ({
         type: 'fillText',
         args: [606, Math.round(ps.priceToY(p))],
         fillStyle: '#8b91a7',
@@ -555,7 +632,7 @@ describe('a chart that configures no chrome draws exactly what it drew before', 
       { type: 'moveTo', args: [59.5, 0] },
       { type: 'lineTo', args: [59.5, 400] },
       { type: 'stroke', args: [], strokeStyle: '#2a3046', lineWidth: 1 },
-      ...ps.ticks(priceTickCount(LAYOUT.plotHeight)).map((p) => ({
+      ...labelled(ps).map((p) => ({
         type: 'fillText',
         args: [54, Math.round(ps.priceToY(p))],
         fillStyle: '#8b91a7',
