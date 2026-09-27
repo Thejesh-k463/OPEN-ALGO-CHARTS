@@ -227,12 +227,12 @@ chart.timeScale.setBarSpacing(6);
 // The engine ships no transport bar. This is one, in the host's own DOM.
 el.style.position = 'relative';
 const strip = document.createElement('div');
-strip.style.cssText = 'position:absolute;left:10px;top:8px;z-index:5;display:flex;gap:6px;align-items:center;font:12px ui-monospace,monospace;color:#cbd5e1';
+strip.style.cssText = 'position:absolute;left:10px;top:8px;z-index:5;display:flex;gap:6px;align-items:center;font:12px ui-monospace,monospace;color:light-dark(#151515,#cbd5e1)';
 el.appendChild(strip);
 const button = (label) => {
   const b = document.createElement('button');
   b.textContent = label;
-  b.style.cssText = 'font:12px ui-monospace,monospace;padding:3px 9px;border-radius:5px;border:1px solid #3b4453;background:#1b2029;color:#cbd5e1;cursor:pointer';
+  b.style.cssText = 'font:12px ui-monospace,monospace;padding:3px 9px;border-radius:5px;border:1px solid light-dark(#e4e4e4,#3b4453);background:light-dark(#fff,#1b2029);color:light-dark(#151515,#cbd5e1);cursor:pointer';
   strip.appendChild(b);
   return b;
 };

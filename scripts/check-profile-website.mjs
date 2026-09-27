@@ -17,6 +17,10 @@ await mkdir('artifacts', { recursive: true });
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  // The embedded demos open in the palette that matches the site theme. This
+  // run checks the dark palettes, so it chooses the dark site the way a reader
+  // would; the light default is checked on its own page further down.
+  await page.addInitScript(() => localStorage.setItem('theme', 'dark'));
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   for (const file of [...Object.values(manifest.captures).map(capture => capture.file), 'captures.json']) {
@@ -123,6 +127,7 @@ try {
   await orderflow.waitForFunction(() => typeof window.__footprint === 'function');
   assert.equal(await orderflow.evaluate(async () => (await import(new URL('../dist/openalgo-charts.mjs', location.href).href)).version()), version);
   await expect(orderflow.locator('#chart canvas').first()).toBeVisible();
+  await expect(orderflow.locator('#theme')).toHaveValue('midnight');
   await expect(orderflow.locator('#play')).toHaveText('Resume');
   await expect(orderflow.locator('#group')).toHaveValue('2');
   await expect(orderflow.locator('#table')).not.toBeChecked();
@@ -184,8 +189,30 @@ try {
       }
     }
   }
+  // With no saved choice the site opens light, and both embedded demos open in
+  // their light Ivory palettes instead of a dark panel on a white page.
+  const light = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  light.on('pageerror', error => errors.push(error.message));
+  await light.goto(`${base}/docs/market-profile-examples/`);
+  await expect(light.locator('html')).toHaveClass(/(?:^|\s)light(?:\s|$)/);
+  await expect(light.getByRole('link', { name: /^Open full-size demo/ })).toHaveAttribute('href', /[?&]theme=ivory(?:&|$)/);
+  const lightProfile = light.locator('iframe[title="Interactive compact market profile demo"]');
+  await lightProfile.scrollIntoViewIfNeeded();
+  const lightProfileFrame = await (await lightProfile.elementHandle()).contentFrame();
+  assert.ok(lightProfileFrame);
+  await expect(lightProfileFrame.locator('#theme')).toHaveValue('ivory');
+  await light.goto(`${base}/docs/profiles-and-orderflow/`);
+  await expect(light.getByRole('link', { name: /^Open full-size order-flow demo/ })).toHaveAttribute('href', /[?&]theme=ivory&paused=1$/);
+  const lightOrderflow = light.locator('iframe[title="Interactive footprint chart with profile, cluster ladder and heatmap styles"]');
+  await lightOrderflow.scrollIntoViewIfNeeded();
+  const lightOrderflowFrame = await (await lightOrderflow.elementHandle()).contentFrame();
+  assert.ok(lightOrderflowFrame);
+  await expect(lightOrderflowFrame.locator('#theme')).toHaveValue('ivory');
+  await expect(lightOrderflowFrame.locator('#play')).toHaveText('Resume');
+  await light.screenshot({ path: 'artifacts/website-orderflow-embed-light.png' });
+  await light.close();
   assert.deepEqual(errors, []);
-  console.log('Website checks passed: compact guide examples, embedded split/unsplit, five themes, unchanged analytics, eight fingerprinted screenshots, removed legacy URLs, orderflow styles/text/themes, optional seven-row table, lots divided by 65 with raw data preserved, current runtime, release/API references and mobile layout.');
+  console.log('Website checks passed: compact guide examples, embedded split/unsplit, five themes, unchanged analytics, eight fingerprinted screenshots, removed legacy URLs, orderflow styles/text/themes, optional seven-row table, lots divided by 65 with raw data preserved, current runtime, release/API references, mobile layout and light-default demo palettes.');
 } finally {
   await browser.close();
 }

@@ -1,9 +1,15 @@
 import React from 'react';
 import manifest from '../public/screenshots/market-profile-v2.1.1/captures.json';
+import { useSiteScheme } from './site-scheme';
 
 const ROOT = '/openalgo-charts';
 const IMAGE_ROOT = `${ROOT}/screenshots/market-profile-v2.1.1`;
 const DEMO = `${ROOT}/demos/market-profile/index.html`;
+const ORDERFLOW_DEMO = `${ROOT}/demos/orderflow/index.html`;
+// Each embedded demo opens in the palette closest to the page around it: its
+// light preset on a light page, and on a dark page the palette it always used.
+const PROFILE_THEME = { light: 'ivory', dark: 'blue' } as const;
+const ORDERFLOW_QUERY = { light: '?theme=ivory&paused=1', dark: '?paused=1' } as const;
 const screenshot = (name: keyof typeof manifest.captures) => {
   const capture = manifest.captures[name];
   return `${IMAGE_ROOT}/${capture.file}?v=${capture.sha256.slice(0, 12)}`;
@@ -28,14 +34,33 @@ export function ProfileOverviewScreenshot() {
 }
 
 export function ProfileDemo() {
+  const scheme = useSiteScheme();
+  const src = `${DEMO}?theme=${PROFILE_THEME[scheme ?? 'light']}`;
   return (
     <div className="oac-profile-demo">
       <div className="oac-profile-demo__head">
         <span>Six synthetic sessions · 2-point rows</span>
-        <a href={`${DEMO}?theme=blue`} target="_blank" rel="noreferrer">Open full-size demo ↗</a>
+        <a href={src} target="_blank" rel="noreferrer">Open full-size demo ↗</a>
       </div>
-      <iframe src={`${DEMO}?theme=blue`} title="Interactive compact market profile demo" loading="lazy" />
+      {/* Mounted only once the theme is known, so it loads once, in the right palette. */}
+      {scheme
+        ? <iframe key={scheme} src={src} title="Interactive compact market profile demo" loading="lazy" />
+        : <div className="oac-profile-demo__placeholder" aria-hidden="true" />}
     </div>
+  );
+}
+
+export function OrderflowDemo() {
+  const scheme = useSiteScheme();
+  const src = `${ORDERFLOW_DEMO}${ORDERFLOW_QUERY[scheme ?? 'light']}`;
+  return (
+    <>
+      <p><a href={src} target="_blank" rel="noreferrer">Open full-size order-flow demo ↗</a></p>
+      {scheme
+        ? <iframe key={scheme} className="oac-orderflow-demo" src={src} loading="lazy"
+            title="Interactive footprint chart with profile, cluster ladder and heatmap styles" />
+        : <div className="oac-orderflow-demo" aria-hidden="true" />}
+    </>
   );
 }
 

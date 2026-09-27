@@ -24,13 +24,21 @@ function walk(seed: number, n: number, startTime: number, intervalSec: number, s
 interface Tab { label: string; key: string; }
 type BuildFn = (el: HTMLElement, lib: any, tab: string) => any;
 
-function InteractiveChart({ title, tabs, build, height = 320, code }: { title: string; tabs?: Tab[]; build: BuildFn; height?: number; code?: string }) {
+function InteractiveChart({ title, tabs, build, height = 320, code, followSiteTheme = false }: { title: string; tabs?: Tab[]; build: BuildFn; height?: number; code?: string; followSiteTheme?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState(tabs?.[0]?.key ?? '');
   const [err, setErr] = useState<string | null>(null);
   const [showCode, setShowCode] = useState(false);
   const { resolvedTheme } = useTheme();
   const dark = resolvedTheme !== 'light';
+
+  // A card whose tabs are the palettes opens on the one the page is using, or a
+  // light page would open on a dark chart. It is set after mount rather than as
+  // the initial state: the static export renders before the theme is known, and
+  // hydration does not repair a class that differs from the server's markup.
+  useEffect(() => {
+    if (followSiteTheme) setTab(dark ? 'dark' : 'light');
+  }, [followSiteTheme, dark]);
 
   useEffect(() => {
     let chart: any;
@@ -423,7 +431,7 @@ const colorful = { ...darkTheme, background: '#0b0710', lineColor: '#8b5cf6',
 const chart = createChart(el, { theme: colorful }); // or darkTheme / lightTheme
 chart.addSeries('area').setData(bars); // style-less area inherits theme colors`;
 export const ThemeCard = () => (
-  <InteractiveChart title="Custom theme" build={buildTheme} code={THEME_CODE}
+  <InteractiveChart title="Custom theme" build={buildTheme} code={THEME_CODE} followSiteTheme
     tabs={[{ label: 'Dark', key: 'dark' }, { label: 'Light', key: 'light' }, { label: 'Colorful', key: 'colorful' }]} />
 );
 
@@ -453,7 +461,7 @@ const buildTooltip: BuildFn = (el, lib, tab) => {
       dot.style.display = 'none';
     } else if (tab === 'tracking') {
       tip.className = 'oac-tip oac-tip--track';
-      tip.innerHTML = '<span class="oac-tip__name">Apple Inc.</span> &nbsp; <b style="color:#eef1f7">' + e.bar.close.toFixed(2) + '</b> &nbsp; <span class="oac-tip__date">' + fmtDate(e.bar.time) + '</span>';
+      tip.innerHTML = '<span class="oac-tip__name">Apple Inc.</span> &nbsp; <b class="oac-tip__strong">' + e.bar.close.toFixed(2) + '</b> &nbsp; <span class="oac-tip__date">' + fmtDate(e.bar.time) + '</span>';
       tip.style.left = Math.min(Math.max(e.point.x, 90), el.clientWidth - 90) + 'px'; tip.style.top = '10px';
       dot.style.display = 'none';
     } else {
@@ -503,7 +511,9 @@ const buildEventMarkers: BuildFn = (el, lib, _tab) => {
   el.style.position = 'relative';
   const legend = document.createElement('div');
   legend.className = 'oac-legend oac-legend--multi';
-  legend.innerHTML = '<span class="oac-dot" style="background:#26a69a"></span>Dividend <span class="oac-dot" style="background:#f0a020"></span>Earnings <span class="oac-dot" style="background:#4f8cff"></span>Split <span class="oac-dot" style="background:#ef5350"></span>Expiry';
+  // One element per entry: the legend is a flex column, so a loose swatch and
+  // label became separate rows, each swatch sitting above its own name.
+  legend.innerHTML = '<span><span class="oac-dot" style="background:#26a69a"></span>Dividend</span><span><span class="oac-dot" style="background:#f0a020"></span>Earnings</span><span><span class="oac-dot" style="background:#4f8cff"></span>Split</span><span><span class="oac-dot" style="background:#ef5350"></span>Expiry</span>';
   el.appendChild(legend);
   chart.timeScale.fitContent(bars.length);
   return chart;

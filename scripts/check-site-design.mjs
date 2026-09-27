@@ -13,6 +13,10 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`${base}/`);
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  // A first visit opens in light even on a system that prefers dark; only a
+  // choice the reader saves on the site changes it.
+  await expect(page.locator('html')).toHaveClass(/(?:^|\s)light(?:\s|$)/);
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#fcfcfc');
   await expect(page.locator('img[src*="screenshots/market-profile"]')).toHaveCount(0);
   await expect(page.locator('.oac-profile-demo')).toHaveCount(0);
   await expect(page.locator('.oac-example__code')).toHaveCount(0);

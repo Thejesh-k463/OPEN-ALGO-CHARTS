@@ -20,15 +20,17 @@ el.append(controls, stage);
 const chart = lib.createChart(stage);
 chart.addSeries('candlestick').setData(stockBars(1700000000, 80, 3600, 100, 811, 0.006));
 chart.fitContent();
+// The table is drawn on the canvas, so its colours follow the chart's palette.
+const dark = chart.theme() === lib.darkTheme;
 const table = new lib.ChartTable({
   position: 'top-left', cellWidth: 'auto', cellHeight: 22,
-  background: '#17202e', borderColor: '#40506a',
+  background: dark ? '#17202e' : '#f8fafc', borderColor: dark ? '#40506a' : '#cbd5e1',
 });
 table.setRows([
   [{ text: 'Metric', bold: true }, { text: 'Reading', bold: true }],
-  [{ text: 'Moving averages', fontSize: 40 }, { text: 'Up', textColor: '#4ade80' }],
-  [{ text: 'Momentum' }, { text: 'Neutral', textColor: '#fbbf24' }],
-].map(row => row.map(cell => ({ textColor: '#e2e8f0', ...cell }))));
+  [{ text: 'Moving averages', fontSize: 40 }, { text: 'Up', textColor: dark ? '#4ade80' : '#15803d' }],
+  [{ text: 'Momentum' }, { text: 'Neutral', textColor: dark ? '#fbbf24' : '#b45309' }],
+].map(row => row.map(cell => ({ textColor: dark ? '#e2e8f0' : '#1e293b', ...cell }))));
 chart.addPrimitive(table);
 let automatic = true;
 function show() {

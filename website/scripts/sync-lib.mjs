@@ -5,6 +5,7 @@
 import { mkdirSync, copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { lightDiagram } from './diagram-light.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const distDir = resolve(here, '..', '..', 'dist');
@@ -17,7 +18,9 @@ const outDir = resolve(here, '..', 'lib', 'oac');
 const diagram = resolve(here, '..', '..', 'docs', 'architecture-diagram.svg');
 if (existsSync(diagram)) {
   copyFileSync(diagram, resolve(here, '..', 'public', 'architecture-diagram.svg'));
-  console.log('[sync-lib] copied docs/architecture-diagram.svg into website/public');
+  // The light site shows a variant derived from the same file, never a second copy.
+  writeFileSync(resolve(here, '..', 'public', 'architecture-diagram-light.svg'), lightDiagram(readFileSync(diagram, 'utf8')));
+  console.log('[sync-lib] copied docs/architecture-diagram.svg and its light variant into website/public');
 }
 
 if (!existsSync(distDir)) {

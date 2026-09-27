@@ -34,7 +34,10 @@ const config = {
   primaryHue: 0,
   primarySaturation: 0,
   darkMode: true,
-  nextThemes: { defaultTheme: 'dark' },
+  // A first visit opens in light. The navbar toggle and the sidebar switch still
+  // save the reader's choice under `theme`, and a saved choice wins over this
+  // default on every later visit.
+  nextThemes: { defaultTheme: 'light' },
   navbar: { extraContent: <NavigationExtra /> },
   search: { placeholder: 'Search docs...' },
   sidebar: {
@@ -87,7 +90,8 @@ const config = {
         <meta name="twitter:description" content={description} />
         <meta name="twitter:image" content={SHARE_IMAGE} />
         <meta name="twitter:image:alt" content="Linked OpenAlgo charts with stock candles, anchored VWAP and volume profiles" />
-        <meta name="theme-color" content={resolvedTheme === 'light' ? '#fcfcfc' : '#0b0b0b'} />
+        {/* The static export renders before any theme is known, so the fallback is the site default. */}
+        <meta name="theme-color" content={resolvedTheme === 'dark' ? '#0b0b0b' : '#fcfcfc'} />
       </>
     );
   },

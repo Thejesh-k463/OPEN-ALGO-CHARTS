@@ -202,7 +202,7 @@ chart.timeScale.fitContent(bars.length);
 
 el.style.position = 'relative';
 const out = document.createElement('div');
-out.style.cssText = 'position:absolute;left:8px;top:8px;font:12px ui-monospace,monospace;background:rgba(0,0,0,.55);color:#e6edf3;padding:6px 9px;border-radius:6px;pointer-events:none;line-height:1.5';
+out.style.cssText = 'position:absolute;left:8px;top:8px;font:12px ui-monospace,monospace;background:light-dark(rgba(255,255,255,.9),rgba(0,0,0,.55));color:light-dark(#151515,#e6edf3);box-shadow:0 0 0 1px light-dark(#e4e4e4,transparent);padding:6px 9px;border-radius:6px;pointer-events:none;line-height:1.5';
 el.appendChild(out);
 
 let hover = 'move the crosshair';
