@@ -467,6 +467,41 @@ place, so copy what you keep past the call. A custom renderer, even one register
 under a built-in name, always receives every bar: the level of detail
 (`conflate`) reduces only the built-in renderers.
 
+A renderer that joins each bar to the next (a line, a step, a band) sets
+`connectsBars: true`. Its `items` then also hold the series' nearest bar beyond each
+edge of the view, so the segment that crosses the edge is drawn, and a sparse line (a
+level held for a session) still spans the plot with none of its bars in view. Those two
+items carry `edgeX`, the x of the plot edge they lie past: cut the segment there rather
+than stroke it out to a bar that can be millions of pixels away, and draw no marker of
+their own.
+
+```ts
+registerChartType('my-line', {
+  defaultStyle: { color: '#fff' },
+  isPriceSeries: true,
+  connectsBars: true,
+  draw: (ctx, items, toY, barSpacing, dpr, style) => {
+    ctx.strokeStyle = style.color ?? '#fff';
+    ctx.beginPath();
+    items.forEach(({ x, bar, edgeX }, i) => {
+      let px = x, py = toY(bar.close);
+      if (edgeX !== undefined && items.length > 1) {
+        // Cut the leg to a neighbour beyond the view a few pixels past the edge.
+        const inner = items[i === 0 ? 1 : items.length - 2];
+        const iy = toY(inner.bar.close);
+        const cut = i === 0 ? Math.max(x, edgeX - 8) : Math.min(x, edgeX + 8);
+        py = iy + (py - iy) * ((cut - inner.x) / (x - inner.x));
+        px = cut;
+      }
+      if (i === 0) ctx.moveTo(px * dpr, py * dpr);
+      else ctx.lineTo(px * dpr, py * dpr);
+    });
+    ctx.stroke();
+  },
+  extents: (bar) => ({ min: bar.close, max: bar.close }),
+});
+```
+
 ## A custom primitive
 
 Implement `IPrimitive` and attach it - the same contract markers, profiles, and the trade
