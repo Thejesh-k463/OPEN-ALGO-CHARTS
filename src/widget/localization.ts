@@ -358,6 +358,7 @@ export type WidgetBuiltinMessage =
   | "The chart changed; reopen the menu before placing an order"
   | "The chart layout could not be saved"
   | "The chart layout could not be saved: {error}"
+  | "The drawings for {instrument} could not be saved"
   | "The current plot value is unavailable. The alert waits for observed values."
   | "The indicator picker is not in this build"
   | "The instrument context changed. Reopen the editor for the intended instrument."

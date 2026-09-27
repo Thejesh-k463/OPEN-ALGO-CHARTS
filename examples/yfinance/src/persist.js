@@ -384,6 +384,12 @@ export function stripView(doc) {
   return out;
 }
 
+/** The symbol a layout was captured on, or null when it cannot say. */
+function layoutSymbol(doc) {
+  try { return primaryLayoutSelection(doc).request?.symbol ?? null; }
+  catch (_) { return null; }
+}
+
 /**
  * Put a document onto the live chart. `keepView` restores the viewport and
  * the pinned ranges too, which is right only on the dataset they were
@@ -404,7 +410,15 @@ function applyLayoutNow(doc, { keepView = true, replaceComparisons = true } = {}
   if (!app.chart) return { applied: false, series: [], indicators: 0, reason: 'no chart' };
   const primary = app.chart;
   const primaryRequest = datasetKey(app.req);
-  const state = keepView ? doc : stripView(doc);
+  let state = keepView ? doc : stripView(doc);
+  // Drawings belong to the symbol they were drawn on. A layout captured on
+  // another symbol keeps its drawings for that symbol, shown when it loads,
+  // and this chart keeps the ones it has.
+  const own = layoutSymbol(doc);
+  if (own !== null && own !== app.req.symbol && app.instrumentDrawings && state.drawings !== undefined) {
+    app.instrumentDrawings.setDocument({ symbol: own }, state.drawings);
+    state = { ...state, drawings: app.draw.toJSON() };
+  }
   // Mirror the restored indicators into our own spec list so a later chart
   // rebuild (type switch / reload) keeps them.
   app.activeIndicators = (state.indicators || []).map(study => ({ ...study, settings: { ...study.settings } }));

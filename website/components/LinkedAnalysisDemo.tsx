@@ -52,9 +52,12 @@ const sync = button('Drawing sync: on', () => {
   linked = !linked; drawings.setOptions({ enabled:linked });
   sync.textContent = 'Drawing sync: ' + (linked ? 'on' : 'off');
 });
-first.draw.add({ tool:'anchored-vwap', paneIndex:0, style:{ color:'#fbbf24', lineWidth:2 },
+// Drawing colours reach the canvas as given, labels included, so pick the
+// shades that read on the palette the widgets opened with.
+const dark = first.theme() === 'dark';
+first.draw.add({ tool:'anchored-vwap', paneIndex:0, style:{ color:dark ? '#fbbf24' : '#b45309', lineWidth:2 },
   points:[{ time:bars[20].time, price:bars[20].close }] });
-first.draw.add({ tool:'fixed-range-volume-profile', paneIndex:0, style:{ color:'#60a5fa' },
+first.draw.add({ tool:'fixed-range-volume-profile', paneIndex:0, style:{ color:dark ? '#60a5fa' : '#2563eb' },
   points:[{ time:bars[45].time, price:bars[45].close }, { time:bars[88].time, price:bars[88].close }] });
 return { destroy() { drawings.destroy(); views.destroy(); charts.forEach(widget => widget.destroy());
   controls.remove(); grid.remove(); note.remove(); } };`;

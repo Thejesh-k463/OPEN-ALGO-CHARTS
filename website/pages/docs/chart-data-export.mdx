@@ -113,7 +113,7 @@ summary.style.cssText = 'position:absolute;left:8px;right:8px;bottom:72px;font:1
 el.appendChild(summary);
 const preview = document.createElement('pre');
 preview.setAttribute('aria-label', 'Selected CSV preview');
-preview.style.cssText = 'position:absolute;left:8px;right:8px;bottom:8px;height:58px;box-sizing:border-box;margin:0;padding:6px;overflow:auto;border:1px solid #64748b;border-radius:4px;background:#101827;color:#e2e8f0;font:11px/1.4 monospace;scrollbar-color:#64748b #101827;scrollbar-width:thin';
+preview.style.cssText = 'position:absolute;left:8px;right:8px;bottom:8px;height:58px;box-sizing:border-box;margin:0;padding:6px;overflow:auto;border:1px solid light-dark(#e4e4e4,#64748b);border-radius:4px;background:light-dark(#f5f5f5,#101827);color:light-dark(#151515,#e2e8f0);font:11px/1.4 monospace;scrollbar-color:light-dark(#d4d4d4,#64748b) light-dark(#f5f5f5,#101827);scrollbar-width:thin';
 el.appendChild(preview);
 const chart = lib.createChart(surface, { branding: false });
 const bars = lib.generateBars(1700000000, 120, 60);
@@ -125,7 +125,7 @@ let recent = false, fastOnly = false, display = false, labels = false;
 const makeButton = (label, toggle) => {
   const button = document.createElement('button');
   button.type = 'button';
-  button.style.cssText = 'min-width:0;padding:5px 8px;border:1px solid #64748b;border-radius:4px;background:#172033;color:#e2e8f0;font:12px sans-serif;cursor:pointer';
+  button.style.cssText = 'min-width:0;padding:5px 8px;border:1px solid light-dark(#e4e4e4,#64748b);border-radius:4px;background:light-dark(#fff,#172033);color:light-dark(#151515,#e2e8f0);font:12px sans-serif;cursor:pointer';
   button.textContent = label;
   button.onpointerdown = () => button.focus({ preventScroll: true });
   button.onmousedown = event => { event.preventDefault(); button.focus({ preventScroll: true }); };

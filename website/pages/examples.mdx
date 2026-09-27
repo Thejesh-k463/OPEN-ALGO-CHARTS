@@ -175,7 +175,7 @@ chart.addIndicator('macd');
 chart.addPriceLine({ price: bars[bars.length - 1].close, color: '#4f8cff', lineWidth: 1, id: 'level', leftLabel: 'Level' });
 chart.timeScale.fitContent(bars.length);
 const slot = document.createElement('span');
-slot.style.cssText = 'color:#94a3b8;font:12px system-ui, sans-serif;margin-left:6px';
+slot.style.cssText = 'color:light-dark(#686868,#94a3b8);font:12px system-ui, sans-serif;margin-left:6px';
 const show = () => { slot.textContent = 'Price pane: slot ' + chart.primaryPaneIndex() + ' of ' + chart.panes().length; };
 for (const [label, run] of [
   ['Price on top', () => chart.setPrimaryPaneIndex(0)],
@@ -185,7 +185,7 @@ for (const [label, run] of [
 ]) {
   const button = document.createElement('button');
   button.textContent = label;
-  button.style.cssText = 'padding:5px 10px;border:1px solid #334155;border-radius:4px;background:#172033;color:#e2e8f0;cursor:pointer';
+  button.style.cssText = 'padding:5px 10px;border:1px solid light-dark(#e4e4e4,#334155);border-radius:4px;background:light-dark(#fff,#172033);color:light-dark(#151515,#e2e8f0);cursor:pointer';
   button.onpointerdown = (event) => event.stopPropagation();
   button.onclick = () => { run(); show(); };
   controls.appendChild(button);
@@ -264,7 +264,7 @@ const button = (label, run) => {
   const b = document.createElement('button');
   b.type = 'button';
   b.textContent = label;
-  b.style.cssText = 'padding:4px 10px;border-radius:6px;border:1px solid #2a3046;background:#1c2030;color:#c7ccd8;cursor:pointer';
+  b.style.cssText = 'padding:4px 10px;border-radius:6px;border:1px solid light-dark(#e4e4e4,#2a3046);background:light-dark(#fff,#1c2030);color:light-dark(#151515,#c7ccd8);cursor:pointer';
   b.onclick = run;
   bar.appendChild(b);
 };
@@ -475,13 +475,62 @@ draw.add({ tool: 'rectangle', paneIndex: 0, style: { color: '#4f8cff', lineWidth
 const button = (label, space) => {
   const b = document.createElement('button');
   b.textContent = label;
-  b.style.cssText = 'padding:4px 10px;border-radius:6px;border:1px solid #2a3046;background:#1c2030;color:#c7ccd8;cursor:pointer';
+  b.style.cssText = 'padding:4px 10px;border-radius:6px;border:1px solid light-dark(#e4e4e4,#2a3046);background:light-dark(#fff,#1c2030);color:light-dark(#151515,#c7ccd8);cursor:pointer';
   // One conversion for the whole selection; it keeps each drawing where it is on screen.
   b.onclick = () => draw.updateMany(draw.selection().map(id => ({ id, patch: { space } })));
   bar.appendChild(b);
 };
 button('Pin selected', 'viewport');
 button('Unpin selected', 'data');
+return chart;`} />
+
+## Drawings per symbol
+
+Unreleased: on the main branch, not in 2.5.8. A line drawn on one symbol belongs to that
+symbol. The orange line is INFY's: switch to TCS and it is not there, draw one of your own
+with **Trend line**, then switch back and each symbol shows only its own. **Delete all**
+deletes the drawings of the symbol on screen and nothing else. See
+[Drawings per instrument](/docs/drawing-tools#drawings-per-instrument).
+
+<RunnableExample height={400} tiers={['draw']} caption="Simulated prices for two symbols. The drawings of each symbol are kept in memory for this page." code={`${STOCK_BARS_SOURCE}
+const bar = document.createElement('div');
+bar.style.cssText = 'display:flex;gap:6px;margin-bottom:8px';
+el.appendChild(bar);
+const host = document.createElement('div');
+host.style.cssText = 'height:340px';
+el.appendChild(host);
+
+const chart = lib.createChart(host);
+const series = chart.addSeries('candlestick');
+const draw = new lib.DrawingController(chart);
+// One drawing document per symbol, swapped as the data context names another.
+new lib.InstrumentDrawings(chart, draw);
+const markets = {
+  INFY: stockBars(1700000000, 160, 86400, 1500, 7),
+  TCS: stockBars(1700000000, 160, 86400, 3500, 11),
+};
+const show = symbol => {
+  series.setData([]);   // the old bars go before the context names the new symbol
+  chart.setDataContext({ symbol, exchange: 'NSE', interval: '1d' });
+  series.setData(markets[symbol]);
+  chart.resetScale();
+};
+show('INFY');
+const b = markets.INFY;
+draw.add({ tool: 'trend-line', paneIndex: 0, style: { color: '#f5a623', lineWidth: 2 },
+  points: [{ time: b[40].time, price: b[40].low }, { time: b[120].time, price: b[120].high }] });
+
+const button = (label, onclick) => {
+  const btn = document.createElement('button');
+  btn.textContent = label;
+  btn.style.cssText = 'padding:4px 10px;border-radius:6px;border:1px solid #2a3046;background:#1c2030;color:#c7ccd8;cursor:pointer';
+  btn.onclick = onclick;
+  bar.appendChild(btn);
+};
+button('INFY', () => show('INFY'));
+button('TCS', () => show('TCS'));
+button('Trend line', () => draw.setTool('trend-line'));
+button('Delete all', () => draw.clear());
 return chart;`} />
 
 ## Draw order across studies
@@ -495,7 +544,7 @@ lists the pane back to front, the order it paints in. See
 bar.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px';
 el.appendChild(bar);
 const order = document.createElement('div');
-order.style.cssText = 'color:#94a3b8;font:12px system-ui, sans-serif;margin-bottom:6px';
+order.style.cssText = 'color:light-dark(#686868,#94a3b8);font:12px system-ui, sans-serif;margin-bottom:6px';
 el.appendChild(order);
 const host = document.createElement('div');
 host.style.cssText = 'height:300px';
@@ -531,7 +580,7 @@ const moves = [
 for (const [label, run] of moves) {
   const b = document.createElement('button');
   b.textContent = label;
-  b.style.cssText = 'padding:4px 10px;border-radius:6px;border:1px solid #2a3046;background:#1c2030;color:#c7ccd8;cursor:pointer';
+  b.style.cssText = 'padding:4px 10px;border-radius:6px;border:1px solid light-dark(#e4e4e4,#2a3046);background:light-dark(#fff,#1c2030);color:light-dark(#151515,#c7ccd8);cursor:pointer';
   b.onpointerdown = (event) => event.stopPropagation();
   b.onclick = run;
   bar.appendChild(b);
@@ -595,11 +644,11 @@ const widget = lib.createWidget(host, {
   feed: { getBars: async () => stockBars(1700000000, 200, 3600, 100, 41), subscribeBars: () => () => {} },
 });
 const note = document.createElement('span');
-note.style.cssText = 'color:#94a3b8;font:12px system-ui, sans-serif;margin-left:6px';
+note.style.cssText = 'color:light-dark(#686868,#94a3b8);font:12px system-ui, sans-serif;margin-left:6px';
 const button = (label, run) => {
   const b = document.createElement('button');
   b.textContent = label;
-  b.style.cssText = 'padding:5px 10px;border:1px solid #334155;border-radius:4px;background:#172033;color:#e2e8f0;cursor:pointer';
+  b.style.cssText = 'padding:5px 10px;border:1px solid light-dark(#e4e4e4,#334155);border-radius:4px;background:light-dark(#fff,#172033);color:light-dark(#151515,#e2e8f0);cursor:pointer';
   b.onpointerdown = (event) => event.stopPropagation();
   b.onclick = run;
   controls.appendChild(b);
@@ -663,7 +712,7 @@ const widget = lib.createWidget(host, {
   persist: false, rail: false, feed, navigation: { defaultVisibleBars: 400 },
 });
 const note = document.createElement('span');
-note.style.cssText = 'color:#94a3b8;font:12px system-ui, sans-serif;margin-left:6px';
+note.style.cssText = 'color:light-dark(#686868,#94a3b8);font:12px system-ui, sans-serif;margin-left:6px';
 const show = state => {
   if (state.status === 'unsupported') note.textContent = 'Not served by this provider: nothing was fetched';
   else if (state.status === 'ready') note.textContent = state.bars.length + ' bars';
@@ -676,7 +725,7 @@ for (const [label, variant] of [
 ]) {
   const button = document.createElement('button');
   button.textContent = label;
-  button.style.cssText = 'padding:5px 10px;border:1px solid #334155;border-radius:4px;background:#172033;color:#e2e8f0;cursor:pointer';
+  button.style.cssText = 'padding:5px 10px;border:1px solid light-dark(#e4e4e4,#334155);border-radius:4px;background:light-dark(#fff,#172033);color:light-dark(#151515,#e2e8f0);cursor:pointer';
   button.onpointerdown = event => event.stopPropagation();
   button.onclick = () => widget.setDataVariant(variant);
   controls.appendChild(button);
@@ -1176,7 +1225,9 @@ lib.registerIndicator({
     ];
   },
   markers: ({ settings }) => [{ time: bars[28].time, position: 'atPrice', price: 91,
-    shape: 'circle', size: 'small', color: '#ef5350', text: 'Signal\\ntext', textColor: '#a3e635',
+    shape: 'circle', size: 'small', color: '#ef5350', text: 'Signal\\ntext',
+    // Canvas text takes a concrete colour, so pick the shade that reads on the active palette.
+    textColor: chart.theme() === lib.darkTheme ? '#a3e635' : '#4d7c0f',
     fontSize: settings.large ? 19 : 13, fontFamily: 'ui-monospace, monospace', italic: true }],
 });
 const study = chart.addIndicator('demo-annotation-typography');
@@ -1190,7 +1241,7 @@ button.onmousedown = event => {
   event.preventDefault();
   button.focus({ preventScroll: true });
 };
-button.style.cssText = 'padding:5px 9px;border:1px solid #64748b;border-radius:4px;background:#172033;color:#e2e8f0;font:12px sans-serif;cursor:pointer';
+button.style.cssText = 'padding:5px 9px;border:1px solid light-dark(#e4e4e4,#64748b);border-radius:4px;background:light-dark(#fff,#172033);color:light-dark(#151515,#e2e8f0);font:12px sans-serif;cursor:pointer';
 button.onclick = () => {
   const large = !study.settings().large;
   study.setSettings({ large });
@@ -1321,7 +1372,7 @@ version when replay requests a cutoff before the declared revision time.
 const controls = document.createElement('div');
 controls.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;padding:8px';
 const status = document.createElement('div');
-status.style.cssText = 'padding:0 8px 8px;color:#94a3b8;font:12px sans-serif';
+status.style.cssText = 'padding:0 8px 8px;color:light-dark(#686868,#94a3b8);font:12px sans-serif';
 status.setAttribute('role', 'status');
 const host = document.createElement('div');
 host.style.height = '380px';
@@ -1387,7 +1438,7 @@ for (const [label, action] of [
 ]) {
   const button = document.createElement('button');
   button.textContent = label;
-  button.style.cssText = 'padding:5px 10px;border:1px solid #334155;border-radius:4px;background:#172033;color:#e2e8f0;cursor:pointer';
+  button.style.cssText = 'padding:5px 10px;border:1px solid light-dark(#e4e4e4,#334155);border-radius:4px;background:light-dark(#fff,#172033);color:light-dark(#151515,#e2e8f0);cursor:pointer';
   button.onclick = () => { action(); render(); };
   controls.appendChild(button);
 }
@@ -1411,7 +1462,7 @@ boundary. Its raw bar method stays separate from that point-in-time promise.
 const controls = document.createElement('div');
 controls.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;padding:8px';
 const status = document.createElement('div');
-status.style.cssText = 'padding:0 8px 8px;color:#94a3b8;font:12px sans-serif';
+status.style.cssText = 'padding:0 8px 8px;color:light-dark(#686868,#94a3b8);font:12px sans-serif';
 status.setAttribute('role', 'status');
 const host = document.createElement('div');
 host.style.height = '380px';
@@ -1477,7 +1528,7 @@ for (const [label, action] of [
 ]) {
   const button = document.createElement('button');
   button.textContent = label;
-  button.style.cssText = 'padding:5px 10px;border:1px solid #334155;border-radius:4px;background:#172033;color:#e2e8f0;cursor:pointer';
+  button.style.cssText = 'padding:5px 10px;border:1px solid light-dark(#e4e4e4,#334155);border-radius:4px;background:light-dark(#fff,#172033);color:light-dark(#151515,#e2e8f0);cursor:pointer';
   button.onclick = () => { action(); render(); };
   controls.appendChild(button);
 }
@@ -1504,7 +1555,7 @@ el.style.flexDirection = 'column';
 const controls = document.createElement('div');
 controls.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;padding:8px 64px 8px 8px';
 const status = document.createElement('div');
-status.style.cssText = 'padding:0 8px 8px;color:#94a3b8;font:12px/18px monospace;min-height:36px';
+status.style.cssText = 'padding:0 8px 8px;color:light-dark(#686868,#94a3b8);font:12px/18px monospace;min-height:36px';
 status.setAttribute('role', 'status');
 const host = document.createElement('div');
 host.style.cssText = 'flex:1;min-height:180px';
@@ -1565,7 +1616,7 @@ for (const [label, action] of [
 ]) {
   const button = document.createElement('button');
   button.textContent = label;
-  button.style.cssText = 'padding:5px 9px;border:1px solid #334155;border-radius:4px;background:#172033;color:#e2e8f0;font:12px sans-serif';
+  button.style.cssText = 'padding:5px 9px;border:1px solid light-dark(#e4e4e4,#334155);border-radius:4px;background:light-dark(#fff,#172033);color:light-dark(#151515,#e2e8f0);font:12px sans-serif';
   button.onclick = () => { action(); chart.fitContent(); render(); };
   buttons.set(label, button);
   controls.appendChild(button);
@@ -1591,14 +1642,14 @@ let clock = start + 11 * 60 + 30, replay = null, disposed = false;
 const controls = document.createElement('div');
 controls.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;padding:8px';
 const status = document.createElement('div');
-status.style.cssText = 'padding:0 8px 8px;color:#94a3b8;font:12px sans-serif';
+status.style.cssText = 'padding:0 8px 8px;color:light-dark(#686868,#94a3b8);font:12px sans-serif';
 status.setAttribute('role', 'status');
 const host = document.createElement('div');
 host.style.height = '340px';
 const log = document.createElement('pre');
 log.setAttribute('role', 'log');
 log.setAttribute('aria-label', 'Indicator alert events');
-log.style.cssText = 'height:132px;overflow:auto;margin:8px;padding:8px;background:#101827;color:#cbd5e1;font:12px/18px monospace;scrollbar-color:#334155 #101827';
+log.style.cssText = 'height:132px;overflow:auto;margin:8px;padding:8px;background:light-dark(#f5f5f5,#101827);color:light-dark(#151515,#cbd5e1);font:12px/18px monospace;scrollbar-color:light-dark(#d4d4d4,#334155) light-dark(#f5f5f5,#101827)';
 el.append(controls, status, host, log);
 const chart = lib.createChart(host, { timezone: 'Etc/UTC', branding: false, axisChrome: { clock: () => clock } });
 chart.setDataContext({ symbol: 'SIGNAL', interval: '1m' });
@@ -1666,7 +1717,7 @@ for (const [label, action] of [
 ]) {
   const button = document.createElement('button');
   button.textContent = label;
-  button.style.cssText = 'padding:5px 10px;border:1px solid #334155;border-radius:4px;background:#172033;color:#e2e8f0;cursor:pointer';
+  button.style.cssText = 'padding:5px 10px;border:1px solid light-dark(#e4e4e4,#334155);border-radius:4px;background:light-dark(#fff,#172033);color:light-dark(#151515,#e2e8f0);cursor:pointer';
   button.onclick = () => { action(); render(); };
   controls.appendChild(button);
   if (label !== 'Toggle replay') liveButtons.push(button);
@@ -1715,10 +1766,14 @@ chart.fitContent();
 for (const [label, id] of [['Right', 'right'], ['Left', 'left'], ['Hidden', 'overlay:band'], ['Descriptor defaults', null]]) {
   const button = document.createElement('button');
   button.textContent = label;
-  button.style.cssText = 'padding:5px 10px;border:1px solid #334155;border-radius:4px;background:#172033;color:#e2e8f0;cursor:pointer';
+  button.style.cssText = 'padding:5px 10px;border:1px solid light-dark(#e4e4e4,#334155);border-radius:4px;background:light-dark(#fff,#172033);color:light-dark(#151515,#e2e8f0);cursor:pointer';
   button.onclick = () => {
     study.setPriceScale(id);
-    for (const child of controls.children) child.style.background = child === button ? '#2563eb' : '#172033';
+    for (const child of controls.children) {
+      const on = child === button;
+      child.style.background = on ? '#2563eb' : 'light-dark(#fff,#172033)';
+      child.style.color = on ? '#fff' : 'light-dark(#151515,#e2e8f0)';
+    }
   };
   controls.appendChild(button);
 }
@@ -1961,10 +2016,12 @@ cell borders. Hover the heading or range value to read more detail.
 
 <RunnableExample height={320} code={`const chart = lib.createChart(el);
 chart.addSeries('candlestick').setData(lib.generateBars(1700000000, 100, 3600));
+// A table is drawn on the canvas, so its colours follow the chart's palette.
+const dark = chart.theme() === lib.darkTheme;
 const table = new lib.ChartTable({
   position: 'top-right', cellWidth: [100, 90, 90], cellHeight: 32,
-  frameColor: '#64748b', frameWidth: 1, borderColor: '#253044',
-  background: '#101722', fontSize: 12,
+  frameColor: dark ? '#64748b' : '#94a3b8', frameWidth: 1, borderColor: dark ? '#253044' : '#e2e8f0',
+  background: dark ? '#101722' : '#f8fafc', fontSize: 12,
 });
 table.setRows([
   [{ text: 'Session readings', colSpan: 3, bold: true, align: 'left',
@@ -2011,7 +2068,7 @@ chart.timeScale.fitContent(240);
 // Decided once, at construction: 'webgl2' where WebGL2 works, else 'canvas2d'.
 el.style.position = 'relative';
 const tag = document.createElement('div');
-tag.style.cssText = 'position:absolute;right:64px;bottom:30px;z-index:5;font:12px ui-monospace,monospace;background:rgba(0,0,0,.55);color:#e6edf3;padding:4px 8px;border-radius:6px;pointer-events:none';
+tag.style.cssText = 'position:absolute;right:64px;bottom:30px;z-index:5;font:12px ui-monospace,monospace;background:light-dark(rgba(255,255,255,.9),rgba(0,0,0,.55));color:light-dark(#151515,#e6edf3);box-shadow:0 0 0 1px light-dark(#e4e4e4,transparent);padding:4px 8px;border-radius:6px;pointer-events:none';
 function show(note) { tag.textContent = 'rendererKind: ' + chart.rendererKind + (note ? '  ' + note : ''); }
 show(lib.isWebGL2Supported() ? '' : '(no WebGL2 on this device)');
 // A lost context moves the chart to the 2D path for the session and says so once.
@@ -2195,11 +2252,15 @@ return chart;`} />
 
 <div>
 ### Draw it yourself
-<RunnableExample hideCode height={320} tiers={['draw']} caption="Click the buttons, then click the chart to place anchors. Drag a shape or its handles; press Delete to remove the selection." code={`const wrap = document.createElement('div');
+<RunnableExample hideCode height={320} tiers={['draw']} caption="Click the buttons, then click the chart to place anchors. Drag a shape or its handles; press Delete to remove the selection." code={`// The buttons wrap onto a second row in a narrow column, so the chart takes
+// whatever height they leave rather than a fixed one that overflows the card.
+el.style.display = 'flex';
+el.style.flexDirection = 'column';
+const wrap = document.createElement('div');
 wrap.style.cssText = 'display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap';
 el.appendChild(wrap);
 const host = document.createElement('div');
-host.style.cssText = 'height:270px';
+host.style.cssText = 'flex:1;min-height:0';
 el.appendChild(host);
 
 const chart = lib.createChart(host);
@@ -2211,13 +2272,13 @@ const draw = new lib.DrawingController(chart, { magnet: true, stayInDrawingMode:
 for (const id of ['trend-line', 'ray', 'rectangle', 'fib-retracement', 'measure', 'text']) {
   const b = document.createElement('button');
   b.textContent = lib.getDrawingTool(id).name;
-  b.style.cssText = 'padding:4px 10px;border-radius:6px;border:1px solid #2a3046;background:#1c2030;color:#c7ccd8;cursor:pointer';
+  b.style.cssText = 'padding:4px 10px;border-radius:6px;border:1px solid light-dark(#e4e4e4,#2a3046);background:light-dark(#fff,#1c2030);color:light-dark(#151515,#c7ccd8);cursor:pointer';
   b.onclick = () => draw.setTool(id);
   wrap.appendChild(b);
 }
 const undo = document.createElement('button');
 undo.textContent = 'Undo';
-undo.style.cssText = 'padding:4px 10px;border-radius:6px;border:1px solid #2a3046;background:#1c2030;color:#c7ccd8;cursor:pointer';
+undo.style.cssText = 'padding:4px 10px;border-radius:6px;border:1px solid light-dark(#e4e4e4,#2a3046);background:light-dark(#fff,#1c2030);color:light-dark(#151515,#c7ccd8);cursor:pointer';
 undo.onclick = () => draw.undo();
 wrap.appendChild(undo);
 
@@ -2277,12 +2338,12 @@ el.appendChild(wrap);
 ['Asia/Kolkata', 'America/New_York', 'Europe/London', 'Asia/Tokyo', 'UTC'].forEach(function (zone, i) {
   const b = document.createElement('button');
   b.textContent = zone;
-  b.style.cssText = 'padding:4px 10px;border-radius:6px;border:1px solid #2a3046;background:#1c2030;color:#c7ccd8;cursor:pointer;font-size:11px';
+  b.style.cssText = 'padding:4px 10px;border-radius:6px;border:1px solid light-dark(#e4e4e4,#2a3046);background:light-dark(#fff,#1c2030);color:light-dark(#151515,#c7ccd8);cursor:pointer;font-size:11px';
   b.onclick = function () {
     chart.setTimezone(zone);
     Array.prototype.forEach.call(wrap.children, function (c) {
-      c.style.background = c === b ? '#2962ff' : '#1c2030';
-      c.style.color = c === b ? '#fff' : '#c7ccd8';
+      c.style.background = c === b ? '#2962ff' : 'light-dark(#fff,#1c2030)';
+      c.style.color = c === b ? '#fff' : 'light-dark(#151515,#c7ccd8)';
     });
   };
   if (i === 0) { b.style.background = '#2962ff'; b.style.color = '#fff'; }

@@ -51,6 +51,7 @@ import { initWorkspaces } from './workspaces.js';
 import { initTemplates } from './templates.js';
 import { mountPropertiesBar } from './properties.js';
 import { initDrawing, attachDrawing } from './drawing.js';
+import { scopeDrawings } from './drawing-scope.js';
 import { capturePaneTarget } from './pane-target.js';
 import { attachTimeline } from './timeline.js';
 import { initGoTo } from './goto.js';
@@ -162,6 +163,10 @@ const app = {
   // The main chart's drawing controller, and the tool id -> chord table the
   // rail labels its rows from once the draw tier has answered.
   draw: null,
+  // What keeps each chart's drawings per symbol (drawing-scope.js). Rebuilt
+  // with the chart it follows.
+  instrumentDrawings: null,
+  instrumentDrawings2: null,
   shortcuts: {},
   cache: null,           // the bar cache wrapping the feed; null on a dist/ without one
   offBranding: null,     // refreshes the host link when setBranding changes at runtime
@@ -189,6 +194,7 @@ function render({ keepView = true, state } = {}) {
   if (app.offBranding) { app.offBranding(); app.offBranding = null; }
   detachInspection(app);
   detachAlerts(app);
+  if (app.instrumentDrawings) { app.instrumentDrawings.destroy(); app.instrumentDrawings = null; }
   if (app.draw) { app.draw.destroy(); app.draw = null; }
   if (app.chart) app.chart.destroy();
   el('chart').innerHTML = '';
@@ -314,6 +320,11 @@ function render({ keepView = true, state } = {}) {
     refreshVolume(1);
     renderIndicatorChips();
   }
+  // After the restore: a rebuild carries this symbol's drawings from the chart
+  // it replaces (a symbol change swapped them there, on the old chart, the
+  // moment its context moved), and a layout brings its own. A chart built
+  // fresh takes what the store holds for the symbol.
+  app.instrumentDrawings = scopeDrawings(app.chart, app.draw, 1, rebuildState ? 'live' : 'stored');
 
   // Restore the price pane before attaching comparisons, which own a temporary scale mode.
   for (const c of app.comparisons) attachComparison(c, 1);
