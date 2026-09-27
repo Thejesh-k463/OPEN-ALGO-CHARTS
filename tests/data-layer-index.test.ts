@@ -99,18 +99,18 @@ describe('DataLayer.setSeriesData keeps the index when the set of times stays', 
     expectIndexOf(layer, [a]);
   });
 
-  it('a time that goes away rebuilds, and stays only while another series holds it', () => {
+  it('a time another series still holds stays without a rebuild, and leaves with one when none does', () => {
     const layer = new DataLayer();
     const a = layer.createSeries(), b = layer.createSeries();
     layer.setSeriesData(a, at(100, 200, 300));
     layer.setSeriesData(b, at(200));
     const rebuilds = watch(layer);
     layer.setSeriesData(a, at(100, 300));
-    expect(rebuilds.count()).toBe(1);
+    expect(rebuilds.count()).toBe(0);
     expect(layer.timeToIndex(200)).toBe(1);
     expectIndexOf(layer, [a, b]);
     layer.setSeriesData(b, []);
-    expect(rebuilds.count()).toBe(2);
+    expect(rebuilds.count()).toBe(1);
     expect(layer.timeToIndex(200)).toBeUndefined();
     expectIndexOf(layer, [a, b]);
   });
