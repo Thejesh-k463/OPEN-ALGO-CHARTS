@@ -161,19 +161,28 @@ function percentile(samples: readonly number[], p: number): number {
 
 const round = (ms: number): number => Math.round(ms * 100) / 100;
 
+/**
+ * The build the page loads, a folder at the package root: `dist` normally, and
+ * `dist-baseline` (scripts/build-baseline.mjs) when `npm run bench:release`
+ * measures the previous release on the same machine for the release's
+ * benchmark entry. Held to a bare folder name, since it becomes a URL path.
+ */
+const BENCH_DIST = process.env.OAC_RENDER_BENCH_DIST ?? 'dist';
+if (!/^[A-Za-z0-9_-]+$/.test(BENCH_DIST)) throw new Error(`OAC_RENDER_BENCH_DIST must be a folder name, got ${BENCH_DIST}`);
+
 /** Build the charts in the page, run the three scenarios, and hand back what was measured. */
 async function measureRow(page: Page, renderer: Renderer, bars: number): Promise<PageReport> {
   await page.goto('/tests/e2e/render-bench-fixture.html');
   if (renderer === 'webgl2') expect(await warmGpu(page), 'no WebGL2 context survives in this browser').toBe(true);
 
   return page.evaluate(
-    async ({ renderer, bars, w, h, plan, studies, spacing }) => {
+    async ({ renderer, bars, w, h, plan, studies, spacing, dist }) => {
       type Mod = typeof Charts;
       type ChartApi = ReturnType<Mod['createChart']>;
       type Descriptor = ReturnType<Mod['registeredIndicators']>[number];
-      const base = (await import('/dist/openalgo-charts.mjs')) as unknown as Mod;
-      await import('/dist/openalgo-charts.indicators.mjs');
-      if (renderer === 'webgl2') await import('/dist/openalgo-charts.webgl.mjs');
+      const base = (await import(`/${dist}/openalgo-charts.mjs`)) as unknown as Mod;
+      await import(`/${dist}/openalgo-charts.indicators.mjs`);
+      if (renderer === 'webgl2') await import(`/${dist}/openalgo-charts.webgl.mjs`);
 
       // Every GPU draw on the page goes through the prototype, so counting
       // there sees the backend's shared context whatever it is called.
@@ -417,7 +426,7 @@ async function measureRow(page: Page, renderer: Renderer, bars: number): Promise
 
       return { env, pan, zoomOut, tick };
     },
-    { renderer, bars, w: W, h: H, plan: planFor(bars), studies: STUDIES, spacing: BAR_SPACING },
+    { renderer, bars, w: W, h: H, plan: planFor(bars), studies: STUDIES, spacing: BAR_SPACING, dist: BENCH_DIST },
   );
 }
 

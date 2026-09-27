@@ -192,6 +192,17 @@ of detail saves less there than the margin of four allows.
   11 ms at every bar count, the latter almost all emulated raster (a script p95
   of about 1 ms).
 
+### The release benchmark
+
+The budgets above guard every change. Separately, every release from 2.5.8 on
+publishes the bench measured on its own build and on the release before it,
+both built from their tags and timed in one session on the reference machine:
+`npm run bench:release` writes the entry into `benchmarks/releases.json` and the
+website's Benchmarks page, `tests/release-benchmarks.test.ts` fails a package
+version that has no entry, and `node scripts/check-benchmark-page.mjs` fails CI
+when the page and the data disagree. The bench loads `dist/` by default and
+another build folder through `OAC_RENDER_BENCH_DIST`.
+
 ### Tightening a budget
 
 After a cheaper path lands, run `npm run bench:render` five times on the
