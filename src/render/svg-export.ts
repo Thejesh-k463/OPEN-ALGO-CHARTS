@@ -85,6 +85,7 @@ interface Snapshot {
   textAlign: CanvasTextAlign;
   textBaseline: CanvasTextBaseline;
   dash: number[];
+  dashOffset: number;
 }
 
 /**
@@ -212,6 +213,8 @@ export class SvgContext {
   /** Whether the current subpath has a current point (a lone `arc` needs to know). */
   private _hasPoint = false;
   private _dash: number[] = [];
+  /** Where along the dash list a stroke starts, as a canvas reads it. */
+  public lineDashOffset = 0;
   private _ids = 0;
   private readonly _strict: boolean;
   private readonly _background: string | undefined;
@@ -565,7 +568,7 @@ export class SvgContext {
       fillStyle: this.fillStyle, strokeStyle: this.strokeStyle, lineWidth: this.lineWidth,
       lineCap: this.lineCap, lineJoin: this.lineJoin, miterLimit: this.miterLimit,
       globalAlpha: this.globalAlpha, font: this.font, textAlign: this.textAlign,
-      textBaseline: this.textBaseline, dash: this._dash.slice(),
+      textBaseline: this.textBaseline, dash: this._dash.slice(), dashOffset: this.lineDashOffset,
     };
   }
 
@@ -573,7 +576,7 @@ export class SvgContext {
     this.fillStyle = s.fillStyle; this.strokeStyle = s.strokeStyle; this.lineWidth = s.lineWidth;
     this.lineCap = s.lineCap; this.lineJoin = s.lineJoin; this.miterLimit = s.miterLimit;
     this.globalAlpha = s.globalAlpha; this.font = s.font; this.textAlign = s.textAlign;
-    this.textBaseline = s.textBaseline; this._dash = s.dash;
+    this.textBaseline = s.textBaseline; this._dash = s.dash; this.lineDashOffset = s.dashOffset;
   }
 
   /** Close every frame above index `i` and frame `i` itself, oldest last. */
@@ -622,7 +625,10 @@ export class SvgContext {
     if (this.lineCap !== 'butt') attrs += ` stroke-linecap="${this.lineCap}"`;
     if (this.lineJoin !== 'miter') attrs += ` stroke-linejoin="${this.lineJoin}"`;
     // A dash list that is all zeros draws solid on a canvas.
-    if (this._dash.some((d) => d > 0)) attrs += ` stroke-dasharray="${this._dash.map(num).join(' ')}"`;
+    if (this._dash.some((d) => d > 0)) {
+      attrs += ` stroke-dasharray="${this._dash.map(num).join(' ')}"`;
+      if (this.lineDashOffset !== 0) attrs += ` stroke-dashoffset="${num(this.lineDashOffset)}"`;
+    }
     return attrs;
   }
 

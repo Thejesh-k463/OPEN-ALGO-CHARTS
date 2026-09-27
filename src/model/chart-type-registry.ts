@@ -1,7 +1,7 @@
 /**
  * Chart-type registry (ARCHITECTURE.md §6A). Every series type registers a
  * descriptor: how to draw it and how it contributes to autoscale. The core
- * iterates descriptors, so adding a style is one registration — no core change.
+ * iterates descriptors, so adding a style is one registration and no core change.
  * Phase 5 fills the Family-A (time-indexed) types; Families B/C plug in later.
  */
 import type { Bar } from './bar';
@@ -38,6 +38,16 @@ export interface DrawItem {
    * it is the one that needs a reference the visible window does not hold.
    */
   prevClose?: number;
+  /**
+   * Set only on the neighbour a `connectsBars` renderer gets beyond each edge
+   * of the view: the x (media px) of the plot edge between it and the bars in
+   * view, 0 on the left and the plot width on the right. That neighbour can
+   * sit millions of pixels off screen (a level held for a session on an axis
+   * of five-second bars), so a renderer cuts the segment to it at this x,
+   * plus whatever its stroke needs, rather than draw it all the way out, and
+   * paints nothing of the neighbour's own (a marker, a body).
+   */
+  edgeX?: number;
 }
 
 export interface SeriesRenderContext {
@@ -52,17 +62,19 @@ export interface RendererEntry {
   isPriceSeries: boolean;
   /**
    * True for a renderer that draws a segment from each bar to the next (a
-   * line, a step, an area). Its items then carry the nearest bar beyond each
-   * edge of the view as well, so the segment that crosses an edge is drawn:
-   * a sparse line (a level held for an hour, a position that steps twice a
-   * session) would otherwise lose the part that enters from off screen.
+   * line, a step, an area, kagi). Its items then carry the nearest bar beyond
+   * each edge of the view as well, marked with `edgeX`, so the segment that
+   * crosses an edge is drawn: a sparse line (a level held for an hour, a
+   * position that steps twice a session) would otherwise lose the part that
+   * enters from off screen. Such a renderer cuts that segment at `edgeX`.
    */
   connectsBars?: boolean;
   /**
-   * Paint the visible items on a bitmap-scope 2D context. On screen the pane
-   * reaches this through its render backend (src/render/backend.ts); the 2D
-   * backend calls it as is, and the vector export calls it directly on the
-   * serialising target.
+   * Paint the items on a bitmap-scope 2D context: the bars in view, and for a
+   * `connectsBars` renderer the neighbour beyond each edge (`DrawItem.edgeX`).
+   * On screen the pane reaches this through its render backend
+   * (src/render/backend.ts); the 2D backend calls it as is, and the vector
+   * export calls it directly on the serialising target.
    */
   draw(
     ctx: CanvasRenderingContext2D,

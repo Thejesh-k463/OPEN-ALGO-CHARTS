@@ -663,6 +663,97 @@ describe('lines', () => {
   });
 });
 
+/**
+ * The segment to a neighbour beyond the view (DrawItem.edgeX) is cut at the
+ * view before it reaches the batch. Uncut, a dashed line whose neighbour sat
+ * ten million pixels away emitted a quad for every dash of the way: half a
+ * million per series per frame.
+ */
+describe('lines joining a neighbour beyond the view', () => {
+  /** The items for `data`, with a neighbour `far` px beyond each end, marked with the view edges given. */
+  const edged = (data: readonly Bar[], far: number, leftEdge: number, rightEdge: number): DrawItem[] => {
+    const out = items(data, 8);
+    const lastX = out[out.length - 1].x;
+    return [
+      { x: out[0].x - far, bar: { ...data[0], close: data[0].close - 7 }, edgeX: leftEdge },
+      ...out,
+      { x: lastX + far, bar: { ...data[0], close: data[0].close + 9 }, edgeX: rightEdge },
+    ];
+  };
+  const shoot = (type: string, list: DrawItem[], style: SeriesStyle, dpr = 1): Shape[] => {
+    const r = rig();
+    r.backend.beginFrame(true);
+    r.backend.drawSeries(getChartType(type), list, priceToY, 8, dpr, style, rc());
+    r.backend.endFrame();
+    const up = r.surface.gl.uploads;
+    return up.length === 0 ? [] : decode(up[up.length - 1]);
+  };
+
+  it('emits a bounded batch for a dashed line whose neighbours are a million pixels away', () => {
+    const data = bars(40);
+    for (const type of ['line', 'step', 'area'] as const) {
+      for (const lineStyle of ['dashed', 'dotted'] as const) {
+        const got = shoot(type, edged(data, 1e6, 0, 800), { lineStyle });
+        expect(got.length, `${type} ${lineStyle}`).toBeLessThan(1500);
+        for (const s of got) {
+          const xs = s.kind === 'segment' ? [s.x0, s.x1] : s.kind === 'fill' ? s.pts.map((p) => p[0]) : [s.x, s.x + s.w];
+          for (const x of xs) {
+            expect(x).toBeGreaterThan(-100);
+            expect(x).toBeLessThan(900);
+          }
+        }
+      }
+    }
+  });
+
+  it('paints the dashes from the first bar in view exactly as it does without the neighbours', () => {
+    const data = bars(40);
+    const same = (a: Shape, b: Shape): boolean => a.kind === 'segment' && b.kind === 'segment'
+      && [a.x0 - b.x0, a.y0 - b.y0, a.x1 - b.x1, a.y1 - b.y1].every((d) => Math.abs(d) < 1e-3);
+    for (const dpr of [1, 2]) {
+      for (const type of ['line', 'step'] as const) {
+        for (const lineStyle of ['dashed', 'dotted'] as const) {
+          // A far neighbour, one cut a few dashes out, and a near one inside the margin.
+          for (const far of [1e6, 40.5, 12]) {
+            const style: SeriesStyle = { lineStyle };
+            const without = shoot(type, items(data, 8), style, dpr);
+            const withEdges = shoot(type, edged(data, far, 0, 10 + 39 * 8 + 1), style, dpr);
+            // What comes before the line's own first dash is the added edge
+            // segment; from that dash on it is the line as it was, dash for dash.
+            const lead = withEdges.findIndex((s) => same(s, without[0]));
+            expect(lead, `${type} ${lineStyle} ${far} at ${dpr}`).toBeGreaterThan(0);
+            expectShapes(withEdges.slice(lead, lead + without.length), without);
+          }
+        }
+      }
+    }
+  });
+
+  it('never bridges a gap at the edge of the view: a line or a fill is what the bars in view make alone', () => {
+    // A study's plot stores a bar with no value as NaN, so the neighbour, or
+    // the bar in view next to it, can be a gap. Uncut, a fill joined the
+    // neighbour's value across the gap to the next value in view.
+    const gap = (b: Bar): Bar => ({ time: b.time, open: NaN, high: NaN, low: NaN, close: NaN });
+    const data = bars(40);
+    /** The neighbours with values, and the first and last bar in view each a gap. */
+    const within = edged(data, 1e6, 0, 800).map((it, i, all) => (i === 1 || i === all.length - 2 ? { ...it, bar: gap(it.bar) } : it));
+    const cases: [string, DrawItem[], DrawItem[]][] = [
+      ['beyond', edged(data, 1e6, 0, 800).map((it, i, all) => (i === 0 || i === all.length - 1 ? { ...it, bar: gap(it.bar) } : it)), items(data, 8)],
+      ['within', within, within.slice(1, -1)],
+    ];
+    for (const [name, withEdges, without] of cases) {
+      for (const type of ['line', 'area', 'baseline', 'hlc-area'] as const) {
+        for (const style of [{}, { lineStyle: 'dashed' }, { highColor: '#ff0000', lowColor: '#0000ff', baseValue: 100 }] as SeriesStyle[]) {
+          const label = `${type} ${JSON.stringify(style)}, gap ${name} the view`;
+          const got = shoot(type, withEdges, style);
+          expect(got.length, label).toBeGreaterThan(0);
+          expectShapes(got, shoot(type, without, style));
+        }
+      }
+    }
+  });
+});
+
 describe('area, baseline and HLC area', () => {
   const fills = (shapes: Shape[]): Extract<Shape, { kind: 'fill' }>[] => shapes.filter((s): s is Extract<Shape, { kind: 'fill' }> => s.kind === 'fill');
   const segments = (shapes: Shape[]): Extract<Shape, { kind: 'segment' }>[] => shapes.filter((s): s is Extract<Shape, { kind: 'segment' }> => s.kind === 'segment');
