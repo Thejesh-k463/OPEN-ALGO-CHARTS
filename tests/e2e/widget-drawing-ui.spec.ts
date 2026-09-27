@@ -21,6 +21,8 @@ async function mount(page: Page, theme: 'dark' | 'light' = 'dark'): Promise<stri
   return errors;
 }
 
+const WORKSPACE_MODULE = '/dist/openalgo-charts.workspace.mjs';
+
 const select = (page: Page, ...keys: Array<'trend' | 'level' | 'box'>) => page.evaluate(names => {
   const { widget, ids } = window.__drawUi;
   widget.draw.select(names.map(name => ids[name]));
@@ -230,6 +232,39 @@ test('a named template saves from the more menu and applies to another drawing o
   expect(await page.evaluate(() => window.__drawUi.widget.draw.get((window as unknown as { second: string }).second)!.style.color)).toBe('#f0a020');
   await page.evaluate(() => window.__drawUi.widget.history.undo());
   expect(await page.evaluate(() => window.__drawUi.widget.draw.get((window as unknown as { second: string }).second)!.style.color)).not.toBe('#f0a020');
+  expect(errors).toEqual([]);
+});
+
+test('templates kept in IndexedDB survive a reload, per namespace, and a stale write is refused', async ({ page }) => {
+  const errors = await mount(page);
+  const saved = await page.evaluate(async modulePath => {
+    const { DrawingTemplateRepository, createIndexedDbDrawingTemplateStorage } = await import(modulePath);
+    const storage = createIndexedDbDrawingTemplateStorage(indexedDB, 'drawing-templates-e2e');
+    let n = 0;
+    const repo = new DrawingTemplateRepository(storage, 'desk', { id: () => `t${++n}`, now: () => 1000 });
+    await repo.saveTemplate('Swing low support', 'trend-line', { 'style.color': '#f0a020', 'style.lineWidth': 2 });
+    await repo.setDefault('rectangle', { 'style.fill': true, 'style.fillOpacity': 0.1 });
+    // Prepared against revision 1, after the catalog moved on to 2.
+    let refused = '';
+    try { await repo.setDefault('ray', { 'style.lineWidth': 3 }, { expectedRevision: 1 }); } catch (error) { refused = (error as Error).name; }
+    const other = await new DrawingTemplateRepository(storage, 'another-account').load();
+    await storage.close();
+    return { refused, other: other.templates.length + other.defaults.length };
+  }, WORKSPACE_MODULE);
+  expect(saved).toEqual({ refused: 'DrawingTemplateConflictError', other: 0 });
+  await page.reload();
+  const loaded = await page.evaluate(async modulePath => {
+    const { DrawingTemplateRepository, createIndexedDbDrawingTemplateStorage } = await import(modulePath);
+    const storage = createIndexedDbDrawingTemplateStorage(indexedDB, 'drawing-templates-e2e');
+    const catalog = await new DrawingTemplateRepository(storage, 'desk').load();
+    await storage.close();
+    return catalog;
+  }, WORKSPACE_MODULE);
+  expect(loaded).toEqual({
+    version: 1, revision: 2,
+    templates: [{ id: 't1', name: 'Swing low support', tool: 'trend-line', values: { 'style.color': '#f0a020', 'style.lineWidth': 2 }, createdAt: 1000, updatedAt: 1000 }],
+    defaults: [{ tool: 'rectangle', values: { 'style.fill': true, 'style.fillOpacity': 0.1 }, updatedAt: 1000 }],
+  });
   expect(errors).toEqual([]);
 });
 
