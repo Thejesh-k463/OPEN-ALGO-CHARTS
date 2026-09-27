@@ -224,8 +224,13 @@ export default function DepthLadderDemo() {
         .depth-book tr { background: transparent; }
         .depth-book button { width: 100%; min-height: 26px; font: inherit; color: inherit; cursor: pointer; border-radius: 3px; }
         .depth-book button:hover { background: color-mix(in srgb, var(--oac-accent) 12%, transparent); }
-        .depth-bid { color: ${dark ? '#66d8bb' : '#08765c'}; }
-        .depth-ask { color: ${dark ? '#ff9b9b' : '#bc3339'}; }
+        /* Keyed to the page class, not to resolvedTheme: a colour interpolated here
+           changes the scoped class name, and hydration keeps the server's name, so
+           the quotes rendered before hydration kept the dark shades on a light page. */
+        .depth-bid { color: #08765c; }
+        .depth-ask { color: #bc3339; }
+        :global(.dark) .depth-bid { color: #66d8bb; }
+        :global(.dark) .depth-ask { color: #ff9b9b; }
         .depth-footer { display: grid; gap: 5px; padding: 12px 16px; border-top: 1px solid var(--oac-card-border); color: var(--oac-muted); font-size: 11px; }
         .depth-footer p { margin: 4px 0 0; }
         @media (max-width: 760px) {
