@@ -456,11 +456,6 @@ export class DrawingController {
     return this._clipboard;
   }
 
-  /**
-   * Every drawing, in list order. That is creation order until a z-order call
-   * moves one; the list is the tie-break for equal `zIndex`, so it is also the
-   * paint order within a band.
-   */
   /** Named drawing sets, returned as detached records. */
   public groups(): readonly DrawingGroup[] {
     return this._groups.map(group => ({ ...group, members: [...group.members] }));
@@ -664,6 +659,11 @@ export class DrawingController {
     this._emitChange(this._drawings.map(drawing => drawing.id), 'update');
   }
 
+  /**
+   * Every drawing, in list order, those the interval hides included. That is
+   * creation order until a z-order call moves one; the list is the tie-break
+   * for equal `zIndex`, so it is also the paint order within a band.
+   */
   public drawings(): readonly Drawing[] {
     return this._drawings;
   }
