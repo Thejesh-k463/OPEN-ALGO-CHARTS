@@ -110,4 +110,25 @@ describe('series markers paint', () => {
     // Each sits over its own instrument bar, so the higher bar's mark is higher.
     expect(drawn[0]).toBeLessThan(drawn[1]);
   });
+
+  it('takes the last fallback bar of a repeated time, the live one', () => {
+    // A host that appends the forming bar beside its fetched copy repeats that
+    // time; the last copy is the live one, as the data layer itself keeps it.
+    const tipOver = (fallback: Bar[]): number => {
+      const dl = new DataLayer();
+      dl.setSeriesData(dl.createSeries(), [bar(at(0), 100), bar(at(1), 110)]);
+      const plotId = dl.createSeries();
+      dl.setSeriesData(plotId, [bar(at(0), 100)]);
+      const markers = new SeriesMarkers(plotId, () => fallback);
+      markers.setMarkers([mark(at(1))]);
+      const { ctx, rec } = makeCtx();
+      markers.draw(ctx, makeRc(dl));
+      const drawn = tips(rec.ops);
+      expect(drawn).toHaveLength(1);
+      return drawn[0];
+    };
+    const live = bar(at(1), 110);
+    const stale = bar(at(1), 100);
+    expect(tipOver([bar(at(0), 100), stale, live])).toBe(tipOver([bar(at(0), 100), live]));
+  });
 });

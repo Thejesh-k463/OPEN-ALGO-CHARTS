@@ -232,8 +232,9 @@ const BUNDLE = new URL('../dist/openalgo-charts.mjs', import.meta.url).pathname.
 // alone at 86112 bytes (84.09 KiB), up 229. Both together 86122 bytes
 // (84.10 KiB); allow 84.11 KiB. Finding the bar under each drawn series
 // marker by binary search, instead of indexing the whole history on every
-// paint (#31), 86189 bytes (84.17 KiB); allow 84.17 KiB.
-const LIMIT_BYTES = 84.17 * 1024;
+// paint (#31), 86189 bytes (84.17 KiB). Taking the last copy where a host's
+// fallback bars repeat a time adds 29: 86218 bytes (84.20 KiB); allow 84.20 KiB.
+const LIMIT_BYTES = 84.20 * 1024;
 
 // Absent from a chart-only build. Each is a string that appears in the adapter
 // source and nowhere in the rendering core.

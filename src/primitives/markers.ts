@@ -199,14 +199,21 @@ function paintLabel(ctx: CanvasRenderingContext2D, up: boolean, cx: number, anch
   for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], tx, first + lh * i);
 }
 
-/** The bar at exactly `time` in a time-sorted series, by binary search. */
+/**
+ * The bar at exactly `time` in a time-sorted series, by binary search. Where
+ * the time repeats (a host that appends the forming bar beside its fetched
+ * copy), the last copy is the live one, as the data layer keeps it.
+ */
 function barAtTime(bars: readonly Bar[], time: number): Bar | undefined {
   let lo = 0;
   let hi = bars.length - 1;
   while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
+    let mid = (lo + hi) >> 1;
     const t = bars[mid].time;
-    if (t === time) return bars[mid];
+    if (t === time) {
+      while (mid + 1 < bars.length && bars[mid + 1].time === time) mid++;
+      return bars[mid];
+    }
     if (t < time) lo = mid + 1;
     else hi = mid - 1;
   }
@@ -273,8 +280,9 @@ export class SeriesMarkers implements IPrimitive {
       if (this._fallbackBars === undefined) return undefined;
       fallback ??= this._fallbackBars();
       // The fallback comes from the host and is not promised to be sorted. An
-      // exact hit is right either way; only a miss has to be confirmed by
-      // indexing it, at most once per paint.
+      // exact hit is right when it is sorted (a repeated time's copies sit
+      // together and the last wins) and when it repeats no time; only a miss
+      // has to be confirmed by indexing it, at most once per paint.
       const hit = barAtTime(fallback, time);
       if (hit !== undefined) return hit;
       if (fallbackByTime === undefined) {
@@ -293,7 +301,7 @@ export class SeriesMarkers implements IPrimitive {
       const index = rc.dataLayer.timeToIndex(m.time);
       if (index === undefined || (!styled && (index < range.from - 1 || index > range.to + 1))) continue;
       const bar = m.position === 'paneTop' || m.position === 'paneBottom' ? undefined : barAt(m.time);
-      const px =effectiveMarkerPx(m.size, rc.timeScale.barSpacing) * rc.dpr;
+      const px = effectiveMarkerPx(m.size, rc.timeScale.barSpacing) * rc.dpr;
       const x = rc.timeScale.indexToX(index) * rc.dpr;
       const stack = stackByTime.get(m.time) ?? 0;
       const gap = (px + 4 * rc.dpr) * stack;
