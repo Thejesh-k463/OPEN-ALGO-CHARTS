@@ -147,7 +147,11 @@ jobs:
         # branch's commits do not), and the release that ships the change
         # empties it again, because its tag then paints the same pixels.
         env:
-          PARITY_BASELINE_REF: ''
+          # Line-family series draw the segment that crosses an edge of the
+          # view (#37), which moves pixels at the edges on purpose: the
+          # baseline is that commit until the release that ships it (2.5.9)
+          # empties this again.
+          PARITY_BASELINE_REF: '49cf626f7e6b8928dde72f0fdf7286c06e4a6e29'
         run: |
           ref="${PARITY_BASELINE_REF:-$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD)}"
           echo "render-parity baseline: $ref"

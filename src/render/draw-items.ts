@@ -92,11 +92,13 @@ export interface SeriesDrawItems {
    * Fill `items` with the bars of series `id` whose logical index, shifted by
    * `shift`, lands in [from + shift, to + shift], each at the x its shifted
    * index maps to. With `lod`, the bars go through the level of detail on the
-   * way and `items` holds its columns instead.
+   * way and `items` holds its columns instead. With `edges`, the series' bar
+   * just before and just after that span are included too, off screen, for a
+   * renderer that draws a segment between neighbouring bars.
    */
   build(
     layer: DataLayer, id: SeriesId, from: number, to: number, shift: number, timeScale: TimeScale,
-    scale: PriceMapper, lod: LodRequest | null,
+    scale: PriceMapper, lod: LodRequest | null, edges?: boolean,
   ): DrawItem[];
 }
 
@@ -129,7 +131,7 @@ export function createSeriesDrawItems(): SeriesDrawItems {
     items,
     priceToY: (price: number): number => (mapper as PriceMapper).priceToY(price),
     firstIndex: (): number => first,
-    build(layer, id, from, to, shift, timeScale, scale, lod): DrawItem[] {
+    build(layer, id, from, to, shift, timeScale, scale, lod, edges = false): DrawItem[] {
       mapper = scale;
       count = 0;
       first = -1;
@@ -137,16 +139,24 @@ export function createSeriesDrawItems(): SeriesDrawItems {
       if (visibleSpan(layer, bars, from, to, SPAN)) {
         const last = SPAN.lastTime;
         if (lod !== null) lodColumns.begin(lod.kind, lod.dpr, lod.factor);
-        for (let i = SPAN.start; i < bars.length; i++) {
-          const bar = bars[i];
-          if (bar.time > last) break;
+        const emit = (bar: Bar, inView: boolean): void => {
           const index = layer.timeToIndex(bar.time);
-          if (index === undefined) continue;
-          if (first < 0) first = index;
+          if (index === undefined) return;
+          // `first` stays the first bar IN view: previous-close colouring
+          // looks one bar left of it.
+          if (inView && first < 0) first = index;
           const x = timeScale.indexToX(index + shift);
           if (lod !== null) lodColumns.push(x, bar);
           else push(x, bar);
+        };
+        if (edges && SPAN.start > 0) emit(bars[SPAN.start - 1], false);
+        let i = SPAN.start;
+        for (; i < bars.length; i++) {
+          const bar = bars[i];
+          if (bar.time > last) break;
+          emit(bar, true);
         }
+        if (edges && i < bars.length) emit(bars[i], false);
         if (lod !== null) lodColumns.end();
       }
       if (items.length !== count) {

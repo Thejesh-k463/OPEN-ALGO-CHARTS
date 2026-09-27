@@ -51,6 +51,14 @@ export interface RendererEntry {
   /** True for the price series whose last close drives the last-price line. */
   isPriceSeries: boolean;
   /**
+   * True for a renderer that draws a segment from each bar to the next (a
+   * line, a step, an area). Its items then carry the nearest bar beyond each
+   * edge of the view as well, so the segment that crosses an edge is drawn:
+   * a sparse line (a level held for an hour, a position that steps twice a
+   * session) would otherwise lose the part that enters from off screen.
+   */
+  connectsBars?: boolean;
+  /**
    * Paint the visible items on a bitmap-scope 2D context. On screen the pane
    * reaches this through its render backend (src/render/backend.ts); the 2D
    * backend calls it as is, and the vector export calls it directly on the
@@ -160,25 +168,25 @@ registerChartType('high-low', {
 });
 
 registerChartType('line', {
-  defaultStyle: { lineWidth: 1.5 }, isPriceSeries: true,
+  defaultStyle: { lineWidth: 1.5 }, isPriceSeries: true, connectsBars: true,
   draw: (g, items, toY, _bs, dpr, s, rc) => drawLine(g, items, toY, dpr, { ...s, color: s.color ?? rc.theme.lineColor }),
   extents: closeOnly,
 });
 
 registerChartType('line-markers', {
-  defaultStyle: { lineWidth: 1.5, markers: true }, isPriceSeries: true,
+  defaultStyle: { lineWidth: 1.5, markers: true }, isPriceSeries: true, connectsBars: true,
   draw: (g, items, toY, _bs, dpr, s, rc) => drawLine(g, items, toY, dpr, { ...s, color: s.color ?? rc.theme.lineColor, markers: true }),
   extents: closeOnly,
 });
 
 registerChartType('step', {
-  defaultStyle: { lineWidth: 1.5, step: true }, isPriceSeries: true,
+  defaultStyle: { lineWidth: 1.5, step: true }, isPriceSeries: true, connectsBars: true,
   draw: (g, items, toY, _bs, dpr, s, rc) => drawLine(g, items, toY, dpr, { ...s, color: s.color ?? rc.theme.lineColor, step: true }),
   extents: closeOnly,
 });
 
 registerChartType('area', {
-  defaultStyle: { lineWidth: 1.5 }, isPriceSeries: true,
+  defaultStyle: { lineWidth: 1.5 }, isPriceSeries: true, connectsBars: true,
   draw: (g, items, toY, _bs, dpr, s, rc) => drawArea(g, items, toY, dpr, rc.plotHeight, {
     ...s,
     color: s.color ?? rc.theme.lineColor,
@@ -189,13 +197,13 @@ registerChartType('area', {
 });
 
 registerChartType('hlc-area', {
-  defaultStyle: { lineWidth: 1.5 }, isPriceSeries: true,
+  defaultStyle: { lineWidth: 1.5 }, isPriceSeries: true, connectsBars: true,
   draw: (g, items, toY, _bs, dpr, s, rc) => drawHlcArea(g, items, toY, dpr, { ...s, closeColor: s.closeColor ?? rc.theme.lineColor }),
   extents: hiLo,
 });
 
 registerChartType('baseline', {
-  defaultStyle: { baseValue: 0, lineWidth: 1.5 }, isPriceSeries: true,
+  defaultStyle: { baseValue: 0, lineWidth: 1.5 }, isPriceSeries: true, connectsBars: true,
   draw: (g, items, toY, _bs, dpr, s, rc) => drawBaseline(g, items, toY, dpr, {
     ...s,
     topColor: s.topColor ?? rc.theme.baselineTopLine,
