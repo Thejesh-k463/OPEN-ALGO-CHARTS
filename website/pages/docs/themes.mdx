@@ -49,14 +49,24 @@ return chart;`} />
 
 A theme is a plain object - spread a built-in and override what you need:
 
-<RunnableExample height={320} code={`const chart = lib.createChart(el, {
-  theme: {
-    ...lib.darkTheme,
-    background: '#0b0f17',
-    upColor: '#00b386',
-    downColor: '#ff5d6c',
-    grid: '#161b27',
-  },
+```ts
+import { createChart, darkTheme } from 'openalgo-charts';
+const chart = createChart(el, {
+  theme: { ...darkTheme, background: '#0b0f17', upColor: '#00b386', downColor: '#ff5d6c', grid: '#161b27' },
+});
+```
+
+The live chart below spreads whichever built-in it opened with, so it matches this page in
+either theme, and swaps in the custom palette with `setTheme`:
+
+<RunnableExample height={320} code={`const chart = lib.createChart(el);
+const dark = chart.theme() === lib.darkTheme;
+chart.setTheme({
+  ...chart.theme(),
+  background: dark ? '#0b0f17' : '#fbfaf7',
+  grid: dark ? '#161b27' : '#efebe3',
+  upColor: '#00b386',
+  downColor: '#ff5d6c',
 });
 chart.addSeries('candlestick').setData(lib.generateBars(1700000000, 140, 3600));
 chart.timeScale.fitContent(140);
@@ -73,11 +83,12 @@ fill so the page shows through. Crosshair styling: `crosshairStyle`
 Swap the palette live with `chart.setTheme(theme)`: no recreate, no flicker. Click the
 chart below to toggle:
 
-<RunnableExample height={340} code={`const chart = lib.createChart(el, { theme: lib.darkTheme });
+<RunnableExample height={340} code={`const chart = lib.createChart(el);
 chart.addSeries('candlestick').setData(lib.generateBars(1700000000, 140, 3600));
 chart.fitContent();
 
-let dark = true;
+// Start from the built-in the chart opened with, then swap on every click.
+let dark = chart.theme() === lib.darkTheme;
 el.onclick = () => { dark = !dark; chart.setTheme(dark ? lib.darkTheme : lib.lightTheme); };
 return chart;`} />
 
