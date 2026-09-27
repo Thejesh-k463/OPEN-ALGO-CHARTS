@@ -16,7 +16,7 @@
  * replay-aware code anywhere in the indicator tier.
  */
 import type { Bar } from '../model/bar';
-import { foldFiner, formingWithin, startFiner } from './forming';
+import { foldFiner, formingWithin, simulatedForming, startFiner } from './forming';
 import type { BarConfirmationOptions, SeriesApi } from '../model/series';
 import { seriesConfirmation } from '../model/series-provenance';
 import { clamp } from '../helpers/math';
@@ -89,6 +89,22 @@ export interface ReplayState {
    */
   subIndex: number;
   subSteps: number;
+  /**
+   * True while the newest bar forms along a simulated path (`simulate`), because
+   * no finer bar covers it. Its forming prices were never traded, so a host shows
+   * that plainly; the bar closes on the real bar either way.
+   */
+  simulated: boolean;
+}
+
+/** How a bar without finer data forms under `ReplayOptions.simulate`. */
+export interface ReplaySimulation {
+  /**
+   * Steps such a bar takes, the last being the bar itself: a whole number from 2
+   * to 240. The displayed interval over the finer one it stands in for (5 for a
+   * 5-minute chart over 1-minute data) keeps the pace the same either way.
+   */
+  steps: number;
 }
 
 export interface ReplayOptions {
@@ -136,6 +152,17 @@ export interface ReplayOptions {
    * wants a growing volume bar writes it from there.
    */
   subBars?: readonly Bar[];
+  /**
+   * Form a displayed bar that no finer bar covers over simulated steps instead
+   * of landing it whole: the 5-minute bars older than the 1-minute history a feed
+   * keeps, or every bar when there is no finer feed at all. The path runs from
+   * the open to the nearer extreme, the other extreme and the close, held inside
+   * the bar like every forming bar (see `subBars`), and closes on the bar itself.
+   * Real finer bars always win where they exist. `ReplayState.simulated` says
+   * which steps are simulated. Off by default, so a bar without finer data takes
+   * one step as before.
+   */
+  simulate?: ReplaySimulation;
   /** Bar to open at (0-based). Default 0. */
   startIndex?: number;
   /** Wall-clock milliseconds per bar at speed 1. Default 1000. */
@@ -177,6 +204,16 @@ function mergeSubBars(subs: readonly Bar[], from: number, to: number, final: Bar
   return formingWithin(raw, final);
 }
 
+/** `simulate.steps` as a count, or 0 when simulation is off. Throws on a count it cannot use. */
+function simulationSteps(simulate: ReplaySimulation | undefined): number {
+  if (simulate === undefined) return 0;
+  const steps = simulate.steps;
+  if (!Number.isInteger(steps) || steps < 2 || steps > 240) {
+    throw new Error('openalgo-charts: replay simulate.steps must be a whole number from 2 to 240');
+  }
+  return steps;
+}
+
 export class ReplayController {
   private readonly _chart: ReplayChartHost;
   private readonly _series: readonly SeriesApi[];
@@ -206,6 +243,8 @@ export class ReplayController {
   private readonly _subStart: Int32Array;
   private readonly _subCount: Int32Array;
   private readonly _intra: boolean;
+  /** Steps a bar without finer data takes under `simulate`; 0 when off. */
+  private readonly _simSteps: number;
   private _speed: number;
   private _index: number;
   /** Step within the forming bar, 0-based. Always 0 without `subBars`. */
@@ -244,13 +283,14 @@ export class ReplayController {
     this._bars = options.bars ?? this._restore[0];
     this._view = { barSpacing: chart.timeScale.barSpacing, rightOffset: chart.timeScale.rightOffset };
     this._subBars = options.subBars ?? [];
-    this._intra = this._subBars.length > 0 && this._bars.length > 0;
+    this._simSteps = simulationSteps(options.simulate);
+    this._intra = (this._subBars.length > 0 || this._simSteps > 0) && this._bars.length > 0;
     const buckets = this._buildBuckets();
     this._subStart = buckets.start;
     this._subCount = buckets.count;
     this._startIndex = clamp(Math.floor(options.startIndex ?? 0), 0, Math.max(0, this._bars.length - 1));
     this._index = this._startIndex;
-    this._timeline = options.timing ? new ReplayTimeline(this._bars, this._subBars, options.timing) : null;
+    this._timeline = options.timing ? new ReplayTimeline(this._bars, this._subBars, options.timing, this._simSteps) : null;
     if (options.startTime !== undefined && (!this._timeline || !Number.isFinite(options.startTime))) {
       throw new Error('openalgo-charts: replay start time must be finite and requires timing');
     }
@@ -305,7 +345,24 @@ export class ReplayController {
   private _steps(index: number): number {
     if (this._timeline) return this._timeline.steps[index] ?? 1;
     if (!this._intra) return 1;
-    return Math.max(1, this._subCount[index]);
+    const covered = this._subCount[index];
+    return covered > 0 ? covered : Math.max(1, this._simSteps);
+  }
+
+  /** Whether the bar at `index` forms along the simulated path. */
+  private _simulated(index: number): boolean {
+    if (this._timeline) return !!this._timeline.points[this._pointIndex]?.simulated;
+    return this._simSteps > 0 && index >= 0 && index < this._bars.length && this._subCount[index] === 0;
+  }
+
+  /** The bar shown at step `sub` of `index`, for a step before its last. */
+  private _formingAt(index: number, sub: number): Bar {
+    const final = this._bars[index];
+    if (this._subCount[index] > 0) {
+      const from = this._subStart[index];
+      return mergeSubBars(this._subBars, from, from + sub, final);
+    }
+    return simulatedForming(final, sub, this._simSteps, this._bars[index - 1]?.oi);
   }
 
   // ── transport ───────────────────────────────────────────────────────────
@@ -491,10 +548,7 @@ export class ReplayController {
       bar = this._timeline.points[this._pointIndex]?.bar ?? null;
     } else if (total > 0) {
       bar = this._bars[this._index];
-      if (this._intra && this._sub < steps - 1 && this._subCount[this._index] > 0) {
-        const from = this._subStart[this._index];
-        bar = mergeSubBars(this._subBars, from, from + this._sub, bar);
-      }
+      if (this._intra && this._sub < steps - 1) bar = this._formingAt(this._index, this._sub);
     }
     return {
       index: this._index,
@@ -504,6 +558,7 @@ export class ReplayController {
       bar,
       subIndex: this._sub,
       subSteps: steps,
+      simulated: total > 0 && this._simulated(this._index),
     };
   }
 
@@ -531,10 +586,7 @@ export class ReplayController {
     // closes on the number the chart would have shown without `subBars`. Only
     // the steps before it are aggregates, and only when the finer feed actually
     // covers this bucket.
-    if (this._intra && nextSub < steps - 1 && this._subCount[next] > 0) {
-      const from = this._subStart[next];
-      shown[next] = mergeSubBars(this._subBars, from, from + nextSub, this._bars[next]);
-    }
+    if (this._intra && nextSub < steps - 1) shown[next] = this._formingAt(next, nextSub);
     const forming = this._intra && nextSub < steps - 1;
     this._write(shown, forming, first);
   }

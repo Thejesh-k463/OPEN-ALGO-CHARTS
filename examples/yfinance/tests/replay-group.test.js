@@ -78,10 +78,12 @@ describe('reference shared replay', () => {
     expect(app.replay.state()).toMatchObject({ focusedId: '1', time: T + 600, playing: true });
     expect(vi.getTimerCount()).toBe(1);
     vi.advanceTimersByTime(1000);
-    expect(app.replay.state().time).toBe(T + 900);
+    // No finer bars arrive here, so the next 5-minute candle forms over five
+    // simulated steps a minute apart: one played step is one minute.
+    expect(app.replay.state().time).toBe(T + 660);
     setReplayScope('focused');
     expect(app.chart2.primaryBars()).toHaveLength(4);
-    expect(app.replay.state().time).toBe(T + 900);
+    expect(app.replay.state().time).toBe(T + 660);
     exitReplay(); expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -101,13 +103,25 @@ describe('reference shared replay', () => {
     expect(app.chart.primaryBars()).toHaveLength(12);
   });
 
-  it('shows completed-candle fallback when finer history fails', async () => {
+  it('forms candles along a simulated path, and says so, when finer history fails', async () => {
     fetchBars.mockRejectedValue(new Error('offline'));
     enterReplay(); setReplayScope('all');
     await startReplayAt(1);
     expect(app.replay.state().active).toBe(true);
-    expect(dom.get('status').textContent).toMatch(/completed candles/i);
+    expect(dom.get('status').textContent).toMatch(/simulated path/i);
     expect(dom.get('status').textContent).toMatch(/Chart 1.*Chart 2/);
+    app.replay.step();
+    expect(app.replay.state().members.find(m => m.id === '1').state).toMatchObject({ subSteps: 5, simulated: true });
+    expect(dom.get('rp-sim').hidden).toBe(false);
+  });
+
+  it('labels only simulated steps as simulated', async () => {
+    // Real 1-minute bars under the 5-minute chart: its candles form from them.
+    fetchBars.mockImplementation((symbol, interval) => Promise.resolve(interval === '1m' ? history(60, 60) : []));
+    await startReplayAt(1);
+    app.replay.step();
+    expect(app.replay.state().members.find(m => m.id === '1').state).toMatchObject({ subSteps: 5, simulated: false });
+    expect(dom.get('rp-sim').hidden).toBe(true);
   });
 
   it('restores every survivor when an active participant is destroyed', async () => {

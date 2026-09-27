@@ -72,3 +72,48 @@ export function startFiner(sub: Bar, time: number): Bar {
   if (sub.oi !== undefined) bar.oi = sub.oi;
   return bar;
 }
+
+/**
+ * Step `step` (0-based) of `steps` for a bar that no finer bar covers, formed
+ * along a simulated path. The last step is the bar itself, so callers ask this
+ * only for the steps before it.
+ *
+ * The path runs from the open to the extreme nearer it, across to the other
+ * extreme and on to the close (on a tie, low first when the bar closes up and
+ * high first when it closes down), and each step covers the same share of that
+ * distance. The bar keeps its open from the first step, reaches its real high
+ * and low, and its extremes only widen, as a traded bar's do. The order of the
+ * extremes is an assumption, not a record: a bar's prices say where it went and
+ * not when, which is why replay reports these steps as simulated. Volume grows
+ * in proportion. Open interest holds `oi`, the last reading known before the
+ * bar, because the bar's own is not known until it closes.
+ */
+export function simulatedForming(final: Bar, step: number, steps: number, oi?: number): Bar {
+  const { open, high, low, close } = final;
+  const t = Math.min(1, (step + 1) / steps);
+  const lowFirst = open - low < high - open || (open - low === high - open && close >= open);
+  const path = lowFirst ? [open, low, high, close] : [open, high, low, close];
+  let left = t * (Math.abs(path[1] - path[0]) + Math.abs(path[2] - path[1]) + Math.abs(path[3] - path[2]));
+  let price = open;
+  let top = open;
+  let bottom = open;
+  for (let i = 1; i < path.length && left > 0; i++) {
+    const leg = Math.abs(path[i] - path[i - 1]);
+    if (left >= leg) {
+      price = path[i];
+      left -= leg;
+    } else {
+      price = path[i - 1] + Math.sign(path[i] - path[i - 1]) * left;
+      left = 0;
+    }
+    if (price > top) top = price;
+    if (price < bottom) bottom = price;
+  }
+  const raw: Bar = { time: final.time, open, high: top, low: bottom, close: price };
+  if (final.volume !== undefined && Number.isFinite(final.volume)) {
+    const share = final.volume * t;
+    raw.volume = Number.isInteger(final.volume) ? Math.floor(share) : share;
+  }
+  if (oi !== undefined) raw.oi = oi;
+  return formingWithin(raw, final);
+}

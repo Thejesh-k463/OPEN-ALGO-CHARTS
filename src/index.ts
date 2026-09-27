@@ -161,7 +161,7 @@ export type {
 export { ReplayController } from './replay/controller';
 export { isReplaying } from './model/replay-window';
 export type {
-  ReplayOptions, ReplayState, ReplayScheduler, ReplayChartHost, ReplayViewport,
+  ReplayOptions, ReplayState, ReplaySimulation, ReplayScheduler, ReplayChartHost, ReplayViewport,
 } from './replay/controller';
 export type { ReplayTiming, ReplayBarEndTime } from './replay/timeline';
 export { ReplayGroup } from './replay/group';

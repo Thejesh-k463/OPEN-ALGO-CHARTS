@@ -629,6 +629,8 @@ body[data-fullscreen-pane="2"] #chart2 { left: 42px; }
 #replaybar .rclock { color: var(--faint); font-size: 11px; max-width: 100%; white-space: normal; }
 #replaybar .vsep { width: 1px; height: 18px; background: var(--bd-soft); flex: none; }
 #replaybar .rsub { color: var(--acc); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#replaybar .rsim { color: var(--pill-mut); border: 1px solid var(--pill-bd); border-radius: 4px; padding: 0 5px; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+#replaybar .rsim[hidden] { display: none; }
 
 /* ── select-bar prompt ──────────────────────────────────────────
  * Sits where the transport will be, so the mode reads as one flow:

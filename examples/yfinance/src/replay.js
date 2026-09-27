@@ -158,6 +158,18 @@ export const REPLAY_SUB_INTERVAL = {
   '1d': '60m', '1wk': '1d', '1mo': '1d', '1q': '1d',
 };
 
+/**
+ * How many steps a candle takes when that finer rung has no bars for it: the
+ * finer bars it would have held, so a simulated candle forms at the pace a real
+ * one does (five for 5 minutes over 1 minute, seven hours in an NSE session).
+ * yfinance keeps about a week of 1-minute bars, so every older 5-minute candle
+ * takes this path; the transport marks each of its steps as simulated.
+ */
+export const REPLAY_SIMULATED_STEPS = {
+  '5m': 5, '15m': 3, '30m': 2, '60m': 4, '1h': 4,
+  '1d': 7, '1wk': 5, '1mo': 21, '1q': 63,
+};
+
 /** Where the newest bar sits while replay is running (or the real one). */
 export const lastBar = () => {
   const member = memberState(app.chart);
@@ -317,7 +329,8 @@ export async function startReplayAt(index) {
     const members = loaded.filter(item => ready(item.target)).map(({ target: item, sub }) => {
       const timing = { barEndTime: replayBarEndTime(item.request.interval, item.timezone),
         subBarEndTime: replayBarEndTime(REPLAY_SUB_INTERVAL[item.request.interval], item.timezone) };
-      const options = { series: [item.series], timing };
+      const steps = REPLAY_SIMULATED_STEPS[item.request.interval];
+      const options = { series: [item.series], timing, ...(steps ? { simulate: { steps } } : {}) };
       try { new ReplayController(item.chart, { ...options, autoStart: false }); }
       catch {
         item.unavailable = `Chart ${item.pane} has overlapping or unordered candle times. Use time-based chart data.`;
@@ -350,8 +363,8 @@ export async function startReplayAt(index) {
     el('replaybar').hidden = false;
     syncScopeControls(); syncReplayBar(); renderToolbar();
     el('status').textContent = fallback.length
-      ? `${fallback.join(', ')}: finer history unavailable; replay uses completed candles`
-      : 'Replay advances by available observations; history gaps use completed candles';
+      ? `${fallback.join(', ')}: finer history unavailable; candles form along a simulated path, marked Simulated`
+      : 'Replay advances by available observations; candles without finer history form along a simulated path, marked Simulated';
   } catch (error) {
     if (revision !== replayLoadRevision) return;
     if (app.replay) exitReplay();
@@ -526,6 +539,15 @@ export function buildReplayBar() {
   sub.className = 'rsub';
   sub.id = 'rp-sub';
   bar.appendChild(sub);
+  // Said on screen, not only in the status line: a simulated step's prices were
+  // never traded, and a trader testing a stop against them has to know.
+  const simulated = document.createElement('span');
+  simulated.className = 'rsim';
+  simulated.id = 'rp-sim';
+  simulated.textContent = 'Simulated';
+  simulated.hidden = true;
+  simulated.title = 'No finer bars for this candle: it forms along a path through its own open, high, low and close, and closes on the real candle';
+  bar.appendChild(simulated);
   const clock = document.createElement('span');
   clock.className = 'rclock';
   clock.id = 'rp-clock';
@@ -554,6 +576,8 @@ export function syncReplayBar() {
   // whole-bar replay does not carry a permanent "1/1".
   const sub = el('rp-sub');
   if (sub) sub.textContent = focused?.subSteps > 1 ? `${focused.subIndex + 1}/${focused.subSteps}` : '';
+  const simulated = el('rp-sim');
+  if (simulated) simulated.hidden = !focused?.simulated;
   const back = el('rp-back');
   const fwd = el('rp-fwd');
   const unit = 'one observation';

@@ -70,6 +70,16 @@ high, never makes the open jump or the high fall back at the close. OI retains t
 reading and is never summed or copied early from the final candle. Comparisons
 and independent followers withhold forming closes.
 
+A feed keeps far less fine history than coarse, about a week of 1-minute bars
+against years of 5-minute ones, so older candles have nothing to form from. Pass
+`simulate: { steps: 5 }` and such a candle still forms over five steps, along a
+path from its open to the nearer extreme, the other extreme and its close. It
+keeps its real open, never passes its real high or low, and closes on the real
+candle; real finer bars win wherever they exist. The order of the extremes is an
+assumption (a bar's prices say where it went, not when), so `state().simulated`
+is true on those steps and the host should say so: a stop tested inside a
+simulated candle was not tested against traded prices.
+
 `seek(index)` still selects a complete primary candle. Step/play move through
 available observations. `time()` reports the UTC playhead; `timePoints()` returns
 a copy of the observation times. `autoStart: false` prepares a validated snapshot

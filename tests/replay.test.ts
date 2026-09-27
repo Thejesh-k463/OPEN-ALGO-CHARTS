@@ -64,7 +64,7 @@ describe('ReplayController: playhead', () => {
     const { chart, series, data } = loaded(20);
     const replay = new ReplayController(chart, { series, bars: data, startIndex: 4 });
     const s = replay.state();
-    expect(s).toEqual({ index: 4, total: 20, playing: false, speed: 1, bar: data[4], subIndex: 0, subSteps: 1 });
+    expect(s).toEqual({ index: 4, total: 20, playing: false, speed: 1, bar: data[4], subIndex: 0, subSteps: 1, simulated: false });
     expect(series.getData()).toHaveLength(5);
     expect(series.getData()[4].time).toBe(data[4].time);
   });
@@ -111,7 +111,7 @@ describe('ReplayController: playhead', () => {
     const replay = new ReplayController(chart, { series, bars: data });
     replay.step();
     replay.stepBack();
-    expect(replay.state()).toEqual({ index: 0, total: 1, playing: false, speed: 1, bar: data[0], subIndex: 0, subSteps: 1 });
+    expect(replay.state()).toEqual({ index: 0, total: 1, playing: false, speed: 1, bar: data[0], subIndex: 0, subSteps: 1, simulated: false });
   });
 
   it('never mutates the caller bar array', () => {
@@ -421,7 +421,7 @@ describe('ReplayController: wiring', () => {
   it('an empty session leaves the chart alone', () => {
     const { chart, series } = loaded(5);
     const replay = new ReplayController(chart, { series, bars: [] });
-    expect(replay.state()).toEqual({ index: 0, total: 0, playing: false, speed: 1, bar: null, subIndex: 0, subSteps: 1 });
+    expect(replay.state()).toEqual({ index: 0, total: 0, playing: false, speed: 1, bar: null, subIndex: 0, subSteps: 1, simulated: false });
     expect(series.getData()).toHaveLength(5);
     replay.play();
     replay.step();
