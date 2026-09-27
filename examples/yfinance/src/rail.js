@@ -227,9 +227,9 @@ export function cycleMagnet() {
   setMagnetMode(next);
   const status = el('status');
   if (status) {
-    status.textContent = next === 'off' ? 'magnet off'
-      : next === 'weak' ? 'magnet weak: snaps when O/H/L/C is within a few pixels'
-      : 'magnet strong: every anchor lands on the nearest O/H/L/C';
+    status.textContent = next === 'off' ? 'magnet off · hold Ctrl to snap while placing or dragging'
+      : next === 'weak' ? 'magnet weak: snaps when a bar or study value is within a few pixels'
+      : 'magnet strong: every anchor lands on the nearest bar or study value';
   }
 }
 
@@ -436,9 +436,9 @@ function controlsBlock() {
     glyph: toolGlyph('magnet'),
     tip: () => ({
       title: 'Magnet: ' + prefs.magnet,
-      sub: prefs.magnet === 'off' ? 'Click for weak: snaps when O/H/L/C is within a few pixels'
-        : prefs.magnet === 'weak' ? 'Click for strong: every anchor lands on the nearest O/H/L/C'
-        : 'Click to switch the magnet off',
+      sub: (prefs.magnet === 'off' ? 'Click for weak: snaps when a bar or study value is within a few pixels'
+        : prefs.magnet === 'weak' ? 'Click for strong: every anchor lands on the nearest bar or study value'
+        : 'Click to switch the magnet off') + '. Hold Ctrl for a strong snap while placing or dragging',
       side: 'right',
     }),
     onClick: cycleMagnet,

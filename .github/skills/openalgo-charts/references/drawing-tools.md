@@ -371,7 +371,7 @@ delivery logic belongs in these hooks.
 
 ```ts
 new DrawingController(chart, {
-  magnet: 'off',            // 'weak' | 'strong' | 'off'; true = 'strong'. Snap new anchors to the hovered bar's O/H/L/C
+  magnet: 'off',            // 'weak' | 'strong' | 'off'; true = 'strong'. Snap anchors to the bar's O/H/L/C, or a study pane's plotted values
   stayInDrawingMode: false, // stay armed after a shape completes
   historyLimit: 50,         // undo depth
   defaultStyle: {},         // merged UNDER each tool's own defaults
@@ -379,6 +379,7 @@ new DrawingController(chart, {
   pasteOffsetBars: 2,       // how far a paste is nudged along time
   pasteOffsetPixels: 16,    // how far a paste is nudged down the price axis
   inputAnchors: true,       // draw the anchor of every paired study input that declares one
+  gestures: {},             // DrawingGestureOptions: turn a modifier gesture off, e.g. { snapModifier: false }
 });
 ```
 
@@ -465,13 +466,13 @@ layer's answer: see [times past the last bar](data-and-time.md#times-past-the-la
 5. `freehand` tools (`brush`, `highlighter`) ignore clicks and sample the cursor while the pointer is held; the release commits. A tap that never moved is discarded.
 6. A press-drag-release also draws a two-anchor shape in one gesture: the chart emits the press point, then the release point tagged `viaDrag`.
 7. **Shift locks the angle** on tools with `angleLock` (the line family): the free end is projected onto the nearest 45 degree ray on screen, while placing and while dragging a handle. It projects rather than rotates, so a level line ends under the pointer's x. It needs the host's four pixel mappings and is inert without them.
-8. **The magnet ring.** With `magnet` on, the layer paints a ring where the next click will land (the hovered bar's time and the nearest O/H/L/C, so a snapped anchor sits on the bar centre). `'weak'` pulls only when one of the four is within a few px, and needs `priceToCoordinate` to judge that; `'strong'` always pulls. Shift's angle lock wins over the magnet and hides the ring.
+8. **The magnet ring.** With `magnet` on, or Ctrl (Cmd) held, the layer paints a ring where the next click will land (the hovered bar's time and the nearest O/H/L/C, so a snapped anchor sits on the bar centre; on a study pane the nearest value a study plots there). `'weak'` pulls only when a value is within 8 px, and needs `priceToCoordinate` to judge that; `'strong'` always pulls. Shift's angle lock wins over the magnet and hides the ring. See [the magnet everywhere](#the-magnet-everywhere-unreleased).
 9. **Freehand strokes** read the coalesced `samples` a pressed `crosshair:move` carries, so a fast stroke inks every position the pointer passed through rather than one per frame; on release the trail is thinned (`rdpSimplify`, a pixel and a half) and painted as a spline (`catmullRom`). A pen stores `pressure` per sample (a mouse stores nothing), and `style.pressure` on the brush and highlighter lets it drive the width (`pressureWidth`).
 10. **Escape, Enter and Backspace** while a tool is armed mean `cancel()`, `finish()` and `popAnchor()`; `keyToDrawingAction` says so when the host passes `placing: true`.
 
 ### Selection and dragging
 
-Hit ids are `draw:<id>` for the body and `draw:<id>#<n>` for anchor `n`. A body drag on an unselected drawing selects it alone first; then the **whole selection** moves as one undo entry (locked members stay, other-pane members through `priceToCoordinate` / `coordinateToPrice`, and a member on a pane collapsed to its strip, where those return `null`, keeps its prices and moves in time only); dragging a handle moves that one anchor to the cursor. `draw:update` fires per moved drawing on `drag:end`, plus one `drawing:change`. The grab radius is 6 media px for a body, 7 for a handle; handles of the selected drawing win over its own body.
+Hit ids are `draw:<id>` for the body and `draw:<id>#<n>` for anchor `n`. A body drag on an unselected drawing selects it alone first; then the **whole selection** moves as one undo entry (locked members stay, other-pane members through `priceToCoordinate` / `coordinateToPrice`, and a member on a pane collapsed to its strip, where those return `null`, keeps its prices and moves in time only); dragging a handle moves that one anchor to the cursor (or where the magnet lands it). `draw:update` fires per moved drawing on `drag:end`, plus one `drawing:change`. The grab radius is 6 media px for a body, 7 for a handle; handles of the selected drawing win over its own body.
 
 Freehand strokes expose only their first and last handle: one handle per sample would bury the ink.
 
@@ -739,7 +740,7 @@ draw.update(draw.selected()!, { style: { color, lineWidth, lineStyle, fillOpacit
 
 **A drawing renders only once it has `max(1, tool.points)` anchors.** A partially-placed `points: 0` shape lives in the preview slot, not the model, so it is absent from `toJSON()` until committed.
 
-**Magnet only applies to the price pane,** in whatever slot the host keeps it (`chart.primaryPaneIndex()`, read through the optional `DrawingChartHost.primaryPaneIndex`; a host without it means slot 0). `_snap` returns the raw price for any other pane index, because O/H/L/C snapping has no meaning on an indicator pane.
+**The magnet snaps to candles on the price pane only,** in whatever slot the host keeps it (`chart.primaryPaneIndex()`, read through the optional `DrawingChartHost.primaryPaneIndex`; a host without it means slot 0). A study pane snaps to its studies' plotted values instead, and only on a host with `indicators()`, `panes()` and `priceToCoordinate`; a study overlaid on the price pane is not a snap target there.
 
 Related: [primitives-and-plugins](primitives-and-plugins.md) (the `IPrimitive` contract `DrawingLayer` implements), [events-and-state](events-and-state.md) (the bus and `getState`), [interactions](interactions.md) (placement mode, pan/zoom), [bundling-and-tiers](bundling-and-tiers.md) (lazy-loading the tier).
 
@@ -790,6 +791,7 @@ copy or a `duplicate` makes. `DRAW_TIER` is the tier constant.
 | `DrawingInput` / `DrawingPatch` / `DrawingsDocument` | What `add` accepts, what `update` accepts, what `toJSON` returns |
 | `DrawingText` / `FibLevel` | The text block and one level of a ladder (see the 2.0 model above) |
 | `MagnetMode` | `'off' | 'weak' | 'strong'`, what `magnet` resolves to and `magnetMode()` returns |
+| `DrawingGestureOptions` | `DrawingControllerOptions.gestures`: the modifier gestures a host turns off (see Modifier gestures) |
 | `DrawingPointerKind` | `'mouse' | 'touch' | 'pen'`, what `DrawingLayer.setPointerType` takes; a touch gets larger grab targets |
 | `DrawingPoint.pressure` | Optional 0..1 pen pressure on a freehand sample; kept by the clipboard and the migration |
 | `IconAttrs` / `IconSvgOptions` / `ToolCursorOptions` | The icon attribute bag, and the option bags of `iconSvg` and `toolCursor` |
@@ -1087,3 +1089,50 @@ What it decides, and why:
   written again with the next change or `save()`. An unreadable entry is
   reported and shows no drawings; the next change on that instrument writes
   over it.
+
+## Modifier gestures (unreleased)
+
+Pointer gestures a held modifier key starts. Ctrl means Cmd as well, so macOS
+users press Cmd. None of them is a key chord, so none collides with
+`matchDrawingShortcut` (Alt+letter arms a tool) or `keyToDrawingAction`
+(Ctrl+Z, Ctrl+C and the rest): those read key events, these read the modifier
+state a pointer payload carries. Each is on by default, and
+`DrawingControllerOptions.gestures` (a `DrawingGestureOptions`) turns one off
+for a host whose own chart gestures already use that key; `setOptions` merges
+it flag by flag.
+
+| Gesture | Where | Flag |
+|---|---|---|
+| Ctrl held | placing an anchor, dragging a handle or a shape: the strong magnet while held | `snapModifier` |
+
+### The magnet everywhere (unreleased)
+
+The magnet (`magnet: 'weak' | 'strong'`) pulls a handle in hand and a whole
+shape in hand, not only a placement:
+
+- **A handle** lands on the nearest value of the bar under it, at that bar's
+  time, the same as a placement. Shift's angle lock still wins on a line.
+- **A shape grabbed by its body** moves rigidly, shifted by whatever lands its
+  anchor nearest the press on a value: that one anchor lands on the bar's time
+  and value, the others keep their offsets from it. Every other selected
+  drawing moves by the same shift.
+- **A study pane** snaps to the values its studies plot there, read the way the
+  legend reads them (the value painted under the bar, after the plot's
+  `offset`; all four columns of a bar-shaped plot). A hidden study, a plot with
+  `visible: false` and a plot in a fully transparent colour are skipped, so an
+  anchor never lands on a line that is not drawn. Candidates are compared on
+  screen, since plots on one pane can sit on different scales, and the anchor
+  takes the price the pane's own scale reads there. The price pane keeps
+  snapping to the candles' O/H/L/C.
+- **Ctrl (Cmd) held** is the strong magnet for as long as it is held, whatever
+  `magnet` is, including `'off'`: while placing (the ring shows), and while
+  dragging a handle or a shape. Letting go returns to the mode.
+
+A drawing pinned to the viewport never snaps. The chart reports no bar under
+the pointer during a drag, so a drag reads the bar at its time through
+`DrawingChartHost.primaryBars`; a study pane needs `indicators` and `panes`
+(each pane's `scales()`, `priceToY` and `yToPrice`), and `seriesStyle` to skip
+a hidden plot. All are optional on `DrawingChartHost`, and a chart from
+`createChart()` has them all; a host without them snaps placements on the price
+pane as before.
+

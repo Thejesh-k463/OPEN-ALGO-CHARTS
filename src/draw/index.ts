@@ -124,6 +124,7 @@ export {
   type DrawingChangeEvent,
   type DrawingEditOptions,
   type DrawingPlacementOptions,
+  type DrawingGestureOptions,
 } from './controller';
 
 // Keyboard editing. Pure: the host owns the listener and asks what a key means.

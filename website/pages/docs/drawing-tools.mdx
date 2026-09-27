@@ -347,7 +347,7 @@ chart has a different interval loaded.
 | `untracked(fn)` | Run `fn` as the host's own act: an edit it makes records no undo step and leaves both branches as they are, and every recorded step takes it in, as a forced edit does, so no undo or redo reverses it. It reaches no read-only drawing, and `undo` or `redo` inside it still moves along the branches. [`ChartHistory`](/docs/undo-history) runs its `ignore` and every press through it. |
 | `delegateInputAnchorSteps(record)` | Hand the step each study input anchor move makes (a drag, `moveInputAnchor`) to a timeline of the host's: `record` receives the move's `InputAnchorStep`, its own `undo()` and `redo()`, as the move ends, and this history records nothing for it. The returned function gives the steps back. [`ChartHistory`](/docs/undo-history) takes them, since it records the settings patch the move writes, and one move must be one step. A point written through the study's settings (a settings dialog's Pick point), which this history otherwise holds as a step of its own, is not handed over: the host's timeline sees that write itself. A move inside `untracked` is a step nowhere. |
 | `toJSON()` / `fromJSON(data)` | Explicit serialisation: a `{ version: 2, drawings }` document out; a document or a 1.9.x bare array in, upgraded by `migrateDrawings`. |
-| `setOptions(patch)` | `magnet`, `stayInDrawingMode`, `historyLimit`, `defaultStyle`, `pasteOffsetBars`, `pasteOffsetPixels`, `clipboard`. |
+| `setOptions(patch)` | `magnet`, `stayInDrawingMode`, `historyLimit`, `defaultStyle`, `pasteOffsetBars`, `pasteOffsetPixels`, `clipboard`, `gestures` (see [Modifier gestures](#modifier-gestures)). |
 | `cancel()` / `popAnchor()` | Drop the anchors placed so far (the tool disarms unless `stayInDrawingMode` keeps it); remove the last anchor of a variable-anchor shape still being placed. Escape and Backspace, once the host wires them. |
 | `hovered()` / `magnetMode()` | The unselected drawing under the pointer, or `null` (`drawing:hover { id }` fires when it changes); the resolved `'off' \| 'weak' \| 'strong'`. |
 | `destroy()` | Detach layers and listeners. |
@@ -385,9 +385,12 @@ those for its own order lines without the two fighting over one channel.
   do not add market data.
 - **Select**: click a drawing; click empty space to deselect.
 - **Move**: drag the body to translate every anchor, or drag a handle to move one.
-- **Magnet**: `{ magnet: 'strong' }` (or `true`) snaps new anchors to the nearest O/H/L/C
-  of the hovered bar; `'weak'` snaps only when one of the four is within a few pixels, so a
-  click on open space lands where it was made. A ring shows where the next click will land.
+- **Magnet**: `{ magnet: 'strong' }` (or `true`) snaps anchors to the nearest O/H/L/C
+  of the bar under them, and on a study pane to the nearest value a study plots there;
+  `'weak'` snaps only when a value is within 8 pixels, so a click on open space lands where
+  it was made. It pulls while placing, while dragging a handle and while dragging a whole
+  shape, and **Ctrl** (Cmd on macOS) held is the strong magnet whatever the mode. A ring
+  shows where the next click will land. See [Modifier gestures](#modifier-gestures).
 - **Shift**: locks the free end of a line to 45 degree steps on screen, while placing and
   while dragging a handle.
 - **Hover**: the drawing under the pointer shows its handles faintly before it is picked.
@@ -407,6 +410,40 @@ reports the gesture as two `click` events: the press point, then the release poi
 `viaDrag`. `DrawingController` manages this for you; you only need it if you are placing
 things (alerts, annotations) without the draw tier.
 </Callout>
+
+## Modifier gestures
+
+<Callout type="info">Unreleased: on the main branch, not in 2.5.8.</Callout>
+
+Holding a modifier key turns a pointer gesture into something else. **Ctrl** means Cmd on
+macOS. None of them is a key chord, so none collides with a tool's `Alt+` shortcut or with
+the editing keys `keyToDrawingAction` maps (Ctrl+Z, Ctrl+C and the rest): those read key
+presses, these read the keys held during a click or a drag.
+
+| Hold | Then | Turns off with |
+|---|---|---|
+| Ctrl | Place an anchor, or drag a handle or a shape: the strong magnet while held, whatever `magnet` is set to | `gestures: { snapModifier: false }` |
+
+Every gesture is on by default. A host whose own chart gestures already use one of these keys
+turns it off through `gestures` (a `DrawingGestureOptions`), at construction or later with
+`setOptions`, which merges it flag by flag.
+
+### The magnet everywhere
+
+The magnet pulls wherever an anchor is put, not only while placing:
+
+- **A handle** in hand lands on the nearest value of the bar under it, at that bar's time.
+  Shift's angle lock still wins on a line.
+- **A whole shape** in hand moves rigidly: its anchor nearest the grab lands on a bar's time
+  and value, and the rest keep their offsets from it.
+- **On a study pane** the magnet snaps to the values the studies there plot, the reading the
+  legend shows under the bar. A hidden study or a transparent helper plot is skipped, so an
+  anchor never lands on a line that is not drawn. The price pane keeps snapping to the
+  candles.
+
+A drawing pinned to the screen never snaps. The chart from `createChart()` provides what the
+magnet reads (`primaryBars`, `indicators`, `panes`, `seriesStyle`); on a custom
+`DrawingChartHost` without them, placements on the price pane still snap as before.
 
 ## Drawing policies
 

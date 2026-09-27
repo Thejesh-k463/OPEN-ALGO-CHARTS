@@ -18,7 +18,9 @@
 // is a different type, and a consumer passing the real one got "separate
 // declarations of a private property". The entry is external to tier builds,
 // so this survives as `from 'openalgo-charts'` and stays one identity.
-import type { IPrimitive, DataLayer, AlertDrawingValue, AlertDrawingInfo, PlotRect } from 'openalgo-charts';
+import type {
+  IPrimitive, DataLayer, AlertDrawingValue, AlertDrawingInfo, PlotRect, Bar, IndicatorApi, SeriesApi,
+} from 'openalgo-charts';
 import type {
   Drawing, DrawingInput, DrawingPatch, DrawingPoint, DrawingStyle, DrawingTool, DrawingsDocument,
   MagnetMode, ScreenPoint, DrawingGroup, DrawingSpace, DrawingStackTarget, ViewportPoint,
@@ -31,6 +33,7 @@ import { DrawingClipboard, cloneDrawing, type ClipboardPort } from './clipboard'
 import { migrateDrawings, migrateGroups } from './migrate';
 import { InputAnchors, type InputAnchorHost, type InputAnchorStep } from './input-anchors';
 import { DrawingScreen, within, type PaneProjection, type PointerSample } from './screen';
+import { barAt, magnetModeOf, magnetPoint, type SnapBar } from './snap';
 
 /**
  * The slice of the chart this controller needs.
@@ -108,6 +111,16 @@ export interface DrawingChartHost {
    */
   primaryPaneIndex?(): number;
   /**
+   * Optional, all three, for the magnet: the price series' bars, the studies
+   * and a series' style. The chart reports no bar while a drawing is in hand,
+   * so a handle or a shape snaps against `primaryBars`; a study pane snaps
+   * to the values of the studies plotted on it, skipping a hidden plot. A
+   * host without them snaps placements on the price pane only.
+   */
+  primaryBars?(): readonly Bar[];
+  indicators?(): readonly IndicatorApi[];
+  seriesStyle?(series: SeriesApi): { readonly visible?: boolean; readonly color?: string } | null;
+  /**
    * Optional, both: a pane's series band, back to front, and the call that
    * paints a layer directly above one of its entries. Without them no drawing
    * can be placed in the series band, and one saved there paints by its
@@ -165,6 +178,25 @@ export interface DrawingControllerOptions {
    * in settings and picked with `Chart.beginPick('point')`.
    */
   inputAnchors?: boolean;
+  /**
+   * The pointer gestures a held modifier key starts, each on unless set to
+   * false here, for a host whose own chart gestures already use that key.
+   * `setOptions` merges it flag by flag.
+   */
+  gestures?: DrawingGestureOptions;
+}
+
+/**
+ * The modifier gestures `DrawingControllerOptions.gestures` turns off. Ctrl
+ * means Cmd as well, for macOS. None of them is a key chord, so none can
+ * shadow one of `matchDrawingShortcut` or `keyToDrawingAction`.
+ */
+export interface DrawingGestureOptions {
+  /**
+   * Ctrl held while placing an anchor or dragging a handle or a shape: the
+   * strong magnet for as long as it is held, whatever `magnet` is set to.
+   */
+  snapModifier?: boolean;
 }
 
 /** How `DrawingController.setTool` arms a tool. */
@@ -295,9 +327,6 @@ interface PaneLayers {
   series: Map<string, DrawingLayer>;
 }
 
-/** How close, in media px, an O/H/L/C must be for the weak magnet to pull. */
-const WEAK_MAGNET_PX = 8;
-
 let nextId = 1;
 // Shared by every controller on the page, so a chart rebuilt with a new
 // controller never hands out a step a history still holds for the old one.
@@ -324,13 +353,6 @@ function changedAnchor(prev: readonly DrawingPoint[], next: readonly DrawingPoin
   return found;
 }
 
-/** The 1.9.x boolean and the 2.0 modes, folded onto one. */
-function magnetModeOf(value: boolean | MagnetMode | undefined): MagnetMode {
-  if (value === true) return 'strong';
-  if (value === 'weak' || value === 'strong') return value;
-  return 'off';
-}
-
 /**
  * Whether a key is held, from either form the payload carries it in. The flat
  * flags on a click are deprecated (removed in 3.0.0): `modifiers` is read
@@ -344,8 +366,14 @@ const held = (p: PointerFacts & { shiftKey?: boolean; ctrlKey?: boolean; metaKey
 const pointerKindOf = (p: PointerFacts): DrawingPointerKind =>
   p.pointerType === 'touch' || p.pointerType === 'pen' ? p.pointerType : 'mouse';
 
-type ControllerOptions = Required<Omit<DrawingControllerOptions, 'defaultStyle' | 'clipboard' | 'clipboardFallbackToMemory' | 'magnet' | 'inputAnchors'>>
-  & { defaultStyle: DrawingStyle; magnet: MagnetMode };
+type ControllerOptions = Required<Omit<DrawingControllerOptions, 'defaultStyle' | 'clipboard' | 'clipboardFallbackToMemory' | 'magnet' | 'inputAnchors' | 'gestures'>>
+  & { defaultStyle: DrawingStyle; magnet: MagnetMode; gestures: Required<DrawingGestureOptions> };
+
+/** Every gesture on, and a host's choice over it. */
+const gesturesOf = (base: Required<DrawingGestureOptions>, patch: DrawingGestureOptions = {}): Required<DrawingGestureOptions> => ({
+  snapModifier: patch.snapModifier ?? base.snapModifier,
+});
+const ALL_GESTURES: Required<DrawingGestureOptions> = { snapModifier: true };
 
 // `external` is a step of the history that is not a drawing edit, a study
 // anchor's drag: its snapshots are the drawings as they stood, unchanged by it.
@@ -403,6 +431,8 @@ export class DrawingController {
   private _slotKey = '';
   /** Shift as of the last pointer report: what angle lock reads mid-preview. */
   private _shift = false;
+  /** Ctrl or Cmd as of the last pointer report: the strong magnet while held. */
+  private _strong = false;
   /** The device behind the last pointer report, for target sizing. */
   private _pointerKind: DrawingPointerKind = 'mouse';
   /** Snapshots for undo/redo; each is a full drawing list (they are small). */
@@ -425,6 +455,8 @@ export class DrawingController {
     from: DrawingPoint;
     /** The press on its pane's plot, in media px: what a viewport drawing moves by the pointer from. */
     origin: ScreenPoint | null;
+    /** For a shape grabbed by its body, the anchor of it the magnet lands. */
+    anchor: number | null;
     items: { id: string; paneIndex: number; points: DrawingPoint[]; viewportPoints?: ViewportPoint[] }[];
     undo: DrawingHistoryEntry[];
     redo: DrawingHistoryEntry[];
@@ -446,6 +478,7 @@ export class DrawingController {
     this._screen = new DrawingScreen(chart);
     this._opts = {
       magnet: magnetModeOf(options.magnet),
+      gestures: gesturesOf(ALL_GESTURES, options.gestures),
       stayInDrawingMode: options.stayInDrawingMode ?? false,
       historyLimit: options.historyLimit ?? 50,
       pasteOffsetBars: options.pasteOffsetBars ?? 2,
@@ -550,11 +583,12 @@ export class DrawingController {
   public setOptions(patch: DrawingControllerOptions): void {
     // `clipboard` is a port, not a stored option: it is applied to the live
     // clipboard so a host can hand one over after the user grants permission.
-    const { clipboard, magnet, ...rest } = patch;
+    const { clipboard, magnet, gestures, ...rest } = patch;
     this._opts = {
       ...this._opts, ...rest,
       defaultStyle: patch.defaultStyle ?? this._opts.defaultStyle,
       magnet: magnet === undefined ? this._opts.magnet : magnetModeOf(magnet),
+      gestures: gesturesOf(this._opts.gestures, gestures),
     };
     if (clipboard !== undefined) this._clipboard.setPort(clipboard);
     this._syncSnapRing();
@@ -1719,7 +1753,7 @@ export class DrawingController {
       ? null : { time, price, paneIndex };
     const bar = p.bar ?? null;
     this._lastBar = bar === null || barTime === null ? null : { time: barTime, ...bar };
-    this._shift = held(p, 'shift');
+    this._noteKeys(p);
     this._notePointer(p);
     // The pointer left the plot: nothing is under it any more.
     if (time === null && price === null) this._setHovered(null);
@@ -1931,7 +1965,7 @@ export class DrawingController {
       // Reject an unmappable click outright: a NaN anchor serialises as null
       // and produces a drawing that can never be rendered or hit-tested.
       if (p.price === null || !Number.isFinite(p.price) || !Number.isFinite(p.time)) return;
-      this._shift = held(p, 'shift');
+      this._noteKeys(p);
       this._placePoint(this._aimPoint({ time: p.time, price: p.price }, p.paneIndex), p.paneIndex);
       return;
     }
@@ -1982,43 +2016,55 @@ export class DrawingController {
   }
 
   /**
-   * The nearest O/H/L/C of the hovered bar, at that bar's time, when the
-   * magnet pulls; null when it does not. `strong` always pulls; `weak` only
-   * within a few pixels, measured on screen so the pull is the same reach at
-   * every zoom. Price panes only: an indicator pane's values are not prices.
+   * Where the magnet lands `point`, or null when it does not pull: the
+   * nearest O/H/L/C of `bar` on the price pane, the nearest plotted value on
+   * a study pane (`snap.ts`). Ctrl held pulls as the strong magnet whatever
+   * the mode. A placement reads the bar the chart reported under the
+   * pointer; a drag, which reports none, passes the bar under its time.
    */
-  private _snapPoint(point: DrawingPoint, paneIndex: number): DrawingPoint | null {
-    const mode = this._opts.magnet;
+  private _snapPoint(point: DrawingPoint, paneIndex: number, bar: SnapBar | null = this._lastBar): DrawingPoint | null {
+    const mode = this._strong ? 'strong' : this._opts.magnet;
     // A drawing pinned to the screen lands where it is clicked: a bar's price
     // is no reference for something that will not follow the bars.
-    if (mode === 'off' || paneIndex !== this._pricePane() || this._toolSpace === 'viewport') return null;
-    const bar = this._lastBar;
-    if (bar === null) return null;
-    const values = [bar.open, bar.high, bar.low, bar.close];
-    if (mode === 'strong') {
-      let best = values[0];
-      let bestD = Infinity;
-      for (const v of values) {
-        const d = Math.abs(v - point.price);
-        if (d < bestD) { bestD = d; best = v; }
-      }
-      return { time: bar.time, price: best };
-    }
-    // Weak: the nearest value by screen distance, and only when it is close.
-    // Without a pixel mapping there is no "close", so nothing pulls.
-    const toY = this._chart.priceToCoordinate;
-    if (toY === undefined) return null;
-    const y = toY.call(this._chart, point.price, paneIndex);
-    if (y === null || !Number.isFinite(y)) return null;
-    let best: number | null = null;
-    let bestD = WEAK_MAGNET_PX;
-    for (const v of values) {
-      const vy = toY.call(this._chart, v, paneIndex);
-      if (vy === null || !Number.isFinite(vy)) continue;
-      const d = Math.abs(vy - y);
-      if (d <= bestD) { bestD = d; best = v; }
-    }
-    return best === null ? null : { time: bar.time, price: best };
+    if (mode === 'off' || this._toolSpace === 'viewport') return null;
+    return magnetPoint(this._chart, point, paneIndex, mode, this._pricePane(), bar);
+  }
+
+  /** Shift and Ctrl (Cmd) as the last pointer report carried them: the angle lock and the strong magnet. */
+  private _noteKeys(p: PointerFacts & { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }): void {
+    this._shift = held(p, 'shift');
+    this._strong = this._opts.gestures.snapModifier && (held(p, 'ctrl') || held(p, 'meta'));
+  }
+
+  /**
+   * The anchor of a grabbed shape the magnet lands: the one nearest the
+   * press, since what the hand is closest to is what it means to put down.
+   */
+  private _grabbedAnchor(d: Drawing, p: DragPayload): number | null {
+    if (d.space === 'viewport' || d.points.length === 0) return null;
+    const press = this._screen.toPixel({ time: p.fromTime ?? p.time, price: p.fromPrice ?? p.price }, d.paneIndex);
+    let best = 0;
+    let bestD = Infinity;
+    d.points.forEach((q, i) => {
+      const at = press === null ? null : this._screen.toPixel(q, d.paneIndex);
+      const dist = at === null || press === null ? i : Math.hypot(at.x - press.x, at.y - press.y);
+      if (dist < bestD) { bestD = dist; best = i; }
+    });
+    return best;
+  }
+
+  /**
+   * A shape's move with the magnet's pull on its grabbed anchor applied, or
+   * null when nothing pulls: the whole shape shifts by what lands that one
+   * anchor on the value, so it keeps its form.
+   */
+  private _pullShape(start: NonNullable<typeof this._dragStart>, dt: number, dp: number): { dt: number; dp: number } | null {
+    const item = start.anchor === null ? undefined : start.items.find((i) => i.id === start.id);
+    const a = item === undefined || item.viewportPoints !== undefined ? undefined : item.points[start.anchor as number];
+    if (a === undefined) return null;
+    const moved = { time: a.time + dt, price: a.price + dp };
+    const hit = this._snapPoint(moved, item!.paneIndex, barAt(this._chart, moved.time));
+    return hit === null ? null : { dt: hit.time - a.time, dp: hit.price - a.price };
   }
 
   private _onDrag(p: DragPayload): void {
@@ -2029,7 +2075,7 @@ export class DrawingController {
     const handle = handleStr === undefined ? null : Number(handleStr);
 
     this._notePointer(p);
-    this._shift = held(p, 'shift');
+    this._noteKeys(p);
     if (this._dragStart === null || this._dragStart.id !== rawId || this._dragStart.handle !== handle) {
       // Grabbing the body of an unselected shape selects it first, on its own:
       // the selection is what moves, and a drag that moved something other than
@@ -2048,6 +2094,7 @@ export class DrawingController {
         undo, redo,
         from: { time: p.fromTime ?? p.time, price: p.fromPrice ?? p.price },
         origin: this._screen.dragOrigin(p),
+        anchor: handle === null ? this._grabbedAnchor(d, p) : null,
         items: moving.map((m) => ({
           id: m.id, paneIndex: m.paneIndex, points: m.points.map((q) => ({ ...q })),
           ...(m.space === 'viewport' ? { viewportPoints: (m.viewportPoints ?? []).map((q) => ({ ...q })) } : {}),
@@ -2102,9 +2149,10 @@ export class DrawingController {
       // Whole shape: translate every anchor of every selected shape by the
       // cursor delta. A shape on another pane cannot take the price delta (its
       // scale is a different quantity), so it takes the same screen distance.
-      const dt = p.time - start.from.time;
-      const dp = p.price - start.from.price;
-      const dy = this._screen.pixelDelta(start.from.price, p.price, p.paneIndex);
+      let dt = p.time - start.from.time;
+      let dp = p.price - start.from.price;
+      ({ dt, dp } = this._pullShape(start, dt, dp) ?? { dt, dp });
+      const dy = this._screen.pixelDelta(start.from.price, start.from.price + dp, p.paneIndex);
       // A pinned shape takes the pointer's travel on screen, as a fraction of
       // its own pane, so it moves with the hand whatever the scales say.
       const at = this._screen.gesturePlot(p, p.paneIndex);
@@ -2143,14 +2191,14 @@ export class DrawingController {
       }
     } else if (handle >= 0 && handle < d.points.length) {
       const item = start.items[0];
-      let target: DrawingPoint = { time: p.time, price: p.price };
+      const target: DrawingPoint = { time: p.time, price: p.price };
       // Shift on the handle of a two-anchor line locks it to the 45 degree
-      // step about the other anchor, the same way placement does.
-      if (this._shift && item.points.length === 2 && hasDrawingTool(d.tool)
-        && getDrawingTool(d.tool).angleLock === true) {
-        target = this._screen.lockAngle(item.points[1 - handle], target, d.paneIndex) ?? target;
-      }
-      const moved = item.points.map((q, i) => (i === handle ? { ...q, ...target } : { ...q }));
+      // step about the other anchor, the same way placement does, and the
+      // lock wins over the magnet there too.
+      const locked = this._shift && item.points.length === 2 && hasDrawingTool(d.tool) && getDrawingTool(d.tool).angleLock === true
+        ? this._screen.lockAngle(item.points[1 - handle], target, d.paneIndex) : null;
+      const landed = locked ?? this._snapPoint(target, d.paneIndex, barAt(this._chart, target.time)) ?? target;
+      const moved = item.points.map((q, i) => (i === handle ? { ...q, ...landed } : { ...q }));
       // A tool with a constraint reads the whole set after the one anchor
       // moved, from the gesture's snapshot every frame: constraining the
       // already-constrained previous frame would let a flip feed on itself.
