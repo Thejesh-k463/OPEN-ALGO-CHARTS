@@ -234,7 +234,14 @@ const BUNDLE = new URL('../dist/openalgo-charts.mjs', import.meta.url).pathname.
 // marker by binary search, instead of indexing the whole history on every
 // paint (#31), 86189 bytes (84.17 KiB). Taking the last copy where a host's
 // fallback bars repeat a time adds 29: 86218 bytes (84.20 KiB); allow 84.20 KiB.
-const LIMIT_BYTES = 84.20 * 1024;
+// 2.5.9: line-family renderers cut the segment to a bar beyond the view at the
+// plot edge, keep the dash phase where the visible part had it, and stop area,
+// baseline and band fills bridging a gap at the edge, 86793 bytes, up 575. The
+// price axis keeps edge tick labels whole and a study's last-value tag clear
+// of level tags, and a detached container stops answering hover shortcuts,
+// 86853 bytes (84.82 KiB), up 60. Drawing interaction, the widget's drawing UI
+// and replay's simulated forming all shake out of this build; allow 84.82 KiB.
+const LIMIT_BYTES = 84.82 * 1024;
 
 // Absent from a chart-only build. Each is a string that appears in the adapter
 // source and nowhere in the rendering core.

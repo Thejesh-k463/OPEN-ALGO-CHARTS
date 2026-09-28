@@ -13,7 +13,10 @@
  *
  * Contract for a renderer or a render backend: `items`, and the objects in it,
  * are valid until the same series is drawn again. Anything kept longer has to
- * be copied.
+ * be copied. They are the bars in view, and for a renderer that joins
+ * neighbouring bars (`RendererEntry.connectsBars`) the series' nearest bar
+ * beyond each edge as well, marked with the edge it lies beyond
+ * (`DrawItem.edgeX`).
  */
 import type { Bar } from '../model/bar';
 import type { DrawItem } from '../model/chart-type-registry';
@@ -93,8 +96,10 @@ export interface SeriesDrawItems {
    * `shift`, lands in [from + shift, to + shift], each at the x its shifted
    * index maps to. With `lod`, the bars go through the level of detail on the
    * way and `items` holds its columns instead. With `edges`, the series' bar
-   * just before and just after that span are included too, off screen, for a
-   * renderer that draws a segment between neighbouring bars.
+   * just before and just after that span are included too, off screen and
+   * marked with `edgeX`, for a renderer that draws a segment between
+   * neighbouring bars. They bypass the level of detail: a bar off screen
+   * belongs to no column, and the columns in view stay what they are without it.
    */
   build(
     layer: DataLayer, id: SeriesId, from: number, to: number, shift: number, timeScale: TimeScale,
@@ -116,15 +121,26 @@ export function createSeriesDrawItems(): SeriesDrawItems {
     const n = count++;
     let item = pool[n];
     if (item === undefined) {
-      // `prevClose` is present from the start, so setting it on the first
-      // item later never reshapes the object.
-      item = { x: 0, bar: NO_BAR, prevClose: undefined };
+      // `prevClose` and `edgeX` are present from the start, so setting one
+      // later never reshapes the object.
+      item = { x: 0, bar: NO_BAR, prevClose: undefined, edgeX: undefined };
       pool.push(item);
     }
     item.x = x;
     item.bar = bar;
     item.prevClose = undefined;
+    item.edgeX = undefined;
     items[n] = item;
+  };
+  /**
+   * The neighbour beyond an edge, marked with that edge's x. Made once with
+   * the buffer rather than inside `build`, so a frame allocates nothing for it.
+   */
+  const pushEdge = (layer: DataLayer, bar: Bar, shift: number, timeScale: TimeScale, edgeX: number): void => {
+    const index = layer.timeToIndex(bar.time);
+    if (index === undefined) return;
+    push(timeScale.indexToX(index + shift), bar);
+    items[count - 1].edgeX = edgeX;
   };
   const lodColumns = createLodColumns(push);
   return {
@@ -138,26 +154,21 @@ export function createSeriesDrawItems(): SeriesDrawItems {
       const bars = layer.seriesBars(id);
       if (visibleSpan(layer, bars, from, to, SPAN)) {
         const last = SPAN.lastTime;
+        if (edges && SPAN.start > 0) pushEdge(layer, bars[SPAN.start - 1], shift, timeScale, 0);
         if (lod !== null) lodColumns.begin(lod.kind, lod.dpr, lod.factor);
-        const emit = (bar: Bar, inView: boolean): void => {
-          const index = layer.timeToIndex(bar.time);
-          if (index === undefined) return;
-          // `first` stays the first bar IN view: previous-close colouring
-          // looks one bar left of it.
-          if (inView && first < 0) first = index;
-          const x = timeScale.indexToX(index + shift);
-          if (lod !== null) lodColumns.push(x, bar);
-          else push(x, bar);
-        };
-        if (edges && SPAN.start > 0) emit(bars[SPAN.start - 1], false);
         let i = SPAN.start;
         for (; i < bars.length; i++) {
           const bar = bars[i];
           if (bar.time > last) break;
-          emit(bar, true);
+          const index = layer.timeToIndex(bar.time);
+          if (index === undefined) continue;
+          if (first < 0) first = index;
+          const x = timeScale.indexToX(index + shift);
+          if (lod !== null) lodColumns.push(x, bar);
+          else push(x, bar);
         }
-        if (edges && i < bars.length) emit(bars[i], false);
         if (lod !== null) lodColumns.end();
+        if (edges && i < bars.length) pushEdge(layer, bars[i], shift, timeScale, timeScale.width);
       }
       if (items.length !== count) {
         // Items this frame did not reach let go of their bars, so a pool sized

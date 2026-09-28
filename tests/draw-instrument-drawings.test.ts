@@ -517,3 +517,68 @@ describe('teardown', () => {
     expect(late.key()).toBeNull();
   });
 });
+
+describe('document versions and interval ranges', () => {
+  /** A document as 2.5.8 stored it: version 2, no interval range. */
+  const v2 = (): DrawingsDocument => ({
+    version: 2,
+    drawings: [{ id: 'kept', tool: 'trend-line', paneIndex: 0, zIndex: 0, style: { color: '#089981' },
+      points: [{ time: 1000, price: 101.5 }, { time: 1120, price: 108.25 }] }],
+  });
+
+  it('loads a stored version 2 document unchanged and writes nothing until something changes', () => {
+    const { chart, draw } = host(B);
+    const { store, inner, log } = recording();
+    inner.set('NSE:AAA', v2());
+    new InstrumentDrawings(chart, draw, { store });
+    log.length = 0;
+    chart.setDataContext(A);
+    expect(draw.toJSON()).toEqual(v2());
+    // Going to an instrument with nothing stored leaves no write behind for it either.
+    chart.setDataContext(B);
+    chart.setDataContext(A);
+    expect(log.filter(entry => !entry.startsWith('get '))).toEqual([]);
+    expect(stored(inner, 'NSE:AAA')).toEqual(v2());
+  });
+
+  it('writes a stored version 2 document as version 3 once a drawing in it has a range, and as 2 once none has', () => {
+    const { chart, draw } = host(B);
+    const store = memoryDrawingStore();
+    store.set('NSE:AAA', v2());
+    new InstrumentDrawings(chart, draw, { store });
+    chart.setDataContext(A);
+    draw.update('kept', { intervals: { from: '1m', to: '1h' } });
+    expect(stored(store, 'NSE:AAA')?.version).toBe(3);
+    expect(stored(store, 'NSE:AAA')?.drawings[0].intervals).toEqual({ from: '1m', to: '1h' });
+    draw.update('kept', { intervals: null });
+    expect(stored(store, 'NSE:AAA')).toEqual(v2());
+  });
+
+  it('round-trips a version 3 document through a swap, and shows it by the interval of each instrument', () => {
+    const { chart, draw } = host(A);
+    const store = memoryDrawingStore();
+    new InstrumentDrawings(chart, draw, { store });
+    const ranged = draw.add(line(100, { intervals: { to: '5m' } }));
+    const written = stored(store, 'NSE:AAA');
+    expect(written?.version).toBe(3);
+    chart.setDataContext({ ...B, interval: 'D' });
+    expect(draw.drawings()).toEqual([]);
+    chart.setDataContext({ ...A, interval: 'D' });
+    expect(draw.toJSON()).toEqual(written);
+    expect(draw.shownOnInterval(ranged.id)).toBe(false);
+    chart.setDataContext(A);
+    expect(draw.shownOnInterval(ranged.id)).toBe(true);
+  });
+
+  it('writes nothing when only the interval changes, whatever it hides', () => {
+    const { chart, draw } = host(A);
+    const { store, log } = recording();
+    new InstrumentDrawings(chart, draw, { store });
+    const ranged = draw.add(line(100, { intervals: { to: '5m' } }));
+    log.length = 0;
+    chart.setDataContext({ ...A, interval: 'D' });
+    expect(draw.shownOnInterval(ranged.id)).toBe(false);
+    chart.setDataContext(A);
+    expect(log).toEqual([]);
+  });
+});

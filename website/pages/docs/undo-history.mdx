@@ -92,7 +92,7 @@ is no step either, since no undo could give the host its primitive back.
   are not history at all.
 - **It never places an order.** Order entry is not a step, and nothing in the history reaches
   an order route.
-- **It never reaches another instrument's drawings** (unreleased). When the drawing controller
+- **It never reaches another instrument's drawings** (since 2.5.9). When the drawing controller
   loads a whole other document, another symbol's drawings or a restored layout, every drawing
   step recorded before is dropped, with the drawings a removed pane took with it: an undo on
   one symbol never brings back a line of another. The steps' studies, panes and settings stay.

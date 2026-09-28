@@ -11,7 +11,7 @@
 // edit is one undo entry.
 import {
   drawingSettingsSchema, readDrawingSettings, applyDrawingSettings, getDrawingTool, chromeIconSvg, CHROME_ICON_STROKE,
-  formatRatio, gannLabel, cloneLevels, DEFAULT_FIB,
+  formatRatio, gannLabel, cloneLevels, DEFAULT_FIB, INTERVAL_FIELDS,
 } from '/dist/openalgo-charts.draw.mjs';
 import { el, inTextField, toast } from './ui.js';
 import { attachTip } from './hover.js';
@@ -19,6 +19,7 @@ import { openTextEditor, EDITOR_CSS } from './text-editor.js';
 import { buildLevelEditor, LEVEL_CSS } from './level-editor.js';
 import { createColorPicker, applyTokens, widgetTokens } from '/dist/openalgo-charts.widget.mjs';
 import { currentTheme, chartTheme } from './ui.js';
+import { INTERVALS, intervalLabel } from './intervals.js';
 
 /** Where the bar's dragged position is kept between sessions. */
 export const PROPBAR_POS_KEY = 'oa-charts-propbar';
@@ -48,7 +49,7 @@ export const PROPERTIES_CSS = `
 .propbar .grip:active { cursor: grabbing; }
 .propbar .pb-name { color: var(--mut); font-size: 11px; padding: 0 6px 0 2px; max-width: 110px;
   overflow: hidden; text-overflow: ellipsis; }
-.propbar .pb-note { color: var(--faint); font-size: 11px; text-transform: uppercase; padding: 0 6px; }
+.propbar .pb-note, .propbar .pb-off { color: var(--faint); font-size: 11px; text-transform: uppercase; padding: 0 6px; }
 .propbar button { height: 28px; min-width: 28px; display: inline-flex; align-items: center; justify-content: center;
   gap: 4px; padding: 0 4px; background: transparent; border: 1px solid transparent; border-radius: 6px;
   color: var(--mut); cursor: pointer; font: inherit; font-size: 12px; flex: none; }
@@ -148,6 +149,15 @@ export function commonSchema(toolIds) {
   const [first, ...rest] = schemas;
   const fields = first.fields.filter((f) => rest.every((s) => s.fields.some((g) => g.path === f.path && g.kind === f.kind)));
   return schemas.every((s) => s.textIsContent === true) ? { fields, textIsContent: true } : { fields };
+}
+
+/**
+ * `schema` with the intervals a drawing is shown on added: every tool can be
+ * limited to a range of intervals, and it is this page that lists them, so
+ * the tier declares the pair and the host puts it in.
+ */
+export function withIntervalFields(schema) {
+  return { ...schema, fields: schema.fields.concat(INTERVAL_FIELDS) };
 }
 
 /**
@@ -684,6 +694,12 @@ export function mountPropertiesBar(app, anchorEl) {
         ctl = selectFor(field, row);
         break;
       }
+      case 'interval': {
+        // This page's own intervals, and an empty choice for no limit that side.
+        const options = [{ value: '', label: 'Any' }].concat(INTERVALS.map((iv) => ({ value: iv, label: intervalLabel(iv) })));
+        ctl = selectFor({ ...field, options }, row);
+        break;
+      }
       case 'text':
       default: {
         const multi = field.path === 'text.value';
@@ -716,7 +732,7 @@ export function mountPropertiesBar(app, anchorEl) {
 
   /** Rows for `fields`, under small uppercase headers per group. */
   function fieldRows(fields, parent) {
-    const GROUPS = { line: 'Line', fill: 'Fill', text: 'Text', levels: 'Levels', behavior: 'Behaviour' };
+    const GROUPS = { line: 'Line', fill: 'Fill', text: 'Text', levels: 'Levels', behavior: 'Behaviour', visibility: 'Visibility' };
     let last = null;
     for (const f of fields) {
       const g = f.group || 'behavior';
@@ -751,6 +767,18 @@ export function mountPropertiesBar(app, anchorEl) {
     name.className = 'pb-name';
     name.textContent = live.length === 1 ? toolName(d0) : `${live.length} drawings`;
     bar.appendChild(name);
+    // Its interval range leaves out the one on screen: nothing of it is drawn,
+    // so the bar says why rather than editing a shape the user cannot see.
+    const off = span('pb-off', bar);
+    off.dataset.note = 'interval';
+    const paintOff = () => {
+      const d = primary();
+      const hidden = !!(d && app.draw.shownOnInterval && !app.draw.shownOnInterval(d.id));
+      off.hidden = !hidden;
+      off.textContent = hidden ? 'Hidden on ' + intervalLabel(app.draw.interval()) : '';
+    };
+    paintOff();
+    syncers.push(paintOff);
 
     // A selection the user may not edit (the host's session marks, say) gets
     // no control the controller would refuse: it says what it is and offers
@@ -1073,7 +1101,7 @@ export function mountPropertiesBar(app, anchorEl) {
     if (!live.length) { hide(); return; }
     if (same) { sync(); return; }
     closePop();
-    schema = commonSchema(live.map((d) => d.tool));
+    schema = withIntervalFields(commonSchema(live.map((d) => d.tool)));
     build(live);
     bar.hidden = false;
     reposition();
@@ -1104,6 +1132,9 @@ export function mountPropertiesBar(app, anchorEl) {
     if (!chart || !app.draw) { hide(); return; }
     off.push(chart.on('draw:select', () => show()));
     off.push(chart.on('draw:update', sync));
+    // A new interval leaves a drawing picked from the objects panel selected
+    // while it is still off the chart, and its note must name the new one.
+    off.push(chart.on('data:context', sync));
     // A removal filters the selection without a select event of its own.
     off.push(chart.on('draw:remove', () => { if (!bar.hidden) show(); }));
     off.push(chart.on('viewport', reposition));

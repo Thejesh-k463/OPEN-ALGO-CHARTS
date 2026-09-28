@@ -100,8 +100,9 @@ describe('the draw tier entry exposes the clipboard its own options are typed on
 
   it('exports the encode / decode / sanitize trio and the payload key', () => {
     expect(DRAWING_CLIPBOARD_KEY).toBe('openalgo-charts/drawings');
-    // Tracks DRAWING_STATE_VERSION: the 2.0 model changed the on-wire shape.
-    expect(DRAWING_CLIPBOARD_VERSION).toBe(2);
+    // Tracks DRAWING_STATE_VERSION: the 2.0 model changed the on-wire shape,
+    // and version 3 added the interval range a drawing is shown on.
+    expect(DRAWING_CLIPBOARD_VERSION).toBe(3);
     const text = encodeClipboardPayload([{
       id: 'x', tool: 'rectangle',
       points: [{ time: T0, price: 1 }, { time: T0 + DAY, price: 2 }],

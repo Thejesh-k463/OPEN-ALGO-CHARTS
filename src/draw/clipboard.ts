@@ -29,11 +29,12 @@
  * its price pane below its studies. On a chart with the price pane on top,
  * the default, that is the chart's own slot, as it always was.
  */
-import type { Drawing, DrawingPoint, DrawingStyle, DrawingText, FibLevel } from './types';
+import type { Drawing, DrawingIntervalRange, DrawingPoint, DrawingStyle, DrawingText, FibLevel } from './types';
 import { DRAWING_STATE_VERSION } from './types';
 import { hasDrawingTool, viewportDrawingTool } from './tools';
 import { migrateDrawings } from './migrate';
 import { readViewportPoints } from './viewport';
+import { drawingsDocumentVersion, readIntervalRange } from './intervals';
 
 /**
  * Top-level key of the JSON payload. Namespaced so a paste of arbitrary text,
@@ -43,9 +44,12 @@ import { readViewportPoints } from './viewport';
 export const DRAWING_CLIPBOARD_KEY = 'openalgo-charts/drawings';
 
 /**
- * Payload format version. Tracks the model version, since the body *is* a
- * drawings document: version 1 carried 1.9.x drawings, version 2 carries the
- * split text and levelled fibs.
+ * The newest payload version this build reads. Tracks the model version, since
+ * the body *is* a drawings document: version 1 carried 1.9.x drawings,
+ * version 2 carries the split text and levelled fibs, and version 3 adds the
+ * interval range a drawing is shown on. A payload is written as the lowest
+ * version that holds it, so a copy with no range still pastes into a build
+ * that reads only version 2, which refuses anything newer.
  */
 export const DRAWING_CLIPBOARD_VERSION: number = DRAWING_STATE_VERSION;
 
@@ -99,6 +103,7 @@ export function cloneDrawing(d: Drawing): Drawing {
   if (d.text !== undefined) out.text = { ...d.text };
   if (d.props !== undefined) out.props = JSON.parse(JSON.stringify(d.props)) as Record<string, unknown>;
   if (d.policy !== undefined) out.policy = { ...d.policy };
+  if (d.intervals !== undefined) out.intervals = { ...d.intervals };
   return out;
 }
 
@@ -118,7 +123,7 @@ function cloneStyle(style: DrawingStyle): DrawingStyle {
 export function encodeClipboardPayload(drawings: readonly Drawing[]): string {
   return JSON.stringify({
     [DRAWING_CLIPBOARD_KEY]: {
-      version: DRAWING_CLIPBOARD_VERSION,
+      version: drawingsDocumentVersion(drawings),
       drawings: drawings.map((d) => ({
         tool: d.tool,
         points: d.points.map(clonePoint),
@@ -137,6 +142,7 @@ export function encodeClipboardPayload(drawings: readonly Drawing[]): string {
         ...(d.stackAbove === undefined ? {} : { stackAbove: d.stackAbove }),
         ...(d.locked === undefined ? {} : { locked: d.locked }),
         ...(d.visible === undefined ? {} : { visible: d.visible }),
+        ...(d.intervals === undefined ? {} : { intervals: { ...d.intervals } }),
         // No `policy`: it binds the drawing the host placed, and a paste is
         // the user's own drawing.
       })),
@@ -327,6 +333,17 @@ function sanitizePropValue(v: unknown, depth: number): unknown {
   return undefined;
 }
 
+/**
+ * The interval range, all or nothing like the rest of an entry: a bound that
+ * was written and cannot be read, or a range naming none, refuses the paste.
+ */
+function sanitizeIntervals(value: unknown): DrawingIntervalRange | null {
+  const range = readIntervalRange(value);
+  if (range === null || !isRecord(value)) return null;
+  const kept = (key: 'from' | 'to'): boolean => (value[key] === undefined) === (range[key] === undefined);
+  return kept('from') && kept('to') ? range : null;
+}
+
 function sanitizePoints(value: unknown): DrawingPoint[] | null {
   if (!Array.isArray(value) || value.length === 0 || value.length > MAX_POINTS) return null;
   const out: DrawingPoint[] = [];
@@ -363,6 +380,8 @@ export function sanitizeDrawing(value: unknown): Omit<Drawing, 'id'> | null {
   if (!isFinite_(paneIndex) || paneIndex < 0 || !Number.isInteger(paneIndex)) return null;
   if (value.locked !== undefined && typeof value.locked !== 'boolean') return null;
   if (value.visible !== undefined && typeof value.visible !== 'boolean') return null;
+  const intervals = value.intervals === undefined ? undefined : sanitizeIntervals(value.intervals);
+  if (intervals === null) return null;
   // A text block on the entry wins; the old style-bag keys only fill the gap.
   const text = sanitizeText(value.text) ?? (isRecord(value.style) ? liftLegacyText(value.style) : null);
   const props = value.props === undefined ? null : sanitizeProps(value.props);
@@ -378,6 +397,7 @@ export function sanitizeDrawing(value: unknown): Omit<Drawing, 'id'> | null {
   if (props !== null) out.props = props;
   if (value.locked !== undefined) out.locked = value.locked;
   if (value.visible !== undefined) out.visible = value.visible;
+  if (intervals !== undefined) out.intervals = intervals;
   if (isShortString(value.stackAbove) && value.stackAbove !== '') out.stackAbove = value.stackAbove;
   if (isFinite_(value.createdAt)) out.createdAt = value.createdAt;
   return out;

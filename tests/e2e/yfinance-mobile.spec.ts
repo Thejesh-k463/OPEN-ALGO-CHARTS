@@ -548,17 +548,19 @@ test('all-chart replay shares time, scope and restoration through its controls',
   });
   expect(await snapshot()).toMatchObject({ time: time + 600, scope: 'all', counts: [2, 0], volume: [2, 0], secondaryReadout: [] });
   expect(await page.locator('#replaybar').evaluate(node => node.parentElement?.id)).toBe('split');
+  // No finer bars arrive, so each 5-minute candle forms over five simulated
+  // one-minute steps: one step forward is a minute, and the forming candle shows.
   await page.locator('#rp-fwd').focus(); await page.keyboard.press('Enter');
-  expect(await snapshot()).toMatchObject({ time: time + 900, counts: [3, 0] });
+  expect(await snapshot()).toMatchObject({ time: time + 660, counts: [3, 0] });
   await page.locator('#chart2').focus();
   await page.locator('#rp-scope').click();
-  expect(await snapshot()).toMatchObject({ time: time + 900, scope: 'focused', counts: [3, 5] });
+  expect(await snapshot()).toMatchObject({ time: time + 660, scope: 'focused', counts: [3, 5] });
   expect(await page.evaluate(() => {
     const scale = (window as any).__oac.app.chart2.timeScale;
     return { barSpacing: scale.barSpacing, rightOffset: scale.rightOffset };
   })).toEqual(seed.views[1]);
   await page.locator('#rp-scope').click();
-  expect(await snapshot()).toMatchObject({ time: time + 900, scope: 'all', counts: [3, 0] });
+  expect(await snapshot()).toMatchObject({ time: time + 660, scope: 'all', counts: [3, 0] });
   await page.evaluate(start => (window as any).__oac.app.replay.seekTime(start + 3600), time);
   expect(await snapshot()).toMatchObject({ time: time + 3600, counts: [12, 1], volume: [12, 1], secondaryClose: 101 });
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -573,12 +575,12 @@ test('all-chart replay shares time, scope and restoration through its controls',
   await expect(page.locator('body')).toHaveAttribute('data-fullscreen-pane', '2');
   await expect(page.locator('#replaybar')).toBeVisible();
   await page.locator('#rp-fwd').click();
-  expect(await snapshot()).toMatchObject({ time: time + 3900, counts: [13, 1] });
+  expect(await snapshot()).toMatchObject({ time: time + 3660, counts: [13, 1] });
   await page.locator('#rp-scope').click();
   await expect(page.locator('#replaybar')).toBeVisible();
-  expect(await snapshot()).toMatchObject({ time: time + 3900, scope: 'focused', counts: [13, 5] });
+  expect(await snapshot()).toMatchObject({ time: time + 3660, scope: 'focused', counts: [13, 5] });
   await page.locator('#rp-scope').click();
-  expect(await snapshot()).toMatchObject({ time: time + 3900, scope: 'all', counts: [13, 1] });
+  expect(await snapshot()).toMatchObject({ time: time + 3660, scope: 'all', counts: [13, 1] });
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await page.screenshot({ path: info.outputPath('reference-all-replay-fullscreen.png') });
   await page.getByRole('button', { name: 'Exit full screen (Esc)', exact: true }).click();
@@ -690,10 +692,11 @@ test('shared replay keeps its selected chart owner through focus changes and exi
     return [app.chart.primaryBars().length, app.chart2.primaryBars().length, app.replayTarget.pane];
   });
   expect(during).toEqual([before[0], 21, 2]);
-  // With finer history unavailable, each observation is a completed candle.
+  // With finer history unavailable, each 1-hour candle forms over four simulated
+  // observations, so observation 25 falls in the seventh candle.
   await page.locator('#rp-scrub').fill('25');
   await page.locator('#rp-scrub').dispatchEvent('input');
-  expect(await page.evaluate(() => (window as any).__oac.app.chart2.primaryBars().length)).toBe(26);
+  expect(await page.evaluate(() => (window as any).__oac.app.chart2.primaryBars().length)).toBe(7);
   await page.screenshot({ path: info.outputPath('reference-owned-replay.png') });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.locator('#replaybar').evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);

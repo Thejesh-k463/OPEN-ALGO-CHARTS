@@ -8,6 +8,77 @@ description: Version history for OpenAlgo Charts.
 The full, authoritative changelog lives in
 [`CHANGELOG.md`](https://github.com/marketcalls/openalgo-charts/blob/master/CHANGELOG.md).
 
+## 2.5.9
+
+2026-09-28
+
+Drawing interaction and replay: drawings belong to their instrument, new drawing
+gestures and a drawing toolbar, a forming replay bar that never jumps at its close,
+and lines that reach the edges of the view.
+
+### Added
+
+- **Drawings per instrument.** A drawing belongs to the symbol it was drawn on: loading
+  another symbol shows that symbol's own, and deleting them there leaves the first
+  symbol's alone (OpenAlgo issue 2131). The draw tier's `InstrumentDrawings` does it, and
+  the widget and the chart grid use it by default (`drawingScope: 'instrument'`;
+  `'chart'` keeps one set for every symbol).
+- **Drawing gestures.** The magnet works on every pane and in every drag (hold Ctrl for a
+  strong snap), Shift+click lays down a temporary measure, Ctrl+drag box-selects,
+  Alt+drag drags a copy, and an eraser mode deletes what a click or a drag touches. Each
+  turns off through `gestures`.
+- **Visibility per interval.** `Drawing.intervals` shows a drawing only on a range of
+  chart intervals ("from 1m to 1h").
+- **Widget drawing UI.** A floating toolbar over the selected drawings, style templates
+  (a tool's default and named looks, stored through the workspace tier's
+  `DrawingTemplateRepository`), a Coordinates tab with each anchor's exact time and
+  price, and an Objects panel that moves rows from the keyboard.
+- **Replay: simulated forming.** `simulate: { steps }` forms a bar that no finer bar covers
+  over that many steps, along a path from its open to the nearer extreme, the other
+  extreme and its close, and `ReplayState.simulated` says so. Real finer bars win wherever
+  they exist.
+- **Lines across the edges of the view.** `RendererEntry.connectsBars` and `DrawItem.edgeX`
+  let a renderer draw the segment that crosses each edge; the built-in line family and
+  Kagi use them.
+- **Vue 3** integration example and guide.
+- **Release benchmarks**: `npm run bench:release` and the [Benchmarks](/benchmarks) page.
+
+### Changed
+
+- Drawings documents are version 3 when a drawing carries an interval range, and version 2,
+  as before, otherwise.
+- The bar countdown appears only on the price pane's last-price tag; value tags are painted
+  over price-line and level tags; tick labels at a pane's edge are left out instead of cut
+  in half.
+- Eighteen drawing tool glyphs are redrawn, and the widget's faint text meets WCAG AA in
+  both themes.
+
+### Fixed
+
+- **Replay: the open of a forming bar no longer changes.** Each forming step carries the
+  displayed bar's open and stays within its high, low and volume, so nothing jumps back
+  when the bar closes. On a year of NSE daily bars replayed from hourly ones, the open used
+  to move at the close on 199 of 232 candles; now none do.
+- A sparse line, step or area loses no segment at the edges of the view, a dashed line
+  keeps its pattern, and a gap at the edge is never bridged.
+- A detached chart no longer answers hover shortcuts while parked.
+
+### Performance
+
+- A drawing hit test asks only the drawings near the pointer: about a tenth of the time
+  with 500 drawings.
+- Markers read only the bars under the marks they draw, and the data layer rebuilds its
+  index only for the series a change touches.
+- Against 2.5.8, frames are on par: on Canvas 2D at 200,000 bars a full zoom-out and a
+  ten-study tick take about 4 percent longer, a ten-study tick at 50,000 bars is about 15
+  percent quicker, and WebGL2 is within a few percent.
+
+Saved layouts, drawings and workspace documents from 2.5.8 load unchanged. No runtime
+dependencies or package tiers were added.
+
+See [Upgrading to 2.5.9](/docs/upgrading), and the [benchmark](/benchmarks#259) measured
+against 2.5.8.
+
 ## 2.5.8
 
 2026-09-26

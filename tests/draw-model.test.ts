@@ -216,8 +216,9 @@ describe('toJSON and fromJSON', () => {
       points: [{ time: 1, price: 1 }, { time: 2, price: 2 }],
     });
     const doc = draw.toJSON();
+    // Version 3 only for an interval range; this drawing has none.
     expect(doc.version).toBe(2);
-    expect(doc.version).toBe(DRAWING_STATE_VERSION);
+    expect(DRAWING_STATE_VERSION).toBe(3);
     expect(doc.drawings).toHaveLength(1);
     expect(doc.drawings[0]).toEqual(d);
     // A host mutating the snapshot must not reach the model.

@@ -1,5 +1,5 @@
 /**
- * The 1.9.x to 2.0 drawing migration.
+ * The drawing migration: 1.9.x to 2.0, and document version 2 to 3.
  *
  * Hosts persist `toJSON()` verbatim, and a 1.9.x host has done so for a long
  * time: a bare `Drawing[]` per pane in local storage, for a great many users.
@@ -32,14 +32,21 @@
  * - Garbage yields an empty document. This runs on the load path, where an
  *   exception would take the whole chart down with it.
  *
- * Idempotent on a version 2 document, so a host can call it on every load.
+ * Version 3 added one optional field, the interval range a drawing is shown
+ * on, so a version 2 document needs no upgrade and comes back unchanged,
+ * version and all. A range is kept when it names at least one bound, and the
+ * document out is version 3 only when a drawing kept one. A document from a
+ * later version is read the same lenient way: what this build knows is kept
+ * and the rest dropped, since refusing it would empty the chart on load.
+ *
+ * Idempotent on a version 2 or 3 document, so a host can call it on every load.
  */
 import type {
   Drawing, DrawingPoint, DrawingPolicy, DrawingStyle, DrawingText, DrawingsDocument, DrawingGroup, FibLevel,
 } from './types';
-import { DRAWING_STATE_VERSION } from './types';
 import { cycleColor, levelColor } from './levels';
 import { readViewportPoints } from './viewport';
+import { drawingsDocumentVersion, readIntervalRange } from './intervals';
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -79,18 +86,19 @@ let minted = 1;
 
 /**
  * Upgrade saved drawings to the current document shape. Accepts a 1.9.x
- * `Drawing[]` or a {@link DrawingsDocument}. Every field is validated, the
- * 1.9.x text keys are lifted out of the style bag into `text`, bare level
- * ratios become coloured levels, and array order is kept. An entry that could
- * never be rendered is dropped; anything unparseable yields an empty document
- * rather than an error.
+ * `Drawing[]` or a {@link DrawingsDocument} of any version. Every field is
+ * validated, the 1.9.x text keys are lifted out of the style bag into `text`,
+ * bare level ratios become coloured levels, and array order is kept. An entry
+ * that could never be rendered is dropped; anything unparseable yields an
+ * empty document rather than an error. The result is version 3 when a drawing
+ * carries an interval range and version 2 otherwise.
  */
 export function migrateDrawings(input: unknown): DrawingsDocument {
   const list = Array.isArray(input) ? input
     : isRecord(input) && Array.isArray(input.drawings) ? input.drawings
     : null;
   const drawings: Drawing[] = [];
-  if (list === null) return { version: DRAWING_STATE_VERSION, drawings };
+  if (list === null) return { version: drawingsDocumentVersion(drawings), drawings };
   const seen = new Set<string>();
   for (const raw of list) {
     const d = migrateEntry(raw);
@@ -102,7 +110,7 @@ export function migrateDrawings(input: unknown): DrawingsDocument {
     drawings.push(d);
   }
   const groups = migrateGroups(isRecord(input) ? input.groups : undefined, drawings);
-  return { version: DRAWING_STATE_VERSION, drawings, ...(groups.length ? { groups } : {}) };
+  return { version: drawingsDocumentVersion(drawings), drawings, ...(groups.length ? { groups } : {}) };
 }
 
 /** Ignore stale or malformed group records, with the first valid membership winning. */
@@ -128,7 +136,7 @@ export function migrateGroups(input: unknown, drawings: readonly Drawing[]): Dra
   return groups;
 }
 
-/** One entry of either shape into a v2 drawing, or null when it cannot be drawn. */
+/** One entry of any shape into a current drawing, or null when it cannot be drawn. */
 function migrateEntry(raw: unknown): Drawing | null {
   if (!isRecord(raw)) return null;
   const tool = raw.tool;
@@ -158,6 +166,8 @@ function migrateEntry(raw: unknown): Drawing | null {
   if (isRecord(raw.props)) out.props = jsonRecord(raw.props, 0);
   if (typeof raw.locked === 'boolean') out.locked = raw.locked;
   if (typeof raw.visible === 'boolean') out.visible = raw.visible;
+  const intervals = readIntervalRange(raw.intervals);
+  if (intervals !== null) out.intervals = intervals;
   // History snapshots come through here too, so a policy the migration
   // dropped would be a policy one undo could strip.
   if (isRecord(raw.policy)) {

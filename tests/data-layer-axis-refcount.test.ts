@@ -2,13 +2,18 @@
  * The shared time axis kept in step with its series (src/model/data-layer.ts).
  *
  * Every series on a chart shares one logical-index axis, the union of their
- * times. It used to be rebuilt from scratch on every bulk load: every time of
- * every series collected and sorted again, so re-sending one series cost the
- * whole chart's history and re-sending each of a chart's series in turn cost
- * the square of it. A host that refreshes its panes, and an indicator that
- * re-merges its plots, sends the same times back almost every time. The axis
- * now tracks how many series hold each time and changes only where one comes
- * or goes.
+ * times. 2.5.8 already kept that axis when a whole write left the set of
+ * times alone or only added times past the right edge. Every other change
+ * rebuilt it from every series' bars: a series dropping a time (it could not
+ * tell whether another series still held it), a time added inside the axis,
+ * `addBars`, an insert through `update`, and `removeSeries`. A host with a
+ * dozen studies on a long history paid for the whole chart each time one
+ * series moved a bar.
+ *
+ * The axis now counts how many series hold each time, so any write costs the
+ * series written and nothing else. That is what the reads test pins: it
+ * counts every read of another series' bar times, and each of those changes
+ * read all of them before the counts.
  */
 import { describe, it, expect } from 'vitest';
 import { DataLayer } from '../src/model/data-layer';
@@ -102,33 +107,57 @@ describe('data layer time axis', () => {
     }
   });
 
-  it('re-sends one series without reading the others', () => {
+  it('changes the axis by reading only the series written, never the others', () => {
     let reads = 0;
+    /** A bar whose time counts its reads: the other series' bars are built from these. */
     const counted = (time: number): Bar => {
       const b = bar(time);
       Object.defineProperty(b, 'time', { get: () => { reads++; return time; }, enumerable: true });
       return b;
     };
     const n = 2_000;
-    const dl = new DataLayer();
-    const others: number[] = [];
-    for (let s = 0; s < 6; s++) {
-      const id = dl.createSeries();
-      const bars: Bar[] = [];
-      for (let i = 0; i < n; i++) bars.push(counted(i * 60));
-      dl.setSeriesData(id, bars);
-      others.push(id);
+    /** Six series on one-minute bars, a plain series of our own on the same bars plus a few half-minutes, and a spare. */
+    const setup = (): { dl: DataLayer; mine: number; spare: number } => {
+      const dl = new DataLayer();
+      for (let s = 0; s < 6; s++) dl.setSeriesData(dl.createSeries(), Array.from({ length: n }, (_, i) => counted(i * 60)));
+      const mine = dl.createSeries();
+      dl.setSeriesData(mine, own());
+      const spare = dl.createSeries();
+      dl.setSeriesData(spare, [bar(30_030)]);
+      reads = 0;
+      return { dl, mine, spare };
+    };
+    const own = (): Bar[] => {
+      const out = Array.from({ length: n }, (_, i) => bar(i * 60, 100 + i));
+      for (const i of [300, 900, 1500]) out.push(bar(i * 60 + 30));
+      return out.sort((a, b) => a.time - b.time);
+    };
+    const times = (dl: DataLayer): number[] => Array.from({ length: dl.length }, (_, i) => dl.indexToTime(i) as number);
+
+    const cases: [string, (dl: DataLayer, mine: number, spare: number) => void, (axis: number[]) => void][] = [
+      ['re-sending the same times', (dl, mine) => dl.setSeriesData(mine, own()), (axis) => expect(axis.length).toBe(n + 4)],
+      ['dropping a time other series hold', (dl, mine) => dl.setSeriesData(mine, own().filter((b) => b.time !== 600 * 60)),
+        (axis) => expect(axis).toContain(600 * 60)],
+      ['dropping a time no other series holds', (dl, mine) => dl.setSeriesData(mine, own().filter((b) => b.time !== 900 * 60 + 30)),
+        (axis) => expect(axis).not.toContain(900 * 60 + 30)],
+      ['adding a time inside the axis', (dl, mine) => dl.setSeriesData(mine, [...own(), bar(1200 * 60 + 30)]),
+        (axis) => expect(axis).toContain(1200 * 60 + 30)],
+      ['adding bars inside the axis', (dl, mine) => dl.addBars(mine, [bar(700 * 60 + 15), bar(701 * 60 + 15)]),
+        (axis) => expect(axis).toContain(701 * 60 + 15)],
+      ['a live bar landing in history', (dl, mine) => { dl.update(mine, bar(800 * 60 + 45)); },
+        (axis) => expect(axis).toContain(800 * 60 + 45)],
+      ['removing a series', (dl, _mine, spare) => dl.removeSeries(spare), (axis) => expect(axis).not.toContain(30_030)],
+    ];
+    for (const [label, write, check] of cases) {
+      const { dl, mine, spare } = setup();
+      write(dl, mine, spare);
+      const counts = reads;
+      const axis = times(dl);
+      check(axis);
+      // Sorted and unique: the axis came out as a rebuild would have made it.
+      for (let i = 1; i < axis.length; i++) expect(axis[i], label).toBeGreaterThan(axis[i - 1]);
+      expect(counts, `${label}: read ${counts} bar times of the other series`).toBe(0);
     }
-    const id = dl.createSeries();
-    const fresh = (): Bar[] => Array.from({ length: n }, (_, i) => bar(i * 60, 100 + i));
-    dl.setSeriesData(id, fresh());
-
-    reads = 0;
-    dl.setSeriesData(id, fresh());
-
-    // The series re-sent is plain; every read counted is another series' bar.
-    expect(reads).toBe(0);
-    expect(dl.length).toBe(n);
   });
 
   it('keeps indices before a change and drops a time no series holds', () => {

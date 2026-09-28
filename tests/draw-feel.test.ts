@@ -285,7 +285,7 @@ describe('magnet modes', () => {
     expect(draw.drawings()[0].points[0].price).toBe(103.9);
   });
 
-  it('never pulls on an indicator pane', () => {
+  it('never pulls an indicator pane to candle prices (with no study plotted there, nothing pulls)', () => {
     const chart = busHost();
     const draw = new DrawingController(chart, { magnet: 'strong' });
     chart.emit('crosshair:move', { time: 1700000600, price: 50, paneIndex: 1, bar: { open: 100, high: 104, low: 99, close: 101 } });

@@ -179,3 +179,54 @@ await lists.setActiveList(tech.id);
 Types: `Watchlist`, `WatchlistEntry`, `WatchlistCatalog`, `WatchlistStorage`, `WatchlistStore`,
 `WatchlistOperationOptions`, `WatchlistRepositoryOptions`, `IndexedDbWatchlistStorage`,
 `IndexedDbCatalogStorage`.
+
+## Drawing style templates (since 2.5.9)
+
+DOM-free saved drawing looks, in the same tier and with the same storage discipline as
+workspaces and watchlists: a tool's default ("save as default") and named templates.
+Source of truth: `src/workspace/drawing-templates.ts`. The widget takes one as
+`WidgetOptions.drawingTemplates` (see [widget](widget.md)).
+
+```ts
+import { DrawingTemplateRepository, createIndexedDbDrawingTemplateStorage } from 'openalgo-charts/workspace';
+
+const templates = new DrawingTemplateRepository(createIndexedDbDrawingTemplateStorage(indexedDB), 'account-7');
+await templates.saveTemplate('Swing low support', 'trend-line', { 'style.color': '#f0a020', 'style.lineWidth': 2 });
+await templates.setDefault('rectangle', { 'style.fill': true, 'style.fillOpacity': 0.1 });
+const { templates: saved, defaults } = await templates.load();
+```
+
+- A template's `values` are settings by the dot paths of the tool's settings schema (the
+  keys `readDrawingSettings` returns and `applyDrawingSettings` takes): a key under `style`,
+  `text` or `props`, never `text.value` (what a drawing says is not its look), and never
+  anchors, a lock, a pane or a space. A value is a string (up to 256 characters), a finite
+  number, a boolean, or a list of up to 64 levels (`{ ratio, color?, enabled?, label? }`);
+  up to 64 values per template. `parseDrawingTemplateValues` validates a values object. The
+  tier knows no tool: the host applies a template through the drawing's own schema, which
+  drops a path the tool no longer declares and coerces each value.
+- `DrawingTemplateRepository(storage, namespace, { now?, id? })`: `load`,
+  `saveTemplate(name, tool, values)` (the same name on the same tool, ignoring case and outer
+  spaces, takes the new values and keeps its id), `renameTemplate(id, name)` (refuses a name
+  another template of the tool has), `removeTemplate(id)`, `setDefault(tool, values | null)`
+  (one default per tool; null forgets it) and `subscribe(listener)`, called with a detached
+  copy after every commit and before that change's promise resolves. It implements the
+  `DrawingTemplateStore` contract the widget takes; a host with server-side templates can
+  implement it directly. Up to 200 templates and 200 defaults per namespace.
+- Writes are queued and applied to the catalog as stored at that moment. Every mutation
+  takes `DrawingTemplateOperationOptions` (`signal`, `expectedRevision`); a stale revision or
+  a lost storage race is `DrawingTemplateConflictError`. Nothing is written for a refused or
+  invalid change.
+- `parseDrawingTemplateCatalog` validates the whole catalog (`version` 1, `revision`,
+  `templates`, `defaults`, unique template ids and one default per tool) before any
+  mutation; corrupt storage raises `WorkspaceDocumentError` and is never replaced.
+- Storage: `DrawingTemplateStorage.write(namespace, catalog, expectedRevision, options?)`
+  compares and writes atomically. `createIndexedDbDrawingTemplateStorage(factory,
+  name = 'openalgo-chart-drawing-templates')` does it in one IndexedDB transaction
+  (`IndexedDbDrawingTemplateStorage`, with `close()`), and
+  `createMemoryDrawingTemplateStorage(seed?)` is revision-checked memory for tests and hosts
+  without IndexedDB.
+
+Types: `DrawingTemplate`, `DrawingTemplateLevel`, `DrawingTemplateValue`,
+`DrawingTemplateValues`, `DrawingToolDefault`, `DrawingTemplateCatalog`,
+`DrawingTemplateStorage`, `DrawingTemplateStore`, `DrawingTemplateOperationOptions`,
+`DrawingTemplateRepositoryOptions`, `IndexedDbDrawingTemplateStorage`.

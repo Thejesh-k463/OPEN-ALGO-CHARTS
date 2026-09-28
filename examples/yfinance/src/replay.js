@@ -7,6 +7,7 @@ import { setLegend } from './volume.js';
 import { capturePaneTarget } from './pane-target.js';
 import { replayBarEndTime } from './replay-timing.js';
 import { requestVariant, sessionOf } from './session.js';
+import { INTERVAL_MAX_DAYS, PERIOD_DAYS } from './intervals.js';
 export { replayBarEndTime } from './replay-timing.js';
 
 // Read off the namespace rather than named above on purpose: a missing named
@@ -156,6 +157,18 @@ export function attachReplay(chart, pane, readout) {
 export const REPLAY_SUB_INTERVAL = {
   '5m': '1m', '15m': '5m', '30m': '15m', '60m': '15m', '1h': '15m',
   '1d': '60m', '1wk': '1d', '1mo': '1d', '1q': '1d',
+};
+
+/**
+ * How many steps a candle takes when that finer rung has no bars for it: the
+ * finer bars it would have held, so a simulated candle forms at the pace a real
+ * one does (five for 5 minutes over 1 minute, seven hours in an NSE session).
+ * yfinance keeps about a week of 1-minute bars, so every older 5-minute candle
+ * takes this path; the transport marks each of its steps as simulated.
+ */
+export const REPLAY_SIMULATED_STEPS = {
+  '5m': 5, '15m': 3, '30m': 2, '60m': 4, '1h': 4,
+  '1d': 7, '1wk': 5, '1mo': 21, '1q': 63,
 };
 
 /** Where the newest bar sits while replay is running (or the real one). */
@@ -317,7 +330,8 @@ export async function startReplayAt(index) {
     const members = loaded.filter(item => ready(item.target)).map(({ target: item, sub }) => {
       const timing = { barEndTime: replayBarEndTime(item.request.interval, item.timezone),
         subBarEndTime: replayBarEndTime(REPLAY_SUB_INTERVAL[item.request.interval], item.timezone) };
-      const options = { series: [item.series], timing };
+      const steps = REPLAY_SIMULATED_STEPS[item.request.interval];
+      const options = { series: [item.series], timing, ...(steps ? { simulate: { steps } } : {}) };
       try { new ReplayController(item.chart, { ...options, autoStart: false }); }
       catch {
         item.unavailable = `Chart ${item.pane} has overlapping or unordered candle times. Use time-based chart data.`;
@@ -350,8 +364,8 @@ export async function startReplayAt(index) {
     el('replaybar').hidden = false;
     syncScopeControls(); syncReplayBar(); renderToolbar();
     el('status').textContent = fallback.length
-      ? `${fallback.join(', ')}: finer history unavailable; replay uses completed candles`
-      : 'Replay advances by available observations; history gaps use completed candles';
+      ? `${fallback.join(', ')}: finer history unavailable; candles form along a simulated path, marked Simulated`
+      : 'Replay advances by available observations; candles without finer history form along a simulated path, marked Simulated';
   } catch (error) {
     if (revision !== replayLoadRevision) return;
     if (app.replay) exitReplay();
@@ -360,6 +374,25 @@ export async function startReplayAt(index) {
       ? 'Candle times overlap or are unordered. Check the intervals or use time-based chart data.' : error.message;
     el('status').textContent = 'Replay could not start: ' + reason;
   }
+}
+
+/** Periods the history endpoint serves, with their length in days, shortest first. */
+const FINER_PERIODS = [['5d', 5], ['1mo', 31], ['3mo', 92], ['6mo', 186], ['1y', 366]];
+
+/**
+ * The period to ask the finer interval for: the chart's own, unless that is
+ * longer than the source keeps for the finer interval, then the longest it does
+ * keep. A 5-minute chart over a month asks for five days of 1-minute bars, not
+ * a month the source refuses outright, so the last week forms from real bars
+ * and only the older candles are simulated.
+ */
+export function finerPeriod(finer, period) {
+  const cap = INTERVAL_MAX_DAYS[finer];
+  const days = PERIOD_DAYS[period];
+  if (cap === undefined || days === undefined || days <= cap) return period;
+  let best = FINER_PERIODS[0][0];
+  for (const [name, length] of FINER_PERIODS) if (length <= cap) best = name;
+  return best;
 }
 
 /**
@@ -380,7 +413,7 @@ export async function loadReplaySubBars(target = owner()) {
   if (replaySubBars.has(key)) return replaySubBars.get(key);
   const revision = replayLoadRevision;
   try {
-    const bars = await fetchBars(req.symbol, finer, req.period, { slot: 'replay:' + target.pane, timezone: target.timezone,
+    const bars = await fetchBars(req.symbol, finer, finerPeriod(finer, req.period), { slot: 'replay:' + target.pane, timezone: target.timezone,
       variant: requestVariant(req) });
     if (!bars || bars.length === 0) return null;
     if (revision !== replayLoadRevision || !target.current()) return null;
@@ -526,6 +559,15 @@ export function buildReplayBar() {
   sub.className = 'rsub';
   sub.id = 'rp-sub';
   bar.appendChild(sub);
+  // Said on screen, not only in the status line: a simulated step's prices were
+  // never traded, and a trader testing a stop against them has to know.
+  const simulated = document.createElement('span');
+  simulated.className = 'rsim';
+  simulated.id = 'rp-sim';
+  simulated.textContent = 'Simulated';
+  simulated.hidden = true;
+  simulated.title = 'No finer bars for this candle: it forms along a path through its own open, high, low and close, and closes on the real candle';
+  bar.appendChild(simulated);
   const clock = document.createElement('span');
   clock.className = 'rclock';
   clock.id = 'rp-clock';
@@ -554,6 +596,8 @@ export function syncReplayBar() {
   // whole-bar replay does not carry a permanent "1/1".
   const sub = el('rp-sub');
   if (sub) sub.textContent = focused?.subSteps > 1 ? `${focused.subIndex + 1}/${focused.subSteps}` : '';
+  const simulated = el('rp-sim');
+  if (simulated) simulated.hidden = !focused?.simulated;
   const back = el('rp-back');
   const fwd = el('rp-fwd');
   const unit = 'one observation';

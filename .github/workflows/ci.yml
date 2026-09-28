@@ -147,11 +147,14 @@ jobs:
         # branch's commits do not), and the release that ships the change
         # empties it again, because its tag then paints the same pixels.
         env:
-          # Line-family series draw the segment that crosses an edge of the
-          # view (#37), which moves pixels at the edges on purpose: the
-          # baseline is that commit until the release that ships it (2.5.9)
-          # empties this again.
-          PARITY_BASELINE_REF: '49cf626f7e6b8928dde72f0fdf7286c06e4a6e29'
+          # 2.5.9 moves pixels on purpose against v2.5.8: line-family series
+          # draw the segment that crosses an edge of the view (#37), and the
+          # price axis leaves out tick labels at a pane's edge and paints value
+          # tags over level tags. Every differing pixel was checked to lie in a
+          # study pane's axis strip or at an edge of the view. The baseline is
+          # the release candidate's last code commit, b458104, until the v2.5.9
+          # tag exists and paints the same pixels; then this is emptied again.
+          PARITY_BASELINE_REF: 'b4581047fc855f5494b7ab1b8660cbeb18af1e6b'
         run: |
           ref="${PARITY_BASELINE_REF:-$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD)}"
           echo "render-parity baseline: $ref"

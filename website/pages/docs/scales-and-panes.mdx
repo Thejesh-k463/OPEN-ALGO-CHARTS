@@ -693,9 +693,13 @@ stale labels. A side's column disappears when no series or bound primitive uses 
 a chart containing only hidden-scale series reserves neither axis column.
 Crosshair price tags are omitted for a hidden readout scale.
 Last-price and series-value tags follow their source's left or right axis. The
-readout series alone carries the countdown; other visible sources use their plot
-colors, including sources on the opposite axis. Each column resolves its own
-tick/tag collisions. Hidden-scale sources draw no axis tags.
+readout series carries the countdown, and only on the pane that shows the chart's
+price source: a study pane's tag is the study's value and stays one row. Other
+visible sources use their plot colors, including sources on the opposite axis.
+Each column resolves its own tick/tag collisions, and the last-price tag is painted
+over a price line's tag where the two meet. A tick label within half a tag height
+(8 px) of the pane's top or bottom edge is left out rather than cut in half; its
+gridline stays. Hidden-scale sources draw no axis tags.
 
 Left tags fit inside the reserved column and stay within the pane at its top and
 bottom edges. A tag is omitted if there is too little room to draw it. Hidden

@@ -467,6 +467,47 @@ place, so copy what you keep past the call. A custom renderer, even one register
 under a built-in name, always receives every bar: the level of detail
 (`conflate`) reduces only the built-in renderers.
 
+A renderer that joins each bar to the next (a line, a step, a band) sets
+`connectsBars: true` (since 2.5.9). Its `items` then also hold the series' nearest bar
+beyond each edge of the view, so the segment that crosses the edge is drawn, and a
+sparse line (a level held for a session) still spans the plot with none of its bars in
+view. Those two items carry `edgeX`, the x of the plot edge they lie past: cut the
+segment there rather than stroke it out to a bar that can be millions of pixels away,
+and draw no marker of their own. A neighbour is the series' very next bar, value or
+not, so a gap at the edge (a whitespace item, or a study's NaN) breaks the line there
+as it does anywhere else.
+
+```ts
+registerChartType('my-line', {
+  defaultStyle: { color: '#fff' },
+  isPriceSeries: true,
+  connectsBars: true,
+  draw: (ctx, items, toY, barSpacing, dpr, style) => {
+    ctx.strokeStyle = style.color ?? '#fff';
+    ctx.beginPath();
+    let joined = false; // whether the previous point had a value
+    items.forEach(({ x, bar, edgeX }, i) => {
+      let px = x, py = toY(bar.close);
+      if (edgeX !== undefined && items.length > 1) {
+        // Cut the leg to a neighbour beyond the view a few pixels past the edge.
+        const inner = items[i === 0 ? 1 : items.length - 2];
+        const iy = toY(inner.bar.close);
+        const cut = i === 0 ? Math.max(x, edgeX - 8) : Math.min(x, edgeX + 8);
+        py = iy + (py - iy) * ((cut - inner.x) / (x - inner.x));
+        px = cut;
+      }
+      // A bar with no value breaks the line; so does a cut next to one.
+      if (!Number.isFinite(py)) { joined = false; return; }
+      if (joined) ctx.lineTo(px * dpr, py * dpr);
+      else ctx.moveTo(px * dpr, py * dpr);
+      joined = true;
+    });
+    ctx.stroke();
+  },
+  extents: (bar) => ({ min: bar.close, max: bar.close }),
+});
+```
+
 ## A custom primitive
 
 Implement `IPrimitive` and attach it - the same contract markers, profiles, and the trade
@@ -586,8 +627,12 @@ A primitive that declares a box promises:
 
 A primitive that declares `hitBounds` is attached with a host object that wraps the
 chart's, so the pane hears its `requestUpdate`; do not compare that host with another
-by identity. The built-in primitives and the draw tier's layers declare no box yet, so
-they are asked on every move as before.
+by identity. The built-in primitives declare no box yet, so they are asked on every move
+as before. The draw tier's layers keep a box per drawing of their own instead: the pane
+asks a layer on every move, and the layer asks only the drawings whose box the pointer
+is in, 4.5 of 500 trend lines per move in `node scripts/bench-pane.mjs`. A host driving
+a `DrawingLayer` itself hands a drawing edited in place over again with `setDrawings`,
+as the controller does, for a hover to see where it now is.
 
 ## `bestHit` helper
 

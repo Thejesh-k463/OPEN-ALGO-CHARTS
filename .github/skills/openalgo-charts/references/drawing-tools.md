@@ -322,14 +322,15 @@ Tool-specific `defaultStyle` values that change behaviour, not just colour:
 
 ## The 2.0 drawing model
 
-`Drawing` is `{ id, tool, points, style, text?, props?, paneIndex, locked?, visible?, zIndex, createdAt? }`.
+`Drawing` is `{ id, tool, points, style, text?, props?, paneIndex, locked?, visible?, intervals?, zIndex, createdAt? }`.
 
 - **`text` is its own block (`DrawingText`)**, not a set of keys on `style`: `{ value, color?, fontSize?, fontFamily?, bold?, italic?, align?, valign?, wrap?, wrapWidth?, background?, backgroundColor?, backgroundOpacity?, border?, borderColor?, position? }`. A 1.9.x `style.text` / `fontColor` / `textAlign` / `textVAlign` / `textPosition` / `fontWeight` / `fontStyle` is lifted into it on load and paste. The text tool is its content; a shape's text is a label placed by `position`.
 - **`style.levels` is `FibLevel[]`** (`{ ratio, color?, enabled?, label? }`; `enabled: false` hides a rung without forgetting it, `label` prints instead of the ratio), not `number[]`. A bare ratio takes the conventional colour from `levelColor(ratio)` (`LEVEL_NEUTRAL` for 0, 1, 2, 3 and anything unnamed); the migration attaches those colours, and `cloneLevels` copies a ladder so a tool default is never shared. `formatRatio` prints a level label, `CYCLE_PALETTE` / `cycleColor(i)` colour a sequence, and `DEFAULT_FIB`, `DEFAULT_FIB_FAN`, `DEFAULT_GANN_BOX`, `DEFAULT_GANN_FAN`, `DEFAULT_FIB_TIME_ZONE` are the frozen defaults.
 - **`zIndex` is paint order.** Below zero paints under the series, at or above zero over it; ties break by list order, so `drawings()` is the paint order. `sortByZIndex(list)` is the stable sort the layer uses, and `DrawingLayerOrder` (`'bottom' | 'series' | 'top'`) is which layer a pane primitive is. A default of 0 paints exactly where 1.9.2 painted.
 - **`stackAbove` places a drawing in the series band.** It names an entry of `chart.seriesStack(paneIndex)` (`'source:primary'` or `'indicator:<id>'`); the drawing paints right after that entry's series and before the next entry's, and `zIndex` orders the drawings on the same entry. The controller keeps a `'series'` layer per used entry, placed with `chart.setPrimitiveStackAbove`, and the front layer answers hits for every layer of the pane, front to back (body hits from a lower layer carry `paintedBy`). While the entry plots no series on the drawing's pane it paints in front by `zIndex`; `stackAbove` is kept, saved, migrated (a non-string is dropped) and carried by duplicate and the clipboard. `DrawingPatch.stackAbove` sets it or, with `null`, clears it. A host without `seriesStack` / `setPrimitiveStackAbove` (both optional on `DrawingChartHost`) paints every drawing by `zIndex`.
 - **`props`** is a JSON-safe bag for a tool's extras (a table's cells, a callout's tail side), persisted verbatim.
-- **`DRAWING_STATE_VERSION`** (`2`) is the document version `toJSON` writes.
+- **`intervals`** (`DrawingIntervalRange`, `{ from?, to? }`) is the range of chart intervals the drawing is shown on; absent means every interval. See the Visibility per interval section below.
+- **`DRAWING_STATE_VERSION`** (`3`) is the newest document version this build reads and writes. A document is written as the lowest version that holds it: `3` when a drawing carries an interval range, else `2`, so a save without one is byte for byte what 2.5.8 wrote.
 
 ### Settings schema
 
@@ -343,7 +344,7 @@ const values = readDrawingSettings(d, schema);         // { 'style.color': '#..'
 draw.update(d.id, applyDrawingSettings(d, formState, schema));
 ```
 
-`SettingsField` is `{ path, label, kind, min?, max?, step?, options?, group? }`; `FieldKind` is `'color' | 'number' | 'select' | 'lineStyle' | 'boolean' | 'text' | 'opacity' | 'levels'` and `FieldGroup` is `'line' | 'fill' | 'text' | 'levels' | 'behavior'`. `textIsContent` is true for `text`, `callout`, `note`, `balloon`, `comment`, `signpost`, `price-note` and `table`: ask for the text the moment the tool is placed. `readDrawingSetting(d, path)` reads one value (`levels` comes back as a copy). `coerceSettingValue(field, raw)` turns a form string into what the kind stores. `applyDrawingSettings` returns whole `style` / `text` bags; with a schema it coerces and drops undeclared paths, and a value of `undefined` deletes the key (the host's "reset to default"). A custom tool builds its own with `composeSettings([LINE_FIELDS, FILL_FIELDS], { textIsContent })`, from the shared lists `LINE_FIELDS`, `FILL_FIELDS`, `EXTEND_FIELDS`, `LEVEL_FIELDS`, `TEXT_FIELDS`, `FONT_FIELDS`, `SHAPE_TEXT_FIELDS`, `PLATE_TEXT_FIELDS`, the single fields `COLOR_FIELD`, `LINE_WIDTH_FIELD`, `LINE_STYLE_FIELD`, `SHOW_LABELS_FIELD`, `TEXT_VALUE_FIELD`, and the option lists `LINE_STYLE_OPTIONS`, `ALIGN_OPTIONS`, `VALIGN_OPTIONS`, `TEXT_POSITION_OPTIONS`, `FONT_OPTIONS`. `drawingSettingsSchema` is a registry lookup (a tool without a declaration gets the line fields), which is why it lives in tools.ts rather than with the pure schema helpers.
+`SettingsField` is `{ path, label, kind, min?, max?, step?, options?, group? }`; `FieldKind` is `'color' | 'number' | 'select' | 'lineStyle' | 'boolean' | 'text' | 'opacity' | 'levels' | 'interval'` and `FieldGroup` is `'line' | 'fill' | 'text' | 'levels' | 'behavior' | 'visibility'`. A path is two segments under `style`, `text`, `props` or `intervals`, or one of `locked`, `visible`, `zIndex`, `space`. `textIsContent` is true for `text`, `callout`, `note`, `balloon`, `comment`, `signpost`, `price-note` and `table`: ask for the text the moment the tool is placed. `readDrawingSetting(d, path)` reads one value (`levels` comes back as a copy). `coerceSettingValue(field, raw)` turns a form string into what the kind stores. `applyDrawingSettings` returns whole `style` / `text` bags; with a schema it coerces and drops undeclared paths, and a value of `undefined` deletes the key (the host's "reset to default"). A custom tool builds its own with `composeSettings([LINE_FIELDS, FILL_FIELDS], { textIsContent })`, from the shared lists `LINE_FIELDS`, `FILL_FIELDS`, `EXTEND_FIELDS`, `LEVEL_FIELDS`, `TEXT_FIELDS`, `FONT_FIELDS`, `SHAPE_TEXT_FIELDS`, `PLATE_TEXT_FIELDS`, the single fields `COLOR_FIELD`, `LINE_WIDTH_FIELD`, `LINE_STYLE_FIELD`, `SHOW_LABELS_FIELD`, `TEXT_VALUE_FIELD`, the interval pair `INTERVAL_FIELDS` (no tool declares it; a host that lists intervals adds it, see the Visibility per interval section below), and the option lists `LINE_STYLE_OPTIONS`, `ALIGN_OPTIONS`, `VALIGN_OPTIONS`, `TEXT_POSITION_OPTIONS`, `FONT_OPTIONS`. `drawingSettingsSchema` is a registry lookup (a tool without a declaration gets the line fields), which is why it lives in tools.ts rather than with the pure schema helpers.
 
 ## DrawingController API
 
@@ -371,7 +372,7 @@ delivery logic belongs in these hooks.
 
 ```ts
 new DrawingController(chart, {
-  magnet: 'off',            // 'weak' | 'strong' | 'off'; true = 'strong'. Snap new anchors to the hovered bar's O/H/L/C
+  magnet: 'off',            // 'weak' | 'strong' | 'off'; true = 'strong'. Snap anchors to the bar's O/H/L/C, or a study pane's plotted values
   stayInDrawingMode: false, // stay armed after a shape completes
   historyLimit: 50,         // undo depth
   defaultStyle: {},         // merged UNDER each tool's own defaults
@@ -379,6 +380,7 @@ new DrawingController(chart, {
   pasteOffsetBars: 2,       // how far a paste is nudged along time
   pasteOffsetPixels: 16,    // how far a paste is nudged down the price axis
   inputAnchors: true,       // draw the anchor of every paired study input that declares one
+  gestures: {},             // DrawingGestureOptions: turn a modifier gesture off, e.g. { snapModifier: false }
 });
 ```
 
@@ -420,7 +422,9 @@ step nowhere. See
 | `update(id, patch, options?)` / `updateMany(patches, options?)` | Patch `points` \| `style` \| `text` \| `props` \| `locked` \| `visible` \| `zIndex` \| `policy` \| `space` \| `viewportPoints` (a `DrawingPatch`). `space` alone converts the anchors at the view on screen (see Viewport-anchored drawings). `style`, `text`, `props` and `policy` merge; `points` replaces. `updateMany([{ id, patch }])` is one undo step and one `drawing:change`. A read-only drawing is refused (`update` returns false, `updateMany` skips it) unless `options` is `{ force: true }` (`DrawingEditOptions`). `update` also returns false when the patch asks for a `space` the drawing could not be moved to; the rest of that patch still applies. A patch that carries `policy`, and any forced call, records no undo step, and every recorded step takes it as well, so no later undo or redo reverses it. |
 | `remove(id, options?)` / `removeMany(ids, options?)` / `clear(options?)` | Delete one / several (one undo step) / all. Read-only drawings stay unless `{ force: true }`. A forced delete records no undo step and takes the drawing out of every recorded step, so no redo brings it back. |
 | `finish()` | Commit a `points: 0` tool at the anchors placed so far. Returns whether it committed. |
-| `cancel()` | Drop the anchors placed so far; disarms the tool unless `stayInDrawingMode` keeps it (a second call then disarms). Returns whether anything changed. |
+| `cancel()` | Drop the anchors placed so far; disarms the tool unless `stayInDrawingMode` keeps it (a second call then disarms). Also ends a drag in hand or a temporary measure first. Returns whether anything changed. |
+| `measuring()` | Whether a temporary measure (Shift+click on empty space) is on the chart; `draw:measure` (`{ active }`) fires as one starts and goes. (since 2.5.9) |
+| `setEraser(active)` / `erasing()` | Eraser mode: a click on a drawing deletes it, a drag deletes what it crosses, one undo step each; read-only, locked, unselectable and hidden drawings stay. Turning it on disarms any tool; `setTool`, `cancel()` and `setEraser(false)` turn it off. `draw:eraser` (`{ active }`) fires on each change. (since 2.5.9) |
 | `popAnchor()` | Remove the last anchor of a `points: 0` tool still being placed (the Backspace of placement). Fixed-anchor and freehand tools have nothing to pop. |
 | `hovered()` | Id of the unselected drawing under the pointer, or `null`. Fed by the chart's `hover` event; `drawing:hover { id }` fires when it changes. |
 | `magnetMode()` | The resolved `MagnetMode` (`'off' | 'weak' | 'strong'`), after the boolean shorthand is mapped. |
@@ -437,12 +441,14 @@ step nowhere. See
 | `delegateInputAnchorSteps(record)` | Hands the step each study input anchor move makes (a drag, `moveInputAnchor`) to `record` instead of this history, until the returned function gives them back; a later call takes them from an earlier one. `record` receives an `InputAnchorStep` (`{ undo(): boolean; redo(): boolean }`) once the patch is written. For a timeline that already records the settings patch the move writes, such as `ChartHistory`, which would otherwise see one move as two steps. A point written through the study's settings, which this history otherwise holds as a step, is not handed over: the timeline sees that write itself. (2.5.6) |
 | `copy(target?)` / `cut(target?)` / `paste()` | **Async.** See the clipboard section. |
 | `clipboard()` | The `DrawingClipboard` behind them, for reporting failures. |
-| `toJSON()` / `fromJSON(data)` | `{ version: 2, drawings }` (a `DrawingsDocument`) out, deep-copied, without transient drawings (`policy.persistent: false`); replace-all in (and clears history + selection, transient drawings included). `fromJSON` accepts a 1.9.x bare `Drawing[]` too and upgrades it. |
-| `migrateDrawings(input)` | The upgrade `fromJSON` runs, exported for a host reading a saved layout on its own: any 1.9.x array or v2 document in, a v2 `DrawingsDocument` out, never throws. |
+| `toJSON()` / `fromJSON(data)` | `{ version, drawings, groups? }` (a `DrawingsDocument`, `version` 3 when a drawing carries an interval range, else 2) out, deep-copied, without transient drawings (`policy.persistent: false`); replace-all in (and clears history + selection, transient drawings included). `fromJSON` accepts a 1.9.x bare `Drawing[]` too and upgrades it. |
+| `migrateDrawings(input)` | The upgrade `fromJSON` runs, exported for a host reading a saved layout on its own: any 1.9.x array or v2 or v3 document in, a current `DrawingsDocument` out (a v2 document comes back unchanged, version and all), never throws. |
+| `interval()` / `shownOnInterval(id)` / `hiddenOnInterval()` | The chart interval drawings are shown for (the data context's `interval`, or `null`), whether a drawing's `intervals` range admits it, and the ids of every drawing it hides, in model order. See the Visibility per interval section below. |
 | `destroy()` | Unhooks listeners, removes every pane layer, releases placement mode. |
 
 Events on the chart bus: `draw:tool`, `draw:add`, `draw:update`, `draw:remove`, `draw:select` (the primary id), `draw:copy`, `draw:cut`, `draw:paste`, plus the 2.0 pair `drawing:select` (`{ ids }`, the whole selection) and `drawing:change` (`{ ids, kind: 'add' | 'update' | 'remove' | 'reorder' }`, one per mutation, after the per-drawing `draw:*` events; `ids` is empty for a history step that changed no drawing, a study anchor's drag and its undo or redo), and `drawing:hover` (`{ id: string | null }`, when the unselected drawing under the pointer changes). `DrawingChangeKind` names the `kind` union.
 Events on the chart bus: `draw:tool`, `draw:add`, `draw:update`, `draw:remove`, `draw:select` (the primary id), `draw:copy`, `draw:cut`, `draw:paste`, plus the 2.0 pair `drawing:select` (`{ ids }`, the whole selection) and `drawing:change` (`{ ids, kind: 'add' | 'update' | 'remove' | 'reorder' }`, one per mutation, after the per-drawing `draw:*` events), and `drawing:hover` (`{ id: string | null }`, when the unselected drawing under the pointer changes). `DrawingChangeKind` names the `kind` union. `DrawingChangeEvent` names the whole payload: `linked: true` on a linked chart's commit, and `step` (2.5.6) on the change that closes a recorded undo step, the number `historySteps()` lists it under; a forced edit, a linked commit, a restore and an `undo`/`redo` carry none.
+The modifier gestures (since 2.5.9) add `draw:measure` (`{ active }`), as a temporary measure starts and goes, and `draw:eraser` (`{ active }`), as eraser mode turns on and off; see Modifier gestures.
 
 **The controller listens on `chart.on(...)`, not `subscribeClick` / `subscribeDrag`.** Those two are single-slot callbacks the host needs for its own order lines; routing drawings through the bus means the two never contend.
 
@@ -465,13 +471,13 @@ layer's answer: see [times past the last bar](data-and-time.md#times-past-the-la
 5. `freehand` tools (`brush`, `highlighter`) ignore clicks and sample the cursor while the pointer is held; the release commits. A tap that never moved is discarded.
 6. A press-drag-release also draws a two-anchor shape in one gesture: the chart emits the press point, then the release point tagged `viaDrag`.
 7. **Shift locks the angle** on tools with `angleLock` (the line family): the free end is projected onto the nearest 45 degree ray on screen, while placing and while dragging a handle. It projects rather than rotates, so a level line ends under the pointer's x. It needs the host's four pixel mappings and is inert without them.
-8. **The magnet ring.** With `magnet` on, the layer paints a ring where the next click will land (the hovered bar's time and the nearest O/H/L/C, so a snapped anchor sits on the bar centre). `'weak'` pulls only when one of the four is within a few px, and needs `priceToCoordinate` to judge that; `'strong'` always pulls. Shift's angle lock wins over the magnet and hides the ring.
+8. **The magnet ring.** With `magnet` on, or Ctrl (Cmd) held, the layer paints a ring where the next click will land (the hovered bar's time and the nearest O/H/L/C, so a snapped anchor sits on the bar centre; on a study pane the nearest value a study plots there). `'weak'` pulls only when a value is within 8 px, and needs `priceToCoordinate` to judge that; `'strong'` always pulls. Shift's angle lock wins over the magnet and hides the ring. See [the magnet everywhere](#the-magnet-everywhere-since-259).
 9. **Freehand strokes** read the coalesced `samples` a pressed `crosshair:move` carries, so a fast stroke inks every position the pointer passed through rather than one per frame; on release the trail is thinned (`rdpSimplify`, a pixel and a half) and painted as a spline (`catmullRom`). A pen stores `pressure` per sample (a mouse stores nothing), and `style.pressure` on the brush and highlighter lets it drive the width (`pressureWidth`).
 10. **Escape, Enter and Backspace** while a tool is armed mean `cancel()`, `finish()` and `popAnchor()`; `keyToDrawingAction` says so when the host passes `placing: true`.
 
 ### Selection and dragging
 
-Hit ids are `draw:<id>` for the body and `draw:<id>#<n>` for anchor `n`. A body drag on an unselected drawing selects it alone first; then the **whole selection** moves as one undo entry (locked members stay, other-pane members through `priceToCoordinate` / `coordinateToPrice`, and a member on a pane collapsed to its strip, where those return `null`, keeps its prices and moves in time only); dragging a handle moves that one anchor to the cursor. `draw:update` fires per moved drawing on `drag:end`, plus one `drawing:change`. The grab radius is 6 media px for a body, 7 for a handle; handles of the selected drawing win over its own body.
+Hit ids are `draw:<id>` for the body and `draw:<id>#<n>` for anchor `n`. A body drag on an unselected drawing selects it alone first; then the **whole selection** moves as one undo entry (locked members stay, other-pane members through `priceToCoordinate` / `coordinateToPrice`, and a member on a pane collapsed to its strip, where those return `null`, keeps its prices and moves in time only); dragging a handle moves that one anchor to the cursor (or where the magnet lands it). `draw:update` fires per moved drawing on `drag:end`, plus one `drawing:change`. The grab radius is 6 media px for a body, 7 for a handle; handles of the selected drawing win over its own body.
 
 Freehand strokes expose only their first and last handle: one handle per sample would bury the ink.
 
@@ -739,7 +745,7 @@ draw.update(draw.selected()!, { style: { color, lineWidth, lineStyle, fillOpacit
 
 **A drawing renders only once it has `max(1, tool.points)` anchors.** A partially-placed `points: 0` shape lives in the preview slot, not the model, so it is absent from `toJSON()` until committed.
 
-**Magnet only applies to the price pane,** in whatever slot the host keeps it (`chart.primaryPaneIndex()`, read through the optional `DrawingChartHost.primaryPaneIndex`; a host without it means slot 0). `_snap` returns the raw price for any other pane index, because O/H/L/C snapping has no meaning on an indicator pane.
+**The magnet snaps to candles on the price pane only,** in whatever slot the host keeps it (`chart.primaryPaneIndex()`, read through the optional `DrawingChartHost.primaryPaneIndex`; a host without it means slot 0). A study pane snaps to its studies' plotted values instead, and only on a host with `indicators()`, `panes()` and `priceToCoordinate`; a study overlaid on the price pane is not a snap target there.
 
 Related: [primitives-and-plugins](primitives-and-plugins.md) (the `IPrimitive` contract `DrawingLayer` implements), [events-and-state](events-and-state.md) (the bus and `getState`), [interactions](interactions.md) (placement mode, pan/zoom), [bundling-and-tiers](bundling-and-tiers.md) (lazy-loading the tier).
 
@@ -776,8 +782,9 @@ The 2.0 entry also names the measurement, shape, freehand, fib and cycle familie
 through `getDrawingTool(id)` / `hasDrawingTool(id)` / `registeredDrawingTools()`.
 
 Clipboard persistence uses `DRAWING_CLIPBOARD_KEY` (`'openalgo-charts/drawings'`)
-and `DRAWING_CLIPBOARD_VERSION` (`2`, tracking `DRAWING_STATE_VERSION`; a version 1 body is
-accepted and upgraded); `systemClipboard` and
+and `DRAWING_CLIPBOARD_VERSION` (`3`, tracking `DRAWING_STATE_VERSION`: the newest payload version
+read. A payload is written as the lowest version that holds it, 3 only when a drawing carries an
+interval range, and a version 1 body is accepted and upgraded); `systemClipboard` and
 `clearMemoryClipboard` are the two backing stores. `cloneDrawing` is the deep copy a
 copy or a `duplicate` makes. `DRAW_TIER` is the tier constant.
 
@@ -790,6 +797,7 @@ copy or a `duplicate` makes. `DRAW_TIER` is the tier constant.
 | `DrawingInput` / `DrawingPatch` / `DrawingsDocument` | What `add` accepts, what `update` accepts, what `toJSON` returns |
 | `DrawingText` / `FibLevel` | The text block and one level of a ladder (see the 2.0 model above) |
 | `MagnetMode` | `'off' | 'weak' | 'strong'`, what `magnet` resolves to and `magnetMode()` returns |
+| `DrawingGestureOptions` | `DrawingControllerOptions.gestures`: the modifier gestures a host turns off (see Modifier gestures) |
 | `DrawingPointerKind` | `'mouse' | 'touch' | 'pen'`, what `DrawingLayer.setPointerType` takes; a touch gets larger grab targets |
 | `DrawingPoint.pressure` | Optional 0..1 pen pressure on a freehand sample; kept by the clipboard and the migration |
 | `IconAttrs` / `IconSvgOptions` / `ToolCursorOptions` | The icon attribute bag, and the option bags of `iconSvg` and `toolCursor` |
@@ -977,7 +985,7 @@ left edge and top from that rectangle, so an HTML overlay a host lays against
 `ViewportPoint`, `DrawingPlacementOptions`.
 
 
-## Drawings per instrument (unreleased)
+## Drawings per instrument (since 2.5.9)
 
 The controller holds one document and the engine has no instrument concept, so
 a host that loads another symbol into the same chart keeps the previous
@@ -1087,3 +1095,265 @@ What it decides, and why:
   written again with the next change or `save()`. An unreadable entry is
   reported and shows no drawings; the next change on that instrument writes
   over it.
+
+## Modifier gestures (since 2.5.9)
+
+Pointer gestures a held modifier key starts. Ctrl means Cmd as well, so macOS
+users press Cmd. None of them is a key chord, so none collides with
+`matchDrawingShortcut` (Alt+letter arms a tool) or `keyToDrawingAction`
+(Ctrl+Z, Ctrl+C and the rest): those read key events, these read the modifier
+state a pointer payload carries. Each is on by default, and
+`DrawingControllerOptions.gestures` (a `DrawingGestureOptions`) turns one off
+for a host whose own chart gestures already use that key; `setOptions` merges
+it flag by flag.
+
+| Gesture | Where | Flag |
+|---|---|---|
+| Ctrl held | placing an anchor, dragging a handle or a shape: the strong magnet while held | `snapModifier` |
+| Shift+click | empty chart space, no tool armed: a temporary measure | `measure` |
+| Ctrl+drag | empty chart space, no tool armed: box select (Ctrl+Shift+drag adds to the selection) | `boxSelect` |
+| Alt+drag | a drawing's body: drag a copy, leaving the drawing | `dragCopy` |
+
+### The magnet everywhere (since 2.5.9)
+
+The magnet (`magnet: 'weak' | 'strong'`) pulls a handle in hand and a whole
+shape in hand, not only a placement:
+
+- **A handle** lands on the nearest value of the bar under it, at that bar's
+  time, the same as a placement. Shift's angle lock still wins on a line.
+- **A shape grabbed by its body** moves rigidly, shifted by whatever lands its
+  anchor nearest the press on a value: that one anchor lands on the bar's time
+  and value, the others keep their offsets from it. Every other selected
+  drawing moves by the same shift.
+- **A study pane** snaps to the values its studies plot there, read the way the
+  legend reads them (the value painted under the bar, after the plot's
+  `offset`; all four columns of a bar-shaped plot). A hidden study, a plot with
+  `visible: false` and a plot in a fully transparent colour are skipped, so an
+  anchor never lands on a line that is not drawn. Candidates are compared on
+  screen, since plots on one pane can sit on different scales, and the anchor
+  takes the price the pane's own scale reads there. The price pane keeps
+  snapping to the candles' O/H/L/C.
+- **Ctrl (Cmd) held** is the strong magnet for as long as it is held, whatever
+  `magnet` is, including `'off'`: while placing (the ring shows), and while
+  dragging a handle or a shape. Letting go returns to the mode.
+
+A drawing pinned to the viewport never snaps. The chart reports no bar under
+the pointer during a drag, so a drag reads the bar at its time through
+`DrawingChartHost.primaryBars`; a study pane needs `indicators` and `panes`
+(each pane's `scales()`, `priceToY` and `yToPrice`), and `seriesStyle` to skip
+a hidden plot. All are optional on `DrawingChartHost`, and a chart from
+`createChart()` has them all; a host without them snaps placements on the price
+pane as before.
+
+### Temporary measure (since 2.5.9)
+
+Shift+click on empty chart space, with no tool armed, lays down a ruler: the
+`measure` tool drawn from the click to the pointer, its far end following the
+pointer on the pane it started on (a pointer elsewhere leaves the end where it
+last was). Both ends go through the magnet. The next click, anywhere, takes it
+away and does nothing else (it does not select what it lands on), and so does
+`cancel()`, which is what Escape maps to; arming a tool, a restore, a pane
+removed and a change of data context take it away too.
+
+It is a preview, painted in the slot a shape being placed uses: never in
+`drawings()` or `toJSON()`, never an undo step, never a `draw:add` or a
+`drawing:change`, so no `DrawingLinkGroup` carries it to another chart and no
+host autosave sees it. `measuring()` says whether one is up, and `draw:measure`
+(`{ active: boolean }`) fires as it starts and goes. `keyToDrawingAction` maps
+Escape to `cancel` only while `placing` is true, so a host that routes keys
+through it passes `placing: draw.activeTool() !== null || draw.measuring()`.
+Shift+click keeps its other meanings: on a drawing it adds to the selection,
+and with a tool armed Shift is the angle lock.
+
+### Box select (since 2.5.9)
+
+Ctrl plus a drag on empty chart space, with no tool armed, draws a box on the
+pane it started on and selects every drawing on that pane the box touches,
+live as the box grows (a box whose sampling would cost more than a frame's
+budget selects once, on release). With Shift held as well it adds to the
+selection the drag started with; without, it replaces it.
+
+**Touches** means the box intersects the drawing's geometry, not merely an
+anchor: a line that crosses the box, a fib level inside it whose anchors are
+both outside, a filled shape the box sits inside, and a label all count. It is
+measured with the tool's own `distance`, the answer a click gets, sampled over
+the box finely enough that any part of a drawing inside it is found, to the
+6 px a click reaches; an outline the box sits wholly inside does not count,
+since a click there would not select it either. Hidden and locked drawings,
+and drawings whose policy sets `selectable: false`, stay out, as they do for a
+click; a read-only drawing selects, as it does for a click.
+
+The chart pans on a press over empty space, so the box is made ready before
+the press: while Ctrl is held over empty space (the chart's `hover` reports no
+hit and a `crosshair:move` carries Ctrl) with no tool armed and no pick
+waiting, the controller puts the chart in placement mode, and gives the pan
+back on the first report that no longer holds. The tier reads the keys from
+pointer reports only, so Ctrl pressed with the pointer standing still just
+before the press still pans; moving the pointer once with Ctrl held is enough.
+A Ctrl+click on empty space that
+never becomes a drag is the click it always was, and Ctrl+drag that starts on a
+drawing drags it (with the strong magnet). The box is painted by the pane's top
+layer (a `DrawingLayer` subclass), a thin solid rim over a translucent fill in
+the theme's `lineColor` (solid, so it never reads as the dashed crosshair), and
+is gone on release.
+
+### Drag to copy (since 2.5.9)
+
+Alt (Option on macOS) plus a drag on a drawing's body leaves the drawing where
+it is and moves a copy of it instead: the whole selection, as a plain drag
+would move it (locked and read-only members are neither moved nor copied), and
+the copies end up selected. The copy is made once the pointer has travelled 3
+px from the press, so an unsteady click leaves no copy hidden under the
+drawing. It is one undo step: the step's `drawing:change` is `kind: 'add'` with
+the copies' ids, and undo takes the copies away. The copies are announced
+once, at the drop (`draw:add`, then the `drawing:change`), never at the place
+they were copied from, so a `DrawingLinkGroup` sends each linked chart one new
+drawing where it landed. Like `duplicate`, each copy is the user's own: a new
+id, no `policy`, and no link lineage. A cancelled drag (`drag:cancel`, Escape,
+a pane removed) takes the copies back out and gives the selection back, with
+no step recorded. The magnet lands a copy the way it lands a moved shape, and
+Ctrl with Alt copies with the strong magnet. A handle drag with Alt is a
+handle drag.
+
+### Eraser mode (since 2.5.9)
+
+`draw.setEraser(true)` turns eraser mode on: a click on a drawing deletes it,
+and a drag deletes every drawing it crosses, as one undo step when the pointer
+lets go (one `drawing:change`, `kind: 'remove'`, with every id). What it
+touches is measured the way a click is, within the grab radius of the path
+the pointer took (twice that for a touch), so a fast sweep takes a thin line
+it passed between two pointer reports. Drawings the drag has touched are left
+unpainted while it goes on and deleted on release; an interrupted drag (a
+change of data context, a restore) gives them back and records nothing. It
+takes only what the user could select and delete: a read-only drawing
+(`policy.editable: false`), a locked, an unselectable and a hidden one stay. A
+click on empty space does nothing.
+
+While it is on the chart is in placement mode, so a drag erases rather than
+pans, and the pane under the pointer shows a ring the size of the eraser's
+reach. Turning it on disarms any armed tool (`draw:tool` fires with `null`);
+`setTool` (with a tool or `null`), `cancel()` and `setEraser(false)` turn it
+off, and `draw:eraser` (`{ active }`) fires on each change. `erasing()` reads
+it. A host routing Escape through `keyToDrawingAction` passes
+`placing: draw.activeTool() !== null || draw.measuring() || draw.erasing()`
+so that Escape reaches `cancel()`. It is a mode, not a modifier, so it has no
+`gestures` flag: a host that offers no eraser control never turns it on.
+
+## Visibility per interval (since 2.5.9)
+
+A drawing can carry the range of chart intervals it is shown on:
+`Drawing.intervals`, a `DrawingIntervalRange` of interval codes, `{ from?, to? }`,
+both ends included. Absent means every interval. A level drawn on hourly bars
+is often noise on the one minute chart and too fine to matter on the weekly
+one, so `{ from: '1m', to: '1h' }` keeps it to those.
+
+```ts
+import { DrawingController, drawingShownOnInterval, INTERVAL_FIELDS, composeSettings } from 'openalgo-charts/draw';
+
+chart.setDataContext({ symbol: 'INFY', exchange: 'NSE', interval: '15m' });
+const draw = new DrawingController(chart);
+const level = draw.add({ tool: 'horizontal-line', paneIndex: 0, style: {}, points: [{ time, price }],
+  intervals: { from: '1m', to: '1h' } });
+draw.update(level.id, { intervals: { to: '4h' } });   // replaces the range, one undo step
+draw.update(level.id, { intervals: null });            // every interval again ({} does the same)
+
+chart.setDataContext({ symbol: 'INFY', exchange: 'NSE', interval: 'D' });
+draw.shownOnInterval(level.id);      // false while the chart is on daily bars
+draw.hiddenOnInterval();             // [level.id]: every drawing the interval hides, in one pass
+drawingShownOnInterval(level, '5m'); // the same test for any interval, no controller needed
+```
+
+How intervals compare:
+
+- **By bar length, from the interval registry.** `60m` and `1h` are one interval,
+  and a host's own codes (`registerInterval`) take part like the built-in
+  tokens. A calendar interval counts a mean month per month: it has no fixed
+  length, but a month still sorts above a week and below a quarter.
+- **The ends either way round.** The range is the span between them; an absent
+  end is no limit on that side (`{ to: '1h' }` is everything up to hourly).
+- **A comparison that cannot be made hides nothing.** An end nothing resolves
+  to a length (an unknown code, a tick or volume interval) is no limit, and a
+  chart interval of that kind, or none at all, shows every drawing.
+- A stored or requested range keeps only ends that are non-blank strings, and
+  one naming neither end is no range.
+
+**The chart's interval is its data context's.** The controller reads
+`chart.getDataContext()?.interval` (optional on `DrawingChartHost`) when it is
+built, and follows every `data:context`; a host with no `getDataContext` is
+followed through the event's payload. `interval()` returns it, or `null` for
+none or a blank one. The change applies the moment the chart announces it, and
+the layers are listed again only when the set of hidden drawings changed, so a
+new symbol on the same interval repaints nothing. The context
+`publishDataContext` passes through on a change of data variant alone, whose
+interval is cleared, is not followed, as the chart's other listeners skip it:
+the interval, the layers and the selection stay as they were until the real
+context arrives within the same call.
+
+**Outside its range a drawing is kept but not on the chart.** It stays in
+`drawings()`, `toJSON()`, the undo history and every link, but no layer lists
+it, so:
+
+- nothing paints it, and `chart.exportSVG()` and `takeScreenshot()` leave it out;
+- a click passes through it, and a box select or an eraser drag does not reach it;
+- an interval change drops it from the selection and the hover. Picked on
+  purpose (`select(id)`, an objects panel row) it is selectable all the same,
+  so a settings panel can widen its range; it has no handles to show.
+- the object inventory lists it with `hiddenOnInterval: true` and withholds
+  `focus`, which would bring into view a place where nothing is drawn. A group
+  row is marked when every drawing in it is hidden. The row's `visible` stays
+  the user's own switch. The controller answers the inventory through the
+  optional `ChartObjectDrawingSource.hiddenOnInterval()`, asked once per
+  refresh rather than once per row.
+- `visible` is untouched: the range is not the user's show and hide switch.
+  An alert on the drawing keeps firing, since a display choice is not a
+  change of the level it watches. `clear()` still takes every drawing the user
+  may delete, hidden ones included. A host's "select all" should take
+  `hiddenOnInterval()` out, as the reference host's does, or the delete that
+  follows removes drawings nobody can see on this interval.
+
+A copy carries the range: `duplicate`, Alt+drag and the clipboard keep it.
+**A paste never lands hidden:** a copy whose range leaves out the receiving
+chart's interval is pasted without it, since a paste that shows nothing looks
+like a paste that failed. A `DrawingLinkGroup` shares the range, and each linked
+chart shows the drawing by its own interval.
+
+**Settings.** The pair is two dot paths, `intervals.from` and `intervals.to`,
+of kind `'interval'` in the `'visibility'` group: `INTERVAL_FIELDS`. No tool
+declares them, because the engine cannot list a host's intervals. A host that
+offers the control adds them and renders its own interval list, with an empty
+choice for no limit:
+
+```ts
+const schema = composeSettings([drawingSettingsSchema(d.tool).fields, INTERVAL_FIELDS]);
+readDrawingSettings(d, schema);          // { ..., 'intervals.from': '1m', 'intervals.to': '1h' }
+draw.update(d.id, applyDrawingSettings(d, { 'intervals.to': 'D' }, schema));
+```
+
+`coerceSettingValue` trims an `'interval'` value and turns an empty one into
+`undefined`, which removes that end; `applyDrawingSettings` returns the pair
+whole as `intervals`, and `{}` once neither end is left, which the controller
+takes as no range. `DrawingPatch.intervals` replaces the range; `null` or `{}`
+clears it. A forced patch on a read-only drawing is held and taken into the
+history like any other forced patch.
+
+**Document version 3.** The range is the one field version 3 added.
+
+- A version 2 document is a valid version 3 one and loads unchanged, version
+  and all: `migrateDrawings` keeps `version: 2` for a document with no range.
+- `toJSON()`, `migrateDrawings` and a clipboard payload are written as version
+  3 only while a drawing carries a range, and as version 2 again once none
+  does. `InstrumentDrawings` stores what the controller writes, so a stored
+  version 2 document is read through the migration and written back only when
+  something in it changes, then as whichever version holds it.
+- **An older reader and a version 3 document.** A build before this one reads
+  version 2. Its clipboard refuses a payload newer than it reads, so it pastes
+  nothing from a copy that carries a range, and still pastes a copy without
+  one (written as version 2). Its migration never refused a document: it keeps
+  the fields it knows and drops the rest, so it opens a version 3 layout with
+  every drawing, shows the ranged ones on every interval, and writes the next
+  save without their ranges. Keep a layout with ranges away from an older
+  build, or expect to set the ranges again.
+- This build reads a document from a later version the same lenient way:
+  what it knows is kept and the rest dropped, since refusing it would empty
+  the chart on load. The clipboard, which can refuse without losing anything,
+  refuses a payload newer than `DRAWING_CLIPBOARD_VERSION`.

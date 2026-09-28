@@ -200,6 +200,30 @@ application fails while the operation still owns the chart. A nested newer resto
 invalidates that recovery, even on the same chart object. Template application does
 not require reloading market data. See the [interactive template example](/examples#copy-study-layouts-with-templates).
 
+## Drawing style templates
+
+The look of a drawing tool can be saved too (since 2.5.9): as the tool's default, which new
+drawings of that tool start with, and under a name, to apply later. `DrawingTemplateRepository`
+keeps both in one revision-checked catalog per namespace, with the same storage rules as
+workspaces. The widget takes it as `drawingTemplates` and offers the controls itself.
+
+```ts
+import { DrawingTemplateRepository, createIndexedDbDrawingTemplateStorage } from 'openalgo-charts/workspace';
+
+const templates = new DrawingTemplateRepository(createIndexedDbDrawingTemplateStorage(indexedDB), 'account-7');
+await templates.saveTemplate('Swing low support', 'trend-line', { 'style.color': '#f0a020', 'style.lineWidth': 2 });
+await templates.setDefault('rectangle', { 'style.fill': true, 'style.fillOpacity': 0.1 });
+```
+
+A template's values are keyed by the paths of the tool's settings schema (`style.color`,
+`text.fontSize`, `props.showPrices`), so the draw tier applies them with
+`applyDrawingSettings` and drops a path the tool no longer has. The text a drawing says,
+its anchors and its lock are not part of a look and are refused. Saving under a name the
+tool already has replaces that template. A change prepared from an older revision, or one
+that loses a race with another tab, is refused with `DrawingTemplateConflictError`, and a
+corrupt catalog is never overwritten. `createMemoryDrawingTemplateStorage` keeps a catalog
+in memory for tests and previews.
+
 ## Storage and replay boundaries
 
 Repository mutations are serialized, read the latest catalog and increment its

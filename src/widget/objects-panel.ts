@@ -1,7 +1,8 @@
 import { widgetText } from './localization';
 import type { ChartObjects, ChartObjectSnapshot } from 'openalgo-charts';
 import type { WidgetContext } from './context';
-import { button, dialogFrame, el, openPanel, type PanelHandle } from './form';
+import { button, dialogFrame, el, glyphSvg, openPanel, type PanelHandle } from './form';
+import { GRIP_GLYPH } from './glyphs';
 
 export interface ObjectsPanelOptions {
   /** Overrides the widget's inventory for a custom host. The caller owns it. */
@@ -76,7 +77,10 @@ export function createObjectsPanelContent(ctx: WidgetContext, opts: ObjectsPanel
   empty.setAttribute('role', 'status');
   const count = el(doc, 'span', 'oac-objects__count');
   count.setAttribute('role', 'status');
-  content.append(search, list, empty, count);
+  // How the list reads and how to change it, once, rather than on every row.
+  const hint = el(doc, 'p', 'oac-objects__hint', text('orderHint', 'Each pane lists back to front. Drag a row, or press Alt with an arrow key, to move it.'));
+  hint.hidden = typeof objects.stack !== 'function';
+  content.append(search, hint, list, empty, count);
   const groupName = el(doc, 'input', 'oac-objects__group-name');
   groupName.type = 'text';
   groupName.dataset.action = 'group-name';
@@ -226,6 +230,20 @@ export function createObjectsPanelContent(ctx: WidgetContext, opts: ObjectsPanel
       event.preventDefault(); event.stopPropagation();
       dropOn(item.id, dropSide(node, event, item.id)); draggedId = null;
     });
+    // The keyboard's drag: Alt with an arrow steps the row the way Earlier and Later do.
+    node.addEventListener('keydown', event => {
+      const key = (event as KeyboardEvent).key;
+      if (!(event as KeyboardEvent).altKey || (key !== 'ArrowUp' && key !== 'ArrowDown')) return;
+      const control = rows.get(item.id)?.buttons.get(key === 'ArrowUp' ? 'earlier' : 'later');
+      if (control === undefined) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!control.disabled) control.click();
+    });
+    const grip = el(doc, 'span', 'oac-objects__grip');
+    grip.setAttribute('aria-hidden', 'true');
+    grip.innerHTML = glyphSvg(GRIP_GLYPH);
+    node.appendChild(grip);
     const summary = item.capabilities.select
       ? button(doc, { label: '', onClick: event => act('select', item.id, event) })
       : el(doc, 'div');
@@ -494,8 +512,14 @@ export const OBJECTS_PANEL_CSS = `
 .oac-widget .oac-objects__list::-webkit-scrollbar-thumb:hover { background: var(--oac-mut); }
 .oac-widget .oac-objects__find { width: 100%; min-width: 0; flex: none; }
 .oac-widget .oac-objects__list { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 2px; }
-.oac-widget .oac-objects__row { display: flex; flex-direction: column; gap: 4px; padding: 6px; margin-bottom: 4px;
+.oac-widget .oac-objects__row { position: relative; display: flex; flex-direction: column; gap: 4px; padding: 6px; margin-bottom: 4px;
   border: 1px solid var(--oac-bd-soft); border-radius: 6px; min-width: 0; }
+.oac-widget .oac-objects__row[draggable="true"] { cursor: grab; }
+.oac-widget .oac-objects__grip { display: none; position: absolute; top: 7px; right: 6px; color: var(--oac-faint); line-height: 0; pointer-events: none; }
+.oac-widget .oac-objects__row[draggable="true"] > .oac-objects__grip { display: block; }
+.oac-widget .oac-objects__grip > svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.oac-widget .oac-objects__row[draggable="true"] > .oac-objects__summary { padding-right: 18px; }
+.oac-widget .oac-objects__hint { margin: 0 2px; color: var(--oac-faint); font-size: 11px; line-height: 1.4; }
 .oac-widget .oac-objects__row.is-selected { border-color: var(--oac-acc); background: var(--oac-elev); }
 .oac-widget .oac-objects__row.is-drop-before { box-shadow: inset 0 2px 0 var(--oac-acc); }
 .oac-widget .oac-objects__row.is-drop-after { box-shadow: inset 0 -2px 0 var(--oac-acc); }

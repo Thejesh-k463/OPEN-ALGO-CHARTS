@@ -32,8 +32,11 @@ export function registerTransformChartTypes(): void {
     draw: (g, items, toY, bs, dpr, s, rc) => drawPointFigure(g, items, toY, bs, dpr, s, rc.plotHeight),
     extents: (bar) => ({ min: bar.low, max: bar.high }),
   });
+  // Kagi joins each vertex to the next like a step line, so it takes the
+  // neighbour beyond each edge too: otherwise the connector that enters the
+  // view is lost, which on a sparse vertex series is most of the line.
   registerChartType('kagi', {
-    defaultStyle: { thickColor: '#26a69a', thinColor: '#ef5350' }, isPriceSeries: true,
+    defaultStyle: { thickColor: '#26a69a', thinColor: '#ef5350' }, isPriceSeries: true, connectsBars: true,
     draw: (g, items, toY, _bs, dpr, s) => drawKagi(g, items, toY, dpr, s),
     extents: (bar) => ({ min: bar.close, max: bar.close }),
   });

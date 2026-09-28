@@ -94,7 +94,7 @@ export type { Toaster, ToastHandle, ToastKind, ToastOptions } from './toast';
 
 export {
   widgetTokens, applyTokens, themeMode, token, parseColor, formatColor, luminance, mix, withAlpha,
-  TOKEN_PREFIX, WIDGET_FONT, WIDGET_MONO, RAIL_WIDTH, TOPBAR_HEIGHT, STATUSLINE_HEIGHT,
+  contrastRatio, readableOn, TEXT_CONTRAST, TOKEN_PREFIX, WIDGET_FONT, WIDGET_MONO, RAIL_WIDTH, TOPBAR_HEIGHT, STATUSLINE_HEIGHT,
 } from './tokens';
 export type { WidgetThemeName, WidgetTokens, Rgba } from './tokens';
 
@@ -102,19 +102,23 @@ export { WIDGET_CSS, WIDGET_STYLE_ID, injectWidgetStyles } from './styles';
 export { WIDGET_COMPONENT_CSS } from './component-styles';
 export { mountMobile } from './mobile';
 export type { MobileMode, MobileOptions, MobileHandle } from './mobile';
+export { mountDrawingToolbar, TOOLBAR_LINE_WIDTHS, DRAWING_TOOLBAR_CSS } from './drawing-toolbar';
+export type { DrawingToolbarOptions, DrawingToolbarHandle } from './drawing-toolbar';
+export { createDrawingTemplates, DRAWING_TEMPLATES_CSS } from './drawing-templates';
+export type { DrawingTemplates } from './drawing-templates';
 
 // The dialog tier. Importing it registers the mounts with the shell's
 // registry, which is what lights up the top bar's settings and indicator
 // buttons; the widget's stylesheet carries DIALOG_CSS for the same reason.
 export {
-  mountSettingsDialog, mountIndicatorPicker, mountIndicatorSettings, mountDrawingProperties,
-  mountLevelEditor, mountTextEditor, mountContextMenu, attachContextMenu, contextMenuEntries,
+  mountSettingsDialog, mountIndicatorPicker, mountIndicatorSettings, mountDrawingProperties, mountDrawingCoordinates,
+  DRAWING_COORDINATES_CSS, mountLevelEditor, mountTextEditor, mountContextMenu, attachContextMenu, contextMenuEntries,
   WIDGET_DIALOGS, DIALOG_CSS,
   mountAlertEditor, mountAlertsPanel,
 } from './dialogs/index';
 export type {
   SettingsDialogOptions, IndicatorPickerOptions, IndicatorSettingsOptions, IndicatorSettingsTab,
-  DrawingPropertiesOptions, LevelEditorOptions, TextEditorOptions, TextEditorHandle,
+  DrawingPropertiesOptions, DrawingCoordinatesHandle, LevelEditorOptions, TextEditorOptions, TextEditorHandle,
   ContextMenuHooks, ContextMenuOptions, MenuEntry, MenuItem, OrderRequest, PanelHandle,
   AlertEditorOptions, AlertsPanelOptions,
 } from './dialogs/index';

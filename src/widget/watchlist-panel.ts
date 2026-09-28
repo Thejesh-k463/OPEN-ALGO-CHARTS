@@ -694,8 +694,9 @@ export const WATCHLIST_PANEL_CSS = `
 .oac-widget .oac-watchlist__symbol { font-weight: 600; }
 .oac-widget .oac-watchlist__exchange { margin-left: 5px; font-size: 10px; color: var(--oac-mut); }
 .oac-widget .oac-watchlist__last { color: var(--oac-tx); }
-.oac-widget .oac-watchlist .is-up { color: var(--oac-up, #26a69a); }
-.oac-widget .oac-watchlist .is-down { color: var(--oac-down, #ef5350); }
+/* The theme's own pair, lifted to read as text. A fallback colour here would pin one palette. */
+.oac-widget .oac-watchlist .is-up { color: var(--oac-up); }
+.oac-widget .oac-watchlist .is-down { color: var(--oac-down); }
 .oac-widget .oac-watchlist__row[data-state="stale"] td, .oac-widget .oac-watchlist__row[data-state="unavailable"] td, .oac-widget .oac-watchlist__row[data-state="error"] td, .oac-widget .oac-watchlist__row[data-state="loading"] td { color: var(--oac-mut); }
 .oac-widget .oac-watchlist__row[data-state="stale"] .oac-watchlist__last { text-decoration: underline dotted; text-underline-offset: 3px; }
 .oac-widget .oac-watchlist__actions { padding: 0 4px 0 0 !important; }

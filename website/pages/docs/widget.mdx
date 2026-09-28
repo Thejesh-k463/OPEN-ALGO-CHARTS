@@ -12,7 +12,7 @@ import { Callout } from 'nextra/components'
 with a top bar (symbol, interval, chart type, theme, settings, indicators, objects, alerts), a drawing rail
 down the left, a status line, the dialogs behind each of those buttons, keyboard shortcuts
 with a `?` panel that lists them, and optional persistence of the layout. It is one of nine
-loadable tiers (**92.72 kB** Brotli in 2.5.8) and the only tier that supplies
+loadable tiers (**99.64 kB** Brotli in 2.5.9) and the only tier that supplies
 application controls.
 
 The drawing rail includes Anchored VWAP and fixed-range Volume Profile. They use
@@ -406,8 +406,10 @@ passes through to `createChart` unchanged.
 | `indicators` | `boolean` | The Indicators button and picker. Turn it off for a host that manages indicators itself. |
 | `persist` | `boolean` \| `string` | `true` saves the state under the `default` namespace (`oac-widget:default:state`) and restores it on the next `createWidget`; a string names the namespace, for more than one widget per origin. |
 | `storage` | `StorageLike` \| `null` | The store behind `persist`. Default: the page's `localStorage`. |
-| `drawingScope` | `'instrument'` \| `'chart'` | Whose drawings the chart shows (unreleased). Default `'instrument'`: each symbol and exchange keeps its own. `'chart'` keeps one set on screen whatever symbol is loaded. See [Drawings per instrument](#drawings-per-instrument). |
-| `drawingStore` | `DrawingDocumentStore` | Where each instrument's drawings are kept (unreleased). Default: beside the layout with `persist`, else in memory. |
+| `drawingScope` | `'instrument'` \| `'chart'` | Whose drawings the chart shows (since 2.5.9). Default `'instrument'`: each symbol and exchange keeps its own. `'chart'` keeps one set on screen whatever symbol is loaded. See [Drawings per instrument](#drawings-per-instrument). |
+| `drawingStore` | `DrawingDocumentStore` | Where each instrument's drawings are kept (since 2.5.9). Default: beside the layout with `persist`, else in memory. |
+| `drawingTemplates` | `DrawingTemplateStore` | Saved drawing looks (since 2.5.9): a tool's default and named templates, usually a `DrawingTemplateRepository` from `openalgo-charts/workspace`. Without one no template control is shown. See [Drawing toolbar, templates and coordinates](#drawing-toolbar-templates-and-coordinates). |
+| `drawingToolbar` | `boolean` | The floating toolbar over the selected drawings on a desktop layout (since 2.5.9). Default: on with the rail. |
 | `locale` | `string` | A BCP 47 tag the status line formats numbers with. |
 | `symbolSearch` | `(query) => SymbolMatch[] \| Promise<SymbolMatch[]>` | Called as the user types in the symbol box; the results open as a menu under it. |
 | `lookbackBars` | `number` | Bars per load. Default 500. |
@@ -437,7 +439,7 @@ The Objects panel names it **Price pane** in its headings and move targets, wher
 
 ## Drawings per instrument
 
-A trend line drawn on one symbol belongs to that symbol (unreleased). Loading another symbol,
+A trend line drawn on one symbol belongs to that symbol (since 2.5.9). Loading another symbol,
 from the symbol box, direct typing, a watchlist row or `setSymbol`, saves the drawings of
 the symbol on screen and shows the new symbol's own; the first symbol's come back with it,
 and deleting everything on the second leaves them alone. A new interval or data variant
@@ -466,6 +468,53 @@ widget.instrumentDrawings?.document({ symbol: 'INFY', exchange: 'NSE' });   // r
   without evaluating, while another symbol is on screen.
 - **The old behaviour.** `drawingScope: 'chart'` keeps one set of drawings on screen whatever
   symbol is loaded, for a host that wants drawings to follow the chart.
+
+## Drawing toolbar, templates and coordinates
+
+Select a drawing on a desktop layout and a small toolbar appears just above it (since 2.5.9):
+a colour swatch, the line width, the line style, lock, delete and a more menu with
+properties, duplicate, hide, the stacking order and the template rows. It stays inside
+the chart, drops below the drawing when the top has no room, follows a pan, a zoom or a
+rescaled price axis, and steps aside while you drag the drawing or place another. The
+narrow layout keeps its own selection bar.
+
+- **Only what the tools have.** A control shows only when every selected drawing's
+  settings schema declares its field, so a callout gets a swatch and no line width.
+- **Mixed values.** Select drawings that disagree and the control says so: the swatch
+  splits into two of the colours in use, the width reads "Mixed", and lock is half pressed
+  (`aria-pressed="mixed"`) until you choose.
+- **One step each.** Every change, to one drawing or twenty, is one Ctrl+Z.
+- **Policies.** A drawing its host made read-only shows the edit controls greyed with the
+  reason.
+- **Keyboard.** Tab from the focused chart reaches the toolbar; the arrow keys, Home and End
+  move between its controls, and Escape goes back to the chart with the selection kept.
+
+**Style templates.** Give the widget a template store and the more menu and the properties
+dialog's Templates button offer **Save as default for this tool**, **Save as template...**
+and **Apply** for each saved look of the selected tool:
+
+```ts
+import { createWidget } from 'openalgo-charts/widget';
+import { DrawingTemplateRepository, createIndexedDbDrawingTemplateStorage } from 'openalgo-charts/workspace';
+
+const drawingTemplates = new DrawingTemplateRepository(createIndexedDbDrawingTemplateStorage(indexedDB), 'account-1');
+const widget = createWidget(el, { feed, symbol: 'INFY', exchange: 'NSE', drawingTemplates });
+```
+
+A default reaches only the drawings you place with that tool after saving it: the lines
+already on the chart keep their look, and so does a pasted or duplicated one. Placing a
+drawing with a default is still one undo step. A template holds the look (colours, widths,
+fonts, levels), never the words or the anchors. See [Workspaces](/docs/workspaces#drawing-style-templates)
+for the store.
+
+**Coordinates.** The properties dialog has a Coordinates tab with every anchor as a date,
+a time and a price. Times are on the chart's clock (the `timezone` option, IST by default),
+so a time typed there lands on the candle it names on the axis. A row is written when you
+press Enter or move the focus out of it, as one undo step; a value that does not read is
+refused with the reason and writes nothing. A field you did not touch keeps its exact value.
+
+**Objects panel.** Each pane lists its objects back to front. Drag a row by its grip onto
+the upper or lower half of another, or focus it and press Alt with an arrow key.
 
 ## Live history and reconnect recovery
 
@@ -526,11 +575,18 @@ injected per page, scoped under that class, so nothing leaks into the host page 
 nothing from the host page leaks in. Calling `setTheme` rewrites the tokens; every control
 follows without a repaint of its own.
 
+The text tokens are measured, not only derived: `mut`, `faint`, `amber` and `danger` are
+the dimmest colours that still read at the WCAG AA minimum of 4.5 to 1 on the panels they sit
+on, in both built-in themes and in a theme of your own, and `up` and `down` are your candle
+colours lifted the same way for a price change written as text. `buy` and `sell` stay the
+raw candle colours for fills and borders. `contrastRatio` and `readableOn` are exported for a
+host that derives colours of its own.
+
 | Token group | Names (each prefixed `--oac-`) |
 |---|---|
 | Surfaces | `bg`, `panel`, `panel-2`, `elev`, `elev-2`, `elev-3`, `scrim`, `shadow` |
 | Borders | `bd`, `bd-soft`, `bd-hover` |
-| Text | `tx`, `tx-strong`, `mut`, `faint` |
+| Text | `tx`, `tx-strong`, `mut`, `faint`, `up`, `down` |
 | Accent and state | `acc`, `acc-2`, `on-bg`, `on-bd`, `ring`, `ring-soft`, `buy`, `sell`, `amber`, `danger` |
 | Scrollbars | `sb-thumb`, `sb-thumb-hover` |
 | Type and metrics | `font`, `mono`, `fs`, `radius`, `rail-w`, `topbar-h`, `status-h`, `ctl-h` |
@@ -646,13 +702,13 @@ widget: a tier loaded beside it would import its own second engine. See
 
 ## Size
 
-Budgets from `.size-limit.json` and measurements from the 2.5.8 build, decimal
+Budgets from `.size-limit.json` and measurements from the 2.5.9 build, decimal
 Brotli kB, enforced by `npm run size`:
 
 | Row | Files | Budget | Measured |
 |---|---|--:|--:|
-| Widget tier | `openalgo-charts.widget.mjs` | 92.72 kB | 92.72 kB |
-| Widget terminal | base + draw + indicators + widget | 311.90 kB | 311.90 kB |
+| Widget tier | `openalgo-charts.widget.mjs` | 99.65 kB | 99.64 kB |
+| Widget terminal | base + draw + indicators + widget | 327.32 kB | 327.32 kB |
 
 The widget is a tier because of these rows. A host that never calls `createWidget`
 downloads none of it, and the base engine's own budget is unchanged.

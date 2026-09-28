@@ -563,10 +563,14 @@ The string token passed to `chart.addSeries(type)`. See [Chart Types](/docs/char
 interface DrawItem {
   x: number; // bar center, media px
   bar: Bar;
+  /** Close of the bar left of the view, on the first item, when previous-close colouring asks. */
+  prevClose?: number;
+  /** On a neighbour beyond the view only: the x of the plot edge it lies past (media px). */
+  edgeX?: number;
 }
 ```
 
-One rendered bar slot passed to a custom renderer's `draw` function.
+One rendered bar slot passed to a custom renderer's `draw` function. For a renderer that sets `connectsBars`, the first and last item can be the series' nearest bar beyond each edge of the view, marked by `edgeX` (since 2.5.9): `0` on the left, the plot width on the right. Such a neighbour can sit millions of pixels off screen, so cut the segment to it at `edgeX` rather than stroke it all the way out, and draw nothing of its own. It is the series' very next bar, value or not: when it, or the bar in view next to it, has no value, join nothing across it.
 
 ### `SeriesRenderContext`
 
@@ -587,6 +591,8 @@ interface RendererEntry {
   defaultStyle: SeriesStyle;
   /** True for price series whose last close drives the last-price line. */
   isPriceSeries: boolean;
+  /** True for a renderer that joins each bar to the next: its items gain the neighbour beyond each edge. */
+  connectsBars?: boolean;
   draw(
     ctx: CanvasRenderingContext2D,
     items: readonly DrawItem[],
@@ -601,6 +607,8 @@ interface RendererEntry {
 ```
 
 Descriptor for a registered chart type. `extents` returns the min/max price contribution of a single bar for autoscaling. Register custom types with `registerChartType(name, entry)`. See [Chart Types](/docs/chart-types).
+
+`connectsBars` (since 2.5.9) is for a renderer that draws a segment from each bar to the next, as the built-in line, line-markers, step, area, HLC area and baseline do, and kagi in the transform tier. Its `items` then carry the series' nearest bar beyond each edge of the view as well as the bars in it, so the segment that crosses an edge is drawn: without them a sparse line (a level held for an hour, a position that steps twice a session) loses the part that enters from off screen, or all of it when none of its bars is in view. Autoscale still reads only the bars in view.
 
 ---
 

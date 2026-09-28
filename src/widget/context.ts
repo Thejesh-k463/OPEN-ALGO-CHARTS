@@ -20,6 +20,7 @@ import type { WidgetThemeName } from './tokens';
 import type { WidgetTranslator } from './localization';
 import type { SymbolSearch } from './symbol-picker';
 import type { ChartHistory } from './history';
+import type { DrawingTemplates } from './drawing-templates';
 
 // ── small DOM helpers ───────────────────────────────────────────────────
 
@@ -696,6 +697,11 @@ export interface WidgetContext {
    * controller's own history.
    */
   readonly history?: ChartHistory;
+  /**
+   * Saved drawing looks, when the host gave the widget a template store:
+   * the properties dialog and the floating toolbar offer them.
+   */
+  readonly drawingTemplates?: DrawingTemplates;
   /** The `.oac-widget` element every piece of chrome lives in. */
   readonly root: HTMLElement;
   readonly document: Document;

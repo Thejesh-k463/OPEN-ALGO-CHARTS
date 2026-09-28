@@ -86,7 +86,7 @@ Everything `src/widget/index.ts` exports at runtime. The shell (`createWidget` a
 | `DEFAULT_LOOKBACK_BARS` | const `500` | Bars per load when `lookbackBars` is not given. |
 | `SAVE_DEBOUNCE_MS` | const `250` | Debounce on writing the persisted layout. |
 | `STATE_KEY` | const `'state'` | The storage entry the layout lives under. |
-| `DRAWINGS_KEY_PREFIX` | const `'drawings:'` | (unreleased) With `persist`, each instrument's drawings live beside the layout under this prefix and the instrument key: `oac-widget:<namespace>:drawings:NSE:INFY`. |
+| `DRAWINGS_KEY_PREFIX` | const `'drawings:'` | (since 2.5.9) With `persist`, each instrument's drawings live beside the layout under this prefix and the instrument key: `oac-widget:<namespace>:drawings:NSE:INFY`. |
 | `WIDGET_STATE_VERSION` | const `1` | `WidgetState.version`. |
 | `Widget`, `WidgetOptions`, `WidgetState`, `WidgetChartState`, `WidgetRestoreReport`, `WidgetEventName` | types | See the sections below. |
 | `mountMobile(ctx, options)` | function | Mount the narrow header, bottom bar and sheets against an existing `WidgetContext`. Returns `MobileHandle`. |
@@ -187,6 +187,7 @@ the status line and download resources are released after handoff or failure.
 | `themeMode(theme)` | function | `'dark'` or `'light'`, judged from the theme background. |
 | `token(name)` | function | `var(--oac-name)`. |
 | `parseColor(input)`, `formatColor(c)`, `luminance(color)`, `mix(a, b, t)`, `withAlpha(color, alpha)` | functions | The colour maths the tokens are built from; exported for a host deriving its own. |
+| `contrastRatio(a, b)`, `readableOn(color, surfaces, pole, min?)`, `TEXT_CONTRAST` | functions, const `4.5` | (since 2.5.9) The WCAG ratio of two colours, and a colour stepped toward `pole` by the least amount that reads at `min` on every one of `surfaces`. The text tokens (`mut`, `faint`, `up`, `down`, `amber`, `danger`) are built with it, so they read at 4.5 to 1 in both built-in themes and in a host theme. |
 | `TOKEN_PREFIX` | const `'--oac-'` | |
 | `WIDGET_FONT`, `WIDGET_MONO` | consts | The UI and monospace font stacks. |
 | `RAIL_WIDTH`, `TOPBAR_HEIGHT`, `STATUSLINE_HEIGHT` | consts | `42`, `40`, `24` CSS pixels, shared by the stylesheet and the placement maths. |
@@ -206,7 +207,9 @@ Every mount takes the context and an optional anchor element (so it satisfies `D
 | `mountSettingsDialog(ctx, anchor?, { tab?, unavailable?, onApply?, onClose? })` | function | Chart settings, generated from `chartSettingsSchema(chart)`; Cancel and Escape revert the dirty keys. |
 | `mountIndicatorPicker(ctx, anchor?, { onAdd?, closeOnAdd? })` | function | Searchable, grouped list of every registered indicator. |
 | `mountIndicatorSettings(ctx, anchor?, { instanceId?, tab?, onChange?, onClose? })` | function | Inputs and styles for one indicator, from its descriptor. `instanceId` falls back to `anchor.dataset.instanceId`, then the chart's only indicator. |
-| `mountDrawingProperties(ctx, anchor?, { ids?, onClose? })` | function | The selected drawings' fields, from `drawingSettingsSchema`. |
+| `mountDrawingProperties(ctx, anchor?, { ids?, tab?, onClose? })` | function | The selected drawings' fields, from `drawingSettingsSchema`, on a Style tab, and (since 2.5.9) every anchor as a date, a time and a price on a Coordinates tab (`tab: 'coordinates'` opens on it). Bottom left: Restore defaults, and (since 2.5.9) Templates when the context carries `drawingTemplates`. |
+| `mountDrawingCoordinates(ctx, host, ids, why)` | function | (since 2.5.9) The Coordinates tab on its own, for a host's own dialog: `ids()` names the drawings and `why()` is the reason they are read-only, or null. Returns a `DrawingCoordinatesHandle` (`el`, `refresh()`, `destroy()`). |
+| `DRAWING_COORDINATES_CSS` | const | (since 2.5.9) Its rules, part of `WIDGET_COMPONENT_CSS`. |
 | `mountLevelEditor(ctx, anchor?, { ids? })` | function | Per-level ratio, colour and visibility for the fib and gann tools. |
 | `mountTextEditor(ctx, anchor?, { id?, onDone? })` | function | In-place editing laid over the painted text. Returns a `TextEditorHandle` with `commit()` and `cancel()`; an outside press commits, Escape cancels. |
 | `mountContextMenu(ctx, anchor?, { event?, hooks? })` | function | The right-click menu for the chart's `contextmenu` payload: trade rows when `onOrder` is given (limit and stop rows only over the price pane, where the pointer's price is the instrument's; a study pane offers the market rows alone), drawing actions on a drawing, scale modes on a price axis, `Move pane up` and `Move pane down` (row ids `pane-up`, `pane-down`, greyed at an edge, and greyed with the note "price pane stays on top" where a chart built without `movablePrimaryPane` would refuse the swap) over any pane when there are two or more, the price pane included, `Collapse pane` or `Expand pane` (row id `pane-collapse`) over a study pane in any slot, paste, fit, indicators, settings. A menu raised from a button names no pane and has no pane rows. A move or a collapse is saved with the layout and emitted as a `layout` event with reason `paneMoved` or `paneCollapsed`. |
@@ -223,7 +226,7 @@ Every mount takes the context and an optional anchor element (so it satisfies `D
 | `inputConditionMet(condition, values)` | function | (2.5.6) Whether one `IndicatorInputCondition` holds for a settings bag. Reads own keys only; a malformed condition counts as met. |
 | `InputState` | type | (2.5.6) One input's `visible`, `active` and the `dependsOn` keys its `activeWhen` reads. |
 | `IndicatorInputControlsOptions`, `IndicatorInputControlsHandle` | types | Native typed-field host actions. |
-| `SettingsDialogOptions`, `IndicatorPickerOptions`, `IndicatorSettingsOptions`, `IndicatorSettingsTab`, `DrawingPropertiesOptions`, `LevelEditorOptions`, `TextEditorOptions`, `TextEditorHandle`, `ContextMenuHooks`, `ContextMenuOptions`, `MenuEntry`, `MenuItem`, `OrderRequest`, `PanelHandle`, `FormControl`, `FormKind`, `FormOptions`, `FormHandle` | types | |
+| `SettingsDialogOptions`, `IndicatorPickerOptions`, `IndicatorSettingsOptions`, `IndicatorSettingsTab`, `DrawingPropertiesOptions`, `DrawingCoordinatesHandle`, `LevelEditorOptions`, `TextEditorOptions`, `TextEditorHandle`, `ContextMenuHooks`, `ContextMenuOptions`, `MenuEntry`, `MenuItem`, `OrderRequest`, `PanelHandle`, `FormControl`, `FormKind`, `FormOptions`, `FormHandle` | types | |
 
 `OrderRequest` is `{ side: 'BUY' | 'SELL'; type: 'MARKET' | 'LIMIT' | 'SL'; price: number | null; paneIndex: number }`; `price` is null for a market order. Otherwise it is the pointer's price, not snapped to the instrument's tick or `TickSchedule` (the widget knows neither), so round it, for example with `validatePrice`, before sending.
 
@@ -308,8 +311,10 @@ Color swatches stay compact. Theme overrides should target these tokens.
 | `indicators` | `boolean` | on | The Indicators button. |
 | `persist` | `boolean \| string` | off | `true` uses the `default` namespace; a string names one, so two widgets on a page keep separate layouts. |
 | `storage` | `StorageLike \| null` | the page's `localStorage` | The store behind `persist`. |
-| `drawingScope` | `'instrument' \| 'chart'` | `'instrument'` | (unreleased) Whose drawings the chart shows. `'instrument'`: each symbol and exchange keeps its own, swapped by `setSymbol`, a restored layout or a watchlist pick. `'chart'`: one set that stays whatever symbol is loaded, as before; `widget.instrumentDrawings` is then null. See Drawings per instrument, below. |
-| `drawingStore` | `DrawingDocumentStore` | beside the layout with `persist`, else in memory | (unreleased) Where each instrument's drawings are kept in `'instrument'` scope. Not a `ChartGridOptions` field: the grid gives each cell its own. |
+| `drawingScope` | `'instrument' \| 'chart'` | `'instrument'` | (since 2.5.9) Whose drawings the chart shows. `'instrument'`: each symbol and exchange keeps its own, swapped by `setSymbol`, a restored layout or a watchlist pick. `'chart'`: one set that stays whatever symbol is loaded, as before; `widget.instrumentDrawings` is then null. See Drawings per instrument, below. |
+| `drawingTemplates` | `DrawingTemplateStore` | none | (since 2.5.9) Saved drawing looks: a tool's default and named templates, from `openalgo-charts/workspace` (`DrawingTemplateRepository`). Without one no template control is shown. See Drawing toolbar, style templates and coordinates, below. |
+| `drawingToolbar` | `boolean` | on with the rail | (since 2.5.9) The floating toolbar over the selected drawings on a desktop layout. |
+| `drawingStore` | `DrawingDocumentStore` | beside the layout with `persist`, else in memory | (since 2.5.9) Where each instrument's drawings are kept in `'instrument'` scope. Not a `ChartGridOptions` field: the grid gives each cell its own. |
 | `locale` | `string` | the runtime's | BCP 47 tag for the numbers on the status line. |
 | `symbolSearch` | `(query) => SymbolMatch[] \| Promise<SymbolMatch[]>` | none | Called as the user types in the symbol box, after `SEARCH_DEBOUNCE_MS`. |
 | `lookbackBars` | `number` | `DEFAULT_LOOKBACK_BARS` | Bars per load. |
@@ -349,7 +354,7 @@ ordinary hosts should let `createWidget` wire and destroy it.
 ```ts
 widget.chart;                        // Chart
 widget.draw;                         // DrawingController
-widget.instrumentDrawings;           // InstrumentDrawings, or null with drawingScope 'chart' (unreleased)
+widget.instrumentDrawings;           // InstrumentDrawings, or null with drawingScope 'chart' (since 2.5.9)
 widget.root;                         // the .oac-widget element
 widget.context;                      // the WidgetContext every mounted piece was handed
 widget.objects;                      // the owned base-tier ChartObjects inventory
@@ -780,7 +785,7 @@ const report = grid.applyWorkspace(parseWorkspacePayload(fileText)); // { applie
 - Below `compactWidth` only the active cell shows, with a tab strip to switch; splitters
   hide. `CHART_GRID_CSS` is part of `WIDGET_COMPONENT_CSS`.
 
-## Drawings per instrument (unreleased)
+## Drawings per instrument (since 2.5.9)
 
 A widget keeps drawings per instrument by default (`drawingScope: 'instrument'`):
 a trend line drawn on one symbol stays with that symbol, comes back when it is
@@ -1001,3 +1006,95 @@ history.subscribe(refreshButtons); history.clear(); history.destroy();
   `study-order`, `chart-type`, `series-scale`, `pane-add`, `pane-remove`, `pane-order`,
   `pane-weight`, `pane-collapse`, `axis`, `settings`, `drawing`, `command`), `ChartHistoryError`
   (`direction`, `step`, `error`).
+
+## Drawing toolbar, style templates and coordinates (since 2.5.9)
+
+**Floating toolbar.** With the rail on (or `drawingToolbar: true`), selecting drawings on a
+desktop layout shows `.oac-drawbar` (`role="toolbar"`) over the chart: a colour swatch,
+the line width, the line style, lock, delete and a more menu (Properties..., Duplicate,
+Hide or Show, the four order rows, and the template rows). It sits above the selection's
+highest visible anchor, centred on the part of it in view, below the selection when the
+top has no room, and always inside the chart. It follows a pan, a zoom, a resize, an
+edit, a price axis dragged or wheeled, and a tick that moves the autoscale. It steps aside
+while a tool is placing, while a drawing is dragged (`draw:preview`), in the narrow layout
+(which has its own bar) and while the properties dialog is open.
+
+- A control shows only when every selected drawing's settings schema declares its field
+  (`style.color`, `style.lineWidth`, `style.lineStyle`), as the properties dialog does.
+- When the selection disagrees, the control says so: the swatch splits corner to corner
+  into two of the colours in use and is labelled "Color: mixed", the width reads "Mixed",
+  the style shows a solid line over a dashed one, and lock is `aria-pressed="mixed"`.
+- Each click is one step of `widget.history` (`transact`), however many drawings it
+  changes: one `updateMany`, one `removeMany`, or a front or back move of several.
+- A selection with nothing the user may edit (`policy.editable: false`) shows its edit
+  controls disabled with "(read-only)" in the title. Delete is also disabled when every
+  selected drawing is locked, as in the context menu.
+- Keyboard: it follows the chart in the tab order, so Tab from the focused chart reaches it,
+  with one tab stop. Inside it, the arrow keys (with or without Shift), Home and End move
+  between controls, and Escape goes back to the chart with the selection kept. Its key scope,
+  `drawing-toolbar`, claims every arrow the widget reads as a nudge, so none of them moves
+  the drawing while the focus is in the bar. Every label is a message key: `Drawing toolbar`,
+  `More drawing actions`, `Color: {value}`, `Line width`, `Line width: {value}`,
+  `Line style`, `Line style: {style}`, `{value} px`, `Solid`, `Dashed`, `Dotted`, `mixed`,
+  `Mixed`.
+- `mountDrawingToolbar(ctx, host, { chart?, templates? })` mounts one in a custom host,
+  after the chart element in `host`, and returns a `DrawingToolbarHandle` (`el`, `refresh()`,
+  `destroy()`). `TOOLBAR_LINE_WIDTHS` is `[1, 1.5, 2, 3, 4]`, and `DRAWING_TOOLBAR_CSS` holds
+  its rules (part of `WIDGET_COMPONENT_CSS`). Types `DrawingToolbarOptions`,
+  `DrawingToolbarHandle`.
+
+**Style templates.** Pass a store and the widget holds its catalog:
+
+```ts
+import { DrawingTemplateRepository, createIndexedDbDrawingTemplateStorage } from 'openalgo-charts/workspace';
+
+const templates = new DrawingTemplateRepository(createIndexedDbDrawingTemplateStorage(indexedDB), 'account-1');
+const widget = createWidget('#chart', { feed, symbol: 'INFY', drawingTemplates: templates });
+widget.drawingTemplates?.templatesFor('trend-line');   // saved looks for one tool
+```
+
+- The more menu and the properties dialog's Templates button (bottom left) offer "Save as
+  default for this tool", "Forget the default for this tool", "Save as template..." (a name
+  prompt; the same name on the same tool replaces that template) and "Apply {name}" for each
+  template of the selection's tool. A selection of several tools gets the save rows greyed
+  ("one tool at a time") and no apply rows; a read-only one gets apply greyed.
+- A template holds settings by schema path (`style.*`, `text.*`, `props.*`), never
+  `text.value`, anchors, a lock or a pane, and is applied through each drawing's own schema
+  (`applyDrawingSettings`), as one `updateMany`.
+- A tool's default reaches only drawings the user places with that tool after it was saved:
+  not the drawings already on the chart, not another tool, and not a host's `draw.add`, a
+  paste or a duplicate, even one made while that tool is in use. A placement is an `add`
+  step of one drawing of the tool in use that the controller closes, in the same turn, with
+  `draw:tool`. The default is written with `DrawingController.untracked` (through
+  `history.ignore`), which every recorded step takes in, so placing the drawing is still
+  one undo step and its redo brings the default back.
+- `createDrawingTemplates(ctx, store)` builds the holder for a custom host; the widget's is
+  `widget.drawingTemplates` and `ctx.drawingTemplates` (null and undefined without a store).
+  `DrawingTemplates`: `store`, `catalog()`, `templatesFor(tool)`, `defaultFor(tool)`,
+  `capture(drawing)`, `apply(ids, values)`, `saveDefault(id)`, `clearDefault(tool)`,
+  `saveTemplate(id, name)`, `removeTemplate(templateId)`, `subscribe(listener)`, `destroy()`.
+  A load that lands after a newer commit is ignored; a failed load puts "Drawing templates
+  could not be loaded" on the status line, and a failed save a toast. `DRAWING_TEMPLATES_CSS`
+  holds the name prompt's rules.
+
+**Coordinates.** The properties dialog's Coordinates tab lists each anchor as a date, a
+time and a price. Times are on the chart's clock (`chart.timezone()`, IST unless the chart
+says otherwise), with seconds only when the anchor has them. Prices show at the pane's
+precision (two decimals at least) when that is exact, and in full when it is not. A row is
+written on Enter or when the focus leaves the row, after it validates, as one `draw.update`
+and so one undo step; a field left as shown keeps its exact value. Not on `change`: a date
+or time field reports one for each segment typed, and each would be a step of its own. A
+date that names no day, a time that does not read, a price that is not a number, and a
+price at or below zero on a logarithmic scale are refused with the reason (`aria-invalid`),
+writing nothing. A drawing pinned to the screen and a freehand stroke list no anchors, with
+a note.
+
+**Objects panel.** Each pane lists back to front (a hint line says so), a draggable row
+carries a grip, and Alt with ArrowUp or ArrowDown on a row moves it one step the way
+Earlier and Later do.
+
+**Contrast.** `--oac-faint` is now the dimmest colour that reads at 4.5 to 1 on `bg`,
+`panel`, `panel-2` and `elev`; hints on a hovered row and the tooltip's second line use
+`--oac-mut`. New `--oac-up` and `--oac-down` are the candle pair lifted to read as text
+(the watchlist's moves and the status line's change use them); `--oac-buy` and
+`--oac-sell` stay the raw colours for fills and borders.

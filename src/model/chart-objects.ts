@@ -41,6 +41,12 @@ export interface ChartObjectSnapshot {
   readonly band?: ChartObjectBand;
   /** For a drawing in the series band: the id of the source or study row it paints directly above. */
   readonly stackAbove?: string;
+  /**
+   * True for a drawing whose interval range leaves out the chart's interval,
+   * and for a group all of whose drawings it leaves out: kept and listed so it
+   * can be found, but not on the chart. `visible` stays the user's switch.
+   */
+  readonly hiddenOnInterval?: boolean;
 }
 
 /** State supplied by a host for an explicitly managed profile or source. */
@@ -54,6 +60,8 @@ export interface ChartObjectDefinition {
   selected?: boolean;
   groupId?: string;
   dataStatus?: Readonly<IndicatorDataStatus>;
+  /** Kept but not on the chart at its current interval; see `ChartObjectSnapshot.hiddenOnInterval`. */
+  hiddenOnInterval?: boolean;
 }
 
 /** Actions are synchronous and offered only when their callback exists. */
@@ -116,6 +124,14 @@ export interface ChartObjectDrawingSource {
   renameGroup?(id: string, name: string): boolean;
   removeGroup?(id: string, removeDrawings?: boolean): boolean;
   updateMany?(patches: ReadonlyArray<{ id: string; patch: { visible?: boolean; locked?: boolean } }>): void;
+  /**
+   * The ids of the drawings the chart's interval leaves off the chart. Each
+   * one's row is marked `hiddenOnInterval` and offers no focus, which would
+   * bring into view a place where nothing is drawn. Asked once per refresh,
+   * as a list, so a large inventory costs one pass rather than a lookup per
+   * row. Without it every drawing is shown.
+   */
+  hiddenOnInterval?(): readonly string[];
 }
 
 export interface ChartObjectsOptions {
@@ -133,7 +149,7 @@ const sameRows = (a: readonly ChartObjectSnapshot[], b: readonly ChartObjectSnap
   a.length === b.length && a.every((x, i) => {
     const y = b[i];
     return x.id === y.id && x.name === y.name && x.kind === y.kind && x.paneIndex === y.paneIndex
-      && x.band === y.band && x.stackAbove === y.stackAbove
+      && x.band === y.band && x.stackAbove === y.stackAbove && x.hiddenOnInterval === y.hiddenOnInterval
       && x.visible === y.visible && x.locked === y.locked && x.selected === y.selected && x.groupId === y.groupId
       && x.dataStatus?.state === y.dataStatus?.state
       && (x.dataStatus?.state !== 'error' || (y.dataStatus?.state === 'error' && x.dataStatus.error === y.dataStatus.error))
@@ -448,6 +464,7 @@ export class ChartObjects {
         visible: state.visible !== false, locked: state.locked, groupId: state.groupId, selected: state.selected === true || this._selected === id,
         dataStatus: state.dataStatus ? Object.freeze({ ...state.dataStatus }) : undefined, capabilities,
         ...(band === undefined ? {} : { band }), ...(stackAbove === undefined ? {} : { stackAbove }),
+        ...(state.hiddenOnInterval === true ? { hiddenOnInterval: true } : {}),
       });
       rows.set(id, { row, actions });
     };
@@ -496,6 +513,8 @@ export class ChartObjects {
       // An unlisted drawing is not in the inventory at all, so no row, group
       // or group-wide action reaches it from here.
       const listed = (drawing: ChartObjectDrawing): boolean => drawing.policy?.listed !== false;
+      const hidden = new Set(draw.hiddenOnInterval?.() ?? []);
+      const offInterval = (drawing: ChartObjectDrawing): boolean => hidden.has(drawing.id);
       const membership = new Map<string, string>();
       for (const group of draw.groups?.() ?? []) {
         // A member the source no longer holds is skipped, as it always was.
@@ -518,6 +537,7 @@ export class ChartObjects {
         add(id, group.id, { kind: 'group', name: group.name, paneIndex: members[0].paneIndex,
           visible: members.some(member => member.visible !== false), locked: members.every(member => member.locked === true),
           selected: pickable.length > 0 && pickable.every(member => selected.includes(member.id)),
+          hiddenOnInterval: members.every(offInterval),
         }, {
           ...(pickable.length ? { select: () => draw.select(pickable.map(member => member.id)) } : {}),
           ...(whole && draw.removeGroup ? { ungroup: () => draw.removeGroup!(group.id, false) === true } : {}),
@@ -537,13 +557,14 @@ export class ChartObjects {
         const above = drawing.stackAbove !== undefined && entries(drawing.paneIndex).includes(drawing.stackAbove) ? drawing.stackAbove : undefined;
         const band: ChartObjectBand = above !== undefined ? 'series' : (drawing.zIndex ?? 0) < 0 ? 'below' : 'above';
         order.set(id, [drawing.zIndex ?? 0, positions.get(drawing.id) ?? 0]);
-        const canFocus = chart.dataLayer.length > 0 && drawing.points.length > 0
+        const hiddenOnInterval = offInterval(drawing);
+        const canFocus = !hiddenOnInterval && chart.dataLayer.length > 0 && drawing.points.length > 0
           && drawing.points.every(p => Number.isFinite(p.time) && Number.isFinite(p.price))
           && chart.panes()[drawing.paneIndex] !== undefined;
         add(id, drawing.id, {
           kind: 'drawing', groupId: membership.get(drawing.id), name: drawing.tool.replace(/-/g, ' ').replace(/^./, c => c.toUpperCase()),
           paneIndex: drawing.paneIndex, visible: drawing.visible !== false,
-          locked: drawing.locked === true, selected: selected.includes(drawing.id),
+          locked: drawing.locked === true, selected: selected.includes(drawing.id), hiddenOnInterval,
         }, {
           ...(draw.reorder ? { reorder: (direction: -1 | 1) => draw.reorder!(drawing.id, direction) } : {}),
           ...(draw.placeInStack ? { place: () => false } : {}),

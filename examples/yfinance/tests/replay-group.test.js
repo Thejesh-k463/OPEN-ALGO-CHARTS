@@ -78,10 +78,12 @@ describe('reference shared replay', () => {
     expect(app.replay.state()).toMatchObject({ focusedId: '1', time: T + 600, playing: true });
     expect(vi.getTimerCount()).toBe(1);
     vi.advanceTimersByTime(1000);
-    expect(app.replay.state().time).toBe(T + 900);
+    // No finer bars arrive here, so the next 5-minute candle forms over five
+    // simulated steps a minute apart: one played step is one minute.
+    expect(app.replay.state().time).toBe(T + 660);
     setReplayScope('focused');
     expect(app.chart2.primaryBars()).toHaveLength(4);
-    expect(app.replay.state().time).toBe(T + 900);
+    expect(app.replay.state().time).toBe(T + 660);
     exitReplay(); expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -101,13 +103,25 @@ describe('reference shared replay', () => {
     expect(app.chart.primaryBars()).toHaveLength(12);
   });
 
-  it('shows completed-candle fallback when finer history fails', async () => {
+  it('forms candles along a simulated path, and says so, when finer history fails', async () => {
     fetchBars.mockRejectedValue(new Error('offline'));
     enterReplay(); setReplayScope('all');
     await startReplayAt(1);
     expect(app.replay.state().active).toBe(true);
-    expect(dom.get('status').textContent).toMatch(/completed candles/i);
+    expect(dom.get('status').textContent).toMatch(/simulated path/i);
     expect(dom.get('status').textContent).toMatch(/Chart 1.*Chart 2/);
+    app.replay.step();
+    expect(app.replay.state().members.find(m => m.id === '1').state).toMatchObject({ subSteps: 5, simulated: true });
+    expect(dom.get('rp-sim').hidden).toBe(false);
+  });
+
+  it('labels only simulated steps as simulated', async () => {
+    // Real 1-minute bars under the 5-minute chart: its candles form from them.
+    fetchBars.mockImplementation((symbol, interval) => Promise.resolve(interval === '1m' ? history(60, 60) : []));
+    await startReplayAt(1);
+    app.replay.step();
+    expect(app.replay.state().members.find(m => m.id === '1').state).toMatchObject({ subSteps: 5, simulated: false });
+    expect(dom.get('rp-sim').hidden).toBe(true);
   });
 
   it('restores every survivor when an active participant is destroyed', async () => {
@@ -210,5 +224,19 @@ describe('reference replay availability', () => {
   it('uses exact calendar month ends and rejects unknown timing', () => {
     expect(replayBarEndTime('1mo', 'UTC')(flatBar(Date.UTC(2024, 1, 1) / 1000, 1))).toBe(Date.UTC(2024, 2, 1) / 1000);
     expect(() => replayBarEndTime('unknown', 'UTC')(flatBar(T, 1))).toThrow(/interval/i);
+  });
+});
+
+describe('the finer period replay asks for', async () => {
+  const { finerPeriod } = await import('../src/replay.js');
+  it('keeps a period the finer interval can serve', () => {
+    expect(finerPeriod('5m', '1mo')).toBe('1mo');
+    expect(finerPeriod('1d', '5y')).toBe('5y');
+  });
+  it('asks for the longest period the source keeps when the chart period is longer', () => {
+    // The source refuses a month of 1-minute bars outright; five days it serves.
+    expect(finerPeriod('1m', '1mo')).toBe('5d');
+    expect(finerPeriod('15m', '1y')).toBe('1mo');
+    expect(finerPeriod('60m', '5y')).toBe('1y');
   });
 });
