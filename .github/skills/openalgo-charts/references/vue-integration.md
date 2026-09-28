@@ -2,7 +2,7 @@
 
 *When to read this: mounting a chart or the widget inside a Vue 3 component, feeding it props without recreating it, keeping it out of Vue's reactivity, or shipping it through KeepAlive or Nuxt.*
 
-Source of truth: `examples/vue/` (the composable `use-openalgo-chart.js`, the component `openalgo-chart.js`, the page `app.js`), `website/pages/docs/vue.mdx` (the typed composable and single-file component), `tests/vue-reactivity.test.ts` (why the chart stays out of `ref()`, with Vue's own reactivity), `tests/e2e/vue-integration.spec.ts` (the example in Chromium, Firefox and WebKit).
+Source of truth: `examples/vue/` (the composable `use-openalgo-chart.js`, the component `openalgo-chart.js`, the page `app.js`), `website/pages/docs/frameworks.mdx` (its Vue 3 section, published at /docs/frameworks#vue-3, has the typed composable and the component's load, v-model and KeepAlive code), `tests/vue-reactivity.test.ts` (why the chart stays out of `ref()`, with Vue's own reactivity), `tests/e2e/vue-integration.spec.ts` (the example in Chromium, Firefox and WebKit).
 
 Vue is a devDependency of this repository for the example and the tests. The package itself has no dependencies and no Vue plugin; support is the pattern below.
 
@@ -64,7 +64,7 @@ export function useOpenAlgoChart(container: Readonly<Ref<HTMLElement | null>>, s
 }
 ```
 
-`onBeforeUnmount`, not `onUnmounted`: the container is still in the document when the chart tears down. The full typed version with its interfaces is in `website/pages/docs/vue.mdx`.
+`onBeforeUnmount`, not `onUnmounted`: the container is still in the document when the chart tears down. The typed version is in the Vue 3 section of `website/pages/docs/frameworks.mdx`.
 
 ## Props to data
 

@@ -5,9 +5,10 @@ import type { Widget } from '../../src/widget/index';
 /**
  * The Vue 3 example (examples/vue) in a real browser, with Vue's own runtime.
  *
- * The component under test is the one the website's Vue guide documents: a
- * composable that holds the chart in a shallowRef, props that feed the same
- * series, the chart's own ResizeObserver for size, KeepAlive for switching
+ * The component under test is the one the Vue 3 section of the website's
+ * framework guide (/docs/frameworks#vue-3) documents: a composable that holds
+ * the chart in a shallowRef, props that feed the same series, the chart's own
+ * ResizeObserver for size, KeepAlive for switching
  * views and v-if for unmounting. What the engine could get wrong under a
  * framework is lifecycle, so the checks are about identity and teardown:
  * one chart per mount, the same chart through every prop change and every

@@ -9,7 +9,8 @@ export default {
   architecture: 'Architecture',
   widget: 'The Widget Tier',
   frameworks: 'Framework Integration',
-  vue: 'Vue 3',
+  // The old Vue guide's URL, kept only to send readers to the Vue 3 section.
+  vue: { display: 'hidden' },
 
   '-- guides': { type: 'separator', title: 'Guides' },
   'chart-types': 'Chart Types',

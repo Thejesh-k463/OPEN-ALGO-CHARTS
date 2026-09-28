@@ -132,14 +132,14 @@ try {
   await demo.getByRole('button', { name: 'Pause updates' }).click();
 
   await page.evaluate(() => {
-    localStorage.setItem('theme', 'light');
+    localStorage.setItem('oac-theme', 'light');
   });
   await page.reload();
   await expect(page.locator('html')).toHaveClass(/light/);
   await expect(demo.getByRole('button', { name: 'Pause updates' })).toBeEnabled();
   await demo.getByRole('button', { name: 'Pause updates' }).click();
   await demo.screenshot({ path: 'artifacts/website-depth-light.png' });
-  await page.evaluate(() => localStorage.setItem('theme', 'dark'));
+  await page.evaluate(() => localStorage.setItem('oac-theme', 'dark'));
   await page.reload();
   await expect(page.locator('html')).toHaveClass(/dark/);
   await expect(demo.getByRole('button', { name: 'Pause updates' })).toBeEnabled();

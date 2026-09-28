@@ -56,10 +56,13 @@ for live data, or [the widget example](#the-whole-terminal-in-one-call) for char
 
 In a framework, create the chart when the component mounts and call `chart.destroy()`
 when it unmounts. [Framework integration](https://marketcalls.github.io/openalgo-charts/docs/frameworks/)
-covers React, Next.js, Angular and Svelte. The [Vue 3 guide](https://marketcalls.github.io/openalgo-charts/docs/vue/)
-has a composable and a component tested in Chromium, Firefox and WebKit, with a
-no-build example in [`examples/vue`](./examples/vue). In Vue, hold the chart in a
-`shallowRef`, never in `ref()` or `reactive()`.
+covers plain JavaScript and the CDN build, React, Next.js, Vue 3, Angular and Svelte
+with the same parts for each: lifecycle, reactivity, resize and theme, live data, the
+widget, cached views and server rendering. Its
+[Vue 3 section](https://marketcalls.github.io/openalgo-charts/docs/frameworks/#vue-3)
+is backed by a no-build example in [`examples/vue`](./examples/vue) tested in Chromium,
+Firefox and WebKit. In Vue, hold the chart in a `shallowRef`, never in `ref()` or
+`reactive()`.
 
 ## Architecture
 

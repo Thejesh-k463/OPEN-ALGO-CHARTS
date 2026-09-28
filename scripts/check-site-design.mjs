@@ -48,11 +48,11 @@ try {
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${route} must fit ${width}px viewport`);
     }
   }
-  await page.evaluate(() => localStorage.setItem('theme', 'light'));
+  await page.evaluate(() => localStorage.setItem('oac-theme', 'light'));
   await page.goto(`${base}/docs/getting-started/`);
   await expect(page.locator('html')).toHaveClass(/light/);
   await page.screenshot({ path: 'artifacts/website-premium-docs-light.png' });
-  await page.evaluate(() => localStorage.setItem('theme', 'dark'));
+  await page.evaluate(() => localStorage.setItem('oac-theme', 'dark'));
   await page.reload();
   await expect(page.locator('html')).toHaveClass(/dark/);
   await page.screenshot({ path: 'artifacts/website-premium-docs-dark.png' });

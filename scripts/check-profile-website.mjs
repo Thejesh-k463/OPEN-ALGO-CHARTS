@@ -20,7 +20,7 @@ try {
   // The embedded demos open in the palette that matches the site theme. This
   // run checks the dark palettes, so it chooses the dark site the way a reader
   // would; the light default is checked on its own page further down.
-  await page.addInitScript(() => localStorage.setItem('theme', 'dark'));
+  await page.addInitScript(() => localStorage.setItem('oac-theme', 'dark'));
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   for (const file of [...Object.values(manifest.captures).map(capture => capture.file), 'captures.json']) {

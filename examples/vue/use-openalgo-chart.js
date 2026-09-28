@@ -1,6 +1,7 @@
 // A Vue 3 composable that owns one chart, or one widget, for the lifetime of
 // the component that calls it. Copy it into a project as
-// composables/useOpenAlgoChart.ts; the website's Vue guide has the typed form.
+// composables/useOpenAlgoChart.ts; the typed form is in the Vue 3 section of
+// the website's framework guide (/docs/frameworks#vue-3).
 import { onBeforeUnmount, onMounted, shallowRef } from 'vue';
 import { createChart } from 'openalgo-charts';
 

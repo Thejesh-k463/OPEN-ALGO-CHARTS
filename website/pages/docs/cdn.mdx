@@ -113,11 +113,11 @@ terminal is still one file:
 ```html
 <script type="module">
   const CDN = 'https://unpkg.com/openalgo-charts@2.5.9/dist';
-  const { createChart, OpenAlgoRestFeed } = await import(`${CDN}/openalgo-charts.mjs`);
+  const { createChart, OpenAlgoDataFeed } = await import(`${CDN}/openalgo-charts.mjs`);
   const { registerBuiltinIndicators } = await import(`${CDN}/openalgo-charts.indicators.mjs`);
   registerBuiltinIndicators();
 
-  const feed = new OpenAlgoRestFeed({
+  const feed = new OpenAlgoDataFeed({
     baseUrl: 'http://127.0.0.1:5000',
     apiKey: 'your-api-key',
   });

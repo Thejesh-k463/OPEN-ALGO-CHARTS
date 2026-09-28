@@ -1,7 +1,7 @@
 // <OpenAlgoChart>: a chart whose instrument, interval and theme are props.
 // Written with a template string so it runs from the browser build of Vue
 // with no compile step; in a project it is a single-file component, shown in
-// the website's Vue guide.
+// the Vue 3 section of the website's framework guide (/docs/frameworks#vue-3).
 import { defineComponent, ref, watch } from 'vue';
 import { darkTheme, lightTheme, intervalToSeconds } from 'openalgo-charts';
 import { useOpenAlgoChart } from './use-openalgo-chart.js';

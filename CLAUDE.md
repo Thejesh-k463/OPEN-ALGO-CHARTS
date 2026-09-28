@@ -113,9 +113,9 @@ called the draw tier 34 tools while `registeredDrawingTools()` returned 43.
 | A new type appearing in a public signature | Export it from its tier entry point, or `npx typedoc` warns and the reference has a dead link |
 | A **new tier** | `typedoc.json` `entryPoints`, `.size-limit.json`, `package.json` exports, README tier table, `ARCHITECTURE.md` section 2, website Getting Started, the architecture diagram |
 | Indicators, chart types or drawing tools | Their counts in README, `pages/index.mdx` and `theme.config.tsx` meta descriptions, `components/landing.tsx` stats and feature cards, the diagram |
-| Anything that moves a bundle size | README badge and both size tables, `components/landing.tsx` `STATS`, website Getting Started, `theme.config.tsx` footer and meta description, the diagram subtitle and tier legend |
+| Anything that moves a bundle size | README badge and both size tables, `components/landing.tsx` `STATS` (home page sizes), website Getting Started, `theme.config.tsx` footer and meta description, the diagram subtitle and tier legend |
 | A new descriptor hook or capability | `references/indicators.md`, the website docs page, a live example in `website/pages/examples.mdx` |
-| A release | `CHANGELOG.md`, `website/pages/docs/release-notes.mdx`, drop every "(unreleased)" marker for what just shipped, and the release benchmark (`npm run bench:release`: `benchmarks/releases.json` and `website/pages/benchmarks.mdx`) |
+| A release | `CHANGELOG.md`, `website/pages/docs/release-notes.mdx`, drop every "(unreleased)" marker for what just shipped, and the release benchmark (`npm run bench:release`: `benchmarks/releases.json`, `website/pages/benchmarks.mdx` and the home page's `BENCH` in `components/landing.tsx`) |
 
 ### Before every npm publish
 
