@@ -2,6 +2,7 @@
 
 Report reproducible problems, improve examples and documentation, or send focused code
 changes. Use the existing public API and repository conventions as the starting point.
+Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
 
 Follow [compatibility and maintenance](COMPATIBILITY.md) for public API changes,
 deprecation, persistence migrations, host boundaries and release evidence.

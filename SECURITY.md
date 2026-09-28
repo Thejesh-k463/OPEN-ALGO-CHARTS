@@ -2,7 +2,8 @@
 
 ## Reporting a vulnerability
 
-Report suspected vulnerabilities privately through GitHub's
+Report suspected vulnerabilities privately to
+[rajandran@openalgo.in](mailto:rajandran@openalgo.in), or through GitHub's
 [private vulnerability reporting](https://github.com/marketcalls/openalgo-charts/security/advisories/new)
 for this repository. Please do not open a public issue for anything that could be exploited before
 a fix exists.
