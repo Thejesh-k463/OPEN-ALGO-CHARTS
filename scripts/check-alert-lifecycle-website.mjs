@@ -46,7 +46,7 @@ for (const name of selected) {
         page.on('response', response => {
           if (new URL(response.url()).origin === origin && response.status() >= 400) errors.push(`${response.status()} ${response.url()}`);
         });
-        await page.addInitScript(theme => localStorage.setItem('theme', theme), scenario.theme);
+        await page.addInitScript(theme => localStorage.setItem('oac-theme', theme), scenario.theme);
         const response = await page.goto(`${base}/examples/#finished-alert-lines`);
         assert.equal(response.status(), 200);
         const demo = page.locator('#alert-lifecycle-demo');

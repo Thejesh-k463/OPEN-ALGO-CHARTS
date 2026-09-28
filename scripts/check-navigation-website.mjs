@@ -45,7 +45,7 @@ try {
   });
   // The candle probe below matches the dark palette's up and down colours, so
   // choose the dark site the way a reader would; the site itself opens light.
-  await context.addInitScript(() => localStorage.setItem('theme', 'dark'));
+  await context.addInitScript(() => localStorage.setItem('oac-theme', 'dark'));
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));

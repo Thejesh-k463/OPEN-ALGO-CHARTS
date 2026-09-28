@@ -111,8 +111,8 @@ export default function BtcUsdChart() {
       </div>
       {market.state === 'stale' && <div className="oac-btc-stale" role="alert"><span>Connection interrupted. Showing the last received candles.</span><button type="button" onClick={() => void retry.current?.()}>Retry</button></div>}
       <div className="oac-playground__footer oac-btc-footer">
-        <span><span className="oac-playground__hint-icon" aria-hidden="true">↗</span> Draw an idea. Add an indicator.</span>
-        <span className="oac-btc-source"><a href={BTC_USD_SOURCE} target="_blank" rel="noreferrer">Source: Gemini ↗</a><span>Refreshes every 15s</span>{syncTime && <span title={candleTime ? `Latest available candle: ${candleTime}` : undefined}>Synced {syncTime}</span>}</span>
+        <span>Draw an idea. Add an indicator.</span>
+        <span className="oac-btc-source"><a href={BTC_USD_SOURCE} target="_blank" rel="noreferrer">Source: Gemini</a><span>Refreshes every 15s</span>{syncTime && <span title={candleTime ? `Latest available candle: ${candleTime}` : undefined}>Synced {syncTime}</span>}</span>
       </div>
     </div>
   );

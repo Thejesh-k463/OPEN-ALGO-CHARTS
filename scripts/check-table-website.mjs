@@ -237,7 +237,7 @@ try {
         const shot = suffix => page.screenshot({ path: join(output, `${prefix}-${suffix}.png`), animations: 'disabled' });
         try {
           await observeCanvas(page, palette);
-          await page.addInitScript(theme => localStorage.setItem('theme', theme), scenario.theme);
+          await page.addInitScript(theme => localStorage.setItem('oac-theme', theme), scenario.theme);
           const response = await page.goto(`${base}/examples/#tables-that-fit-their-text`);
           assert.equal(response?.status(), 200, 'The examples page must load');
           await expect(page.locator('#tables-that-fit-their-text')).toHaveCount(1);

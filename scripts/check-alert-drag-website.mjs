@@ -105,7 +105,7 @@ for (const name of selected) {
       const prefix = `alert-drag-${name}-${scenario.name}`;
       const shot = suffix => page.screenshot({ path: join(output, `${prefix}-${suffix}.png`), animations: 'disabled' });
       try {
-        await page.addInitScript(theme => localStorage.setItem('theme', theme), scenario.theme);
+        await page.addInitScript(theme => localStorage.setItem('oac-theme', theme), scenario.theme);
         const response = await page.goto(`${base}/examples/`);
         assert.equal(response?.status(), 200);
         await expect(page.locator('#alert-threshold-dragging')).toHaveCount(1);

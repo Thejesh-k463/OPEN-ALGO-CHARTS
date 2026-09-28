@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import BtcUsdChart from './BtcUsdChart';
+import { highlight } from './highlight';
 
 function Arrow({ diagonal = false }: { diagonal?: boolean }) {
   return (
@@ -8,6 +9,13 @@ function Arrow({ diagonal = false }: { diagonal?: boolean }) {
       <path d={diagonal ? 'M6 18 18 6M6 6h12v12' : 'M4 12h15m-6-6 6 6-6 6'} stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
+}
+
+/** A drawn mark for the list rows, so no row leans on a text character for its icon. */
+function Mark({ kind }: { kind: 'detail' | 'theme' | 'open' }) {
+  const d = kind === 'detail' ? 'M12 4v16M4 12h16M6.5 6.5l11 11M17.5 6.5l-11 11'
+    : kind === 'theme' ? 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18v18' : 'M7 17 17 7M9 7h8v8';
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d={d} stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
 function Reveal({ children, className = '' }: { children: React.ReactNode; className?: string }) {
@@ -34,7 +42,7 @@ export function Hero() {
       <BtcUsdChart />
       <div className="oac-capability-strip" aria-label="Chart capabilities">
         <span>More ways to see the market</span>
-        <div><strong>15</strong> chart styles</div>
+        <div><strong>13</strong> chart types</div>
         <div><strong>105</strong> indicators</div>
         <div><strong>87</strong> drawing tools</div>
       </div>
@@ -144,7 +152,7 @@ export function Features() {
         </Reveal>
         <Reveal className="oac-feature">
           <FeatureArt type="views" />
-          <div className="oac-feature__copy"><span className="oac-feature__index">03 / MAKE IT YOURS</span><h3>A fresh perspective, instantly.</h3><p>From the detail of candlesticks to the simplicity of a line. Find your rhythm with 15 chart styles and a look that feels like you.</p><Link href="/examples#interactive" className="oac-text-link">Find your view <Arrow /></Link></div>
+          <div className="oac-feature__copy"><span className="oac-feature__index">03 / MAKE IT YOURS</span><h3>A fresh perspective, instantly.</h3><p>From the detail of candlesticks to the simplicity of a line. Find your rhythm with 13 chart types and a look that feels like you.</p><Link href="/examples#interactive" className="oac-text-link">Find your view <Arrow /></Link></div>
         </Reveal>
       </div>
     </section>
@@ -162,9 +170,9 @@ export function WhyOpenSource() {
           <Link href="/examples" className="oac-text-link">See what&rsquo;s possible <Arrow diagonal /></Link>
         </Reveal>
         <Reveal className="oac-freedom__details">
-          <div><span className="oac-freedom__icon" aria-hidden="true">✦</span><div><h3>Every detail, considered.</h3><p>Thoughtful tools, fluid interaction, and room to focus on what matters to you.</p></div></div>
-          <div><span className="oac-freedom__icon" aria-hidden="true">◐</span><div><h3>At home in your world.</h3><p>Light or dark. A single chart or a complete workspace. Shape it around the way you work.</p></div></div>
-          <div><span className="oac-freedom__icon" aria-hidden="true">↗</span><div><h3>Open from the start.</h3><p>Free to use, explore, and extend. Built in the open, for a community that keeps moving.</p></div></div>
+          <div><span className="oac-freedom__icon" aria-hidden="true"><Mark kind="detail" /></span><div><h3>Every detail, considered.</h3><p>Thoughtful tools, fluid interaction, and room to focus on what matters to you.</p></div></div>
+          <div><span className="oac-freedom__icon" aria-hidden="true"><Mark kind="theme" /></span><div><h3>At home in your world.</h3><p>Light or dark. A single chart or a complete workspace. Shape it around the way you work.</p></div></div>
+          <div><span className="oac-freedom__icon" aria-hidden="true"><Mark kind="open" /></span><div><h3>Open from the start.</h3><p>Free to use, explore, and extend. Built in the open, for a community that keeps moving.</p></div></div>
         </Reveal>
       </section>
       <section className="oac-section oac-closing" aria-labelledby="closing-title">
@@ -177,5 +185,225 @@ export function WhyOpenSource() {
         </Reveal>
       </section>
     </>
+  );
+}
+
+/**
+ * A real chart screenshot in the site's theme. Both versions are in the page and
+ * CSS shows the one that matches, so a theme switch needs no reload, and the
+ * lazy image in the hidden theme is never fetched. Static export does not add
+ * the base path to a plain img, so it is written out.
+ */
+function Shot({ name, alt, width, height }: { name: string; alt: string; width: number; height: number }) {
+  const src = (theme: 'light' | 'dark') => `/openalgo-charts/home/${name}-${theme}.webp`;
+  return (
+    <figure className="oac-shot">
+      <img className="oac-shot__img oac-shot__img--light" src={src('light')} alt={alt} width={width} height={height} loading="lazy" decoding="async" />
+      <img className="oac-shot__img oac-shot__img--dark" src={src('dark')} alt={alt} width={width} height={height} loading="lazy" decoding="async" />
+    </figure>
+  );
+}
+
+const TREND_SYSTEMS = [
+  { name: 'supertrend', title: 'Supertrend', text: 'An ATR band that flips colour where the trend turns.', data: 'LT daily, period 10, multiplier 3' },
+  { name: 'halftrend', title: 'HalfTrend', text: 'A trend line inside its ATR channel, with buy and sell signals.', data: 'MARUTI daily, amplitude 2' },
+  { name: 'alphatrend', title: 'AlphaTrend', text: 'The trend line and its lag, shaded between, with crossover signals.', data: 'SUNPHARMA daily' },
+] as const;
+
+export function TrendSystems() {
+  return (
+    <section className="oac-section oac-trends" aria-labelledby="trends-title">
+      <Reveal className="oac-section-heading">
+        <span className="oac-eyebrow">THE TREND SYSTEMS TRADERS ASK FOR</span>
+        <h2 id="trends-title">Built in.<br /><span className="oac-text-muted">Drawn on real prices.</span></h2>
+        <p>Supertrend, HalfTrend and AlphaTrend are part of the 105 indicators, not plugins, and each study draws its own signals.</p>
+      </Reveal>
+      <div className="oac-trend-grid">
+        {TREND_SYSTEMS.map((t) => (
+          <Reveal key={t.name} className="oac-trend">
+            <Shot name={t.name} alt={`${t.title} on ${t.data}`} width={960} height={540} />
+            <div className="oac-trend__copy"><h3>{t.title}</h3><p>{t.text}</p><span>{t.data}</span></div>
+          </Reveal>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+const OPENSCRIPT_SAMPLE = `version 1
+
+study("EMA cross", overlay = true, precision = 2)
+
+fastLen = input(9,  "Fast length", min = 1, max = 500)
+slowLen = input(21, "Slow length", min = 1, max = 500)
+src     = input(close, "Source")
+
+fast = ema(src, fastLen)
+slow = ema(src, slowLen)
+up   = crossUp(fast, slow)
+down = crossDown(fast, slow)
+
+fastPlot = plot(fast, "Fast", aqua, width = 2)
+slowPlot = plot(slow, "Slow", orange, width = 2)
+fill(fastPlot, slowPlot, fade(aqua, 90))
+
+if up
+    signal("BUY")
+if down
+    signal("SELL")`;
+
+function Row({ id, eyebrow, title, children, link, href, media, flip = false }: {
+  id: string; eyebrow: string; title: string; children: React.ReactNode;
+  link: string; href: string; media: React.ReactNode; flip?: boolean;
+}) {
+  return (
+    <Reveal className={`oac-row${flip ? ' oac-row--flip' : ''}`}>
+      <div className="oac-row__media">{media}</div>
+      <div className="oac-row__copy">
+        <span className="oac-eyebrow">{eyebrow}</span>
+        <h3 id={id}>{title}</h3>
+        {children}
+        <Link href={href} className="oac-text-link">{link} <Arrow /></Link>
+      </div>
+    </Reveal>
+  );
+}
+
+export function Showcase() {
+  return (
+    <section className="oac-section oac-showcase" aria-labelledby="showcase-title">
+      <Reveal className="oac-section-heading">
+        <span className="oac-eyebrow">MORE THAN A CHART</span>
+        <h2 id="showcase-title">Trade it. Replay it.<br /><span className="oac-text-muted">Script it.</span></h2>
+        <p>Every picture below is the library itself, drawing real NSE prices.</p>
+      </Reveal>
+      <Row id="row-trading" eyebrow="TRADE FROM THE CHART" title="Orders you can see and drag." link="Chart trading" href="/docs/trading"
+        media={<Shot name="trading" alt="SBIN 15 minute bars with a long position and its live P&L, a target, a stop and a resting buy order" width={1280} height={720} />}>
+        <p>Order, stop and target lines sit on the price they belong to. Drag one to modify it, and watch the position line carry its live P&amp;L.</p>
+        <ul>
+          <li>Tick size, price band and freeze quantity are checked before an order leaves the chart.</li>
+          <li>Everything starts in analyzer mode, the sandbox, until you choose live.</li>
+          <li>The chart only proposes an order: your broker adapter is the one that sends it.</li>
+        </ul>
+      </Row>
+      <Row id="row-replay" eyebrow="PRACTISE ON HISTORY" title="Replay a session, one minute at a time." link="Market replay" href="/docs/market-replay" flip
+        media={<Shot name="replay" alt="RELIANCE 5 minute replay with HalfTrend, the current candle forming at step one of five" width={1280} height={679} />}>
+        <p>Step or play through past sessions and watch each candle form from real one-minute bars, the way it did live.</p>
+        <ul>
+          <li>The open never moves, the high and low never pass the real candle&rsquo;s, and the last step lands on the real close.</li>
+          <li>Where the source kept no finer history, the candle forms along a path through its own prices, and the replay bar says Simulated.</li>
+          <li>Indicators, drawings and alerts replay with the chart.</li>
+        </ul>
+      </Row>
+      <Reveal className="oac-script-block">
+        <div className="oac-script-block__copy">
+          <div>
+            <span className="oac-eyebrow">OPENSCRIPT</span>
+            <h3 id="row-openscript">Write a study once.<br />Plot it, backtest it, trade it.</h3>
+          </div>
+          <div>
+            <p>OpenScript is an open trading language that runs on this chart. It compiles in the browser with no eval, a compiled program is plain data, and the same program runs on the TypeScript engine in the page and the Python engine on a server. A runaway script stops at its instruction, memory and time budgets.</p>
+            <a href="https://github.com/marketcalls/openscript" className="oac-text-link" target="_blank" rel="noreferrer">OpenScript on GitHub, Apache-2.0 <Arrow diagonal /></a>
+          </div>
+        </div>
+        <div className="oac-script">
+          <pre className="oac-code-panel" aria-label="OpenScript source of the EMA cross study"><code dangerouslySetInnerHTML={{ __html: highlight(OPENSCRIPT_SAMPLE) }} /></pre>
+          <div>
+            <Shot name="openscript" alt="The EMA cross study compiled in the page and running on TITAN daily with lengths 20 and 50" width={1280} height={720} />
+            <p className="oac-note">This script, compiled in the page and run on TITAN daily with lengths 20 and 50.</p>
+          </div>
+        </div>
+      </Reveal>
+      <Row id="row-structure" eyebrow="MARKET STRUCTURE" title="See where the volume traded." link="Profiles and order flow" href="/docs/profiles-and-orderflow" flip
+        media={<Shot name="profile" alt="ICICIBANK 15 minute bars with a volume profile, its point of control and value area" width={1280} height={720} />}>
+        <p>Volume Profile with its point of control and value area, Market Profile letter blocks, Footprint and cumulative delta, drawn inside the chart so they pan, zoom and change theme with it.</p>
+      </Row>
+    </section>
+  );
+}
+
+const FRAMEWORKS = [
+  ['JavaScript', 'plain-javascript'], ['CDN', 'plain-install'], ['React', 'react'], ['Next.js', 'nextjs'],
+  ['Vue 3', 'vue-3'], ['Angular', 'angular'], ['Svelte', 'svelte'],
+] as const;
+
+const WIDGET_SAMPLE = `import { createWidget } from 'openalgo-charts/widget';
+import 'openalgo-charts/indicators';
+import { OpenAlgoDataFeed } from 'openalgo-charts';
+
+const widget = createWidget('#terminal', {
+  feed: new OpenAlgoDataFeed({ baseUrl, apiKey }),
+  symbol: 'RELIANCE', exchange: 'NSE',
+  interval: '5m', theme: 'light',
+  onOrder: (order) => broker.place(order),
+});`;
+
+// Brotli sizes and release-bench frame times shown on the home page. They change
+// with every release: CLAUDE.md lists them among the files a size change or a
+// release benchmark updates.
+const STATS = { release: '2.5.9', base: '131.68 kB', terminal: '327.32 kB' } as const;
+const BENCH = { release: '2.5.9', pan: '2.3 ms', zoomOut: '56 ms', tick: '149.6 ms' } as const;
+
+export function Integrate() {
+  return (
+    <section className="oac-section oac-integrate" aria-labelledby="integrate-title">
+      <Reveal className="oac-integrate__copy">
+        <span className="oac-eyebrow">INTEGRATE</span>
+        <h2 id="integrate-title">Drop it into<br /><span className="oac-text-muted">your stack.</span></h2>
+        <p>Nine tiers that load only when a screen needs them, no runtime dependencies, and one guide that covers every framework in the same depth.</p>
+        <div className="oac-chips" aria-label="Framework guides">{FRAMEWORKS.map(([name, anchor]) => <Link key={name} href={`/docs/frameworks/#${anchor}`} className="oac-chip">{name}</Link>)}</div>
+        <dl className="oac-sizes">
+          <div><dt>{STATS.base}</dt><dd>the base engine</dd></div>
+          <div><dt>{STATS.terminal}</dt><dd>a complete terminal</dd></div>
+          <div><dt>0</dt><dd>runtime dependencies</dd></div>
+        </dl>
+        <p className="oac-note">Sizes are Brotli-compressed, measured for {STATS.release}.</p>
+        <Link href="/docs/getting-started" className="oac-text-link">Get started <Arrow /></Link>
+      </Reveal>
+      <Reveal className="oac-integrate__code">
+        <pre className="oac-code-panel" aria-label="Create the whole terminal in one call"><code dangerouslySetInnerHTML={{ __html: highlight(WIDGET_SAMPLE) }} /></pre>
+        <p className="oac-note">The widget never sends an order itself: onOrder hands each one to your code.</p>
+      </Reveal>
+    </section>
+  );
+}
+
+export function Performance() {
+  return (
+    <section className="oac-section oac-performance" aria-labelledby="performance-title">
+      <Reveal className="oac-section-heading">
+        <span className="oac-eyebrow">MEASURED ON EVERY RELEASE</span>
+        <h2 id="performance-title">Fast on deep history.</h2>
+        <p>95th percentile frame times on 200,000 bars with Canvas 2D, from the {BENCH.release} release bench.</p>
+      </Reveal>
+      <Reveal className="oac-stats">
+        <div><strong>{BENCH.pan}</strong><span>a pan frame</span></div>
+        <div><strong>{BENCH.zoomOut}</strong><span>a full zoom-out, every bar in view</span></div>
+        <div><strong>{BENCH.tick}</strong><span>a live tick with ten studies</span></div>
+      </Reveal>
+      <Reveal className="oac-performance__link"><Link href="/benchmarks" className="oac-text-link">Every release&rsquo;s benchmark <Arrow /></Link></Reveal>
+    </section>
+  );
+}
+
+export function BuiltForIndia() {
+  return (
+    <section className="oac-section oac-india" aria-labelledby="india-title">
+      <Reveal className="oac-row">
+        <div className="oac-row__media"><Shot name="intraday" alt="RELIANCE 5 minute bars over three sessions with session VWAP and its bands, Supertrend and volume" width={1280} height={720} /></div>
+        <div className="oac-row__copy">
+          <span className="oac-eyebrow">MADE FOR INDIAN MARKETS</span>
+          <h3 id="india-title">Indian defaults. Your brand.</h3>
+          <ul>
+            <li>IST by default, and any IANA timezone when you need another.</li>
+            <li>Intraday candles on the NSE session grid, anchored to the 09:15 open.</li>
+            <li>Price-dependent tick sizes for orders, alerts and dragged lines.</li>
+            <li>History, live ticks and orders through OpenAlgo&rsquo;s 36 broker plugins.</li>
+            <li>Light and dark themes, every colour configurable, and your own logo.</li>
+          </ul>
+          <Link href="/docs/openalgo-compatibility" className="oac-text-link">Connect to OpenAlgo <Arrow /></Link>
+        </div>
+      </Reveal>
+    </section>
   );
 }
