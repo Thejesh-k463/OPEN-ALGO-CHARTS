@@ -11,8 +11,9 @@
  * proxy name objects the raw chart does not own.
  *
  * Each case below shows the failure with `ref()` and the same steps passing
- * with the forms the Vue guide recommends: `shallowRef`, `markRaw`, or a plain
- * variable. The browser half is tests/e2e/vue-integration.spec.ts.
+ * with the forms the framework guide's Vue 3 section recommends: `shallowRef`,
+ * `markRaw`, or a plain variable. The browser half is
+ * tests/e2e/vue-integration.spec.ts.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { isProxy, markRaw, reactive, ref, shallowRef, toRaw } from 'vue';

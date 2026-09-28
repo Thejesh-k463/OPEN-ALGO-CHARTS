@@ -720,8 +720,11 @@ same lifecycle as a bare chart in [Framework Integration](/docs/frameworks). The
 instance is never framework state: it owns DOM of its own and re-rendering around it is
 wasted work. In Vue that means a `shallowRef` or `markRaw`, never `ref()`: a widget held
 in `ref()` is a proxy, and replay started through its chart is invisible to the widget's
-own order menu. The [Vue 3 guide](/docs/vue) has a component that hosts the widget and
-binds its symbol, interval and theme with `v-model`.
+own order menu. Each framework's section there shows the widget with its symbol bound to
+framework state: a change callback in [React](/docs/frameworks#react-widget), `v-model`
+in [Vue 3](/docs/frameworks#vue-widget), `[(symbol)]` in
+[Angular](/docs/frameworks#angular-widget) and `bind:symbol` in
+[Svelte](/docs/frameworks#svelte-widget).
 
 ## Managed loading (2.1.6)
 
