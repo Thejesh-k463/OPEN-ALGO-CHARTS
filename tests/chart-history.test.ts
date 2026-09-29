@@ -1149,6 +1149,26 @@ describe('failures', () => {
     expect(history.push({ undo: () => false, redo: () => true })).toBeUndefined();
     expect(history.undo()).toBe(false);
   });
+
+  it('keeps a host command whose undo and redo restore the chart, walking it both ways', async () => {
+    const { chart, history } = rig();
+    chart.addIndicator('hist-osc');
+    await settle();
+    const before = chart.getState();
+    // A restore starts a new timeline, and the command that made it is the one step on it,
+    // as an indicator template applied by the widget is.
+    chart.restoreState({ ...before, indicators: [] });
+    const after = chart.getState();
+    history.push({ label: 'Swap', undo: () => { chart.restoreState(before); }, redo: () => { chart.restoreState(after); } });
+    // Each press restores the chart, which empties the timeline mid-press; the step still lands.
+    expect(history.undo()).toBe(true);
+    expect(chart.indicators()).toHaveLength(1);
+    expect(history.peekRedo()?.label).toBe('Swap');
+    expect(history.redo()).toBe(true);
+    expect(chart.indicators()).toHaveLength(0);
+    expect(history.peekUndo()?.label).toBe('Swap');
+    expect(history.canRedo()).toBe(false);
+  });
 });
 
 describe('nested callbacks and async work', () => {
