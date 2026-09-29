@@ -391,7 +391,9 @@ is the usual entry because it supplies the shared context and teardown. See
 Since 2.5.10 a thin strip sits under the chart, between the plot and the status line.
 On the left are the preset ranges and **Go to**; on the right are the market status,
 a clock in the chart's timezone and the price scale toggles. It is on by default, and
-`bottombar: false` leaves it out and puts **Go to** back in the top bar.
+`bottombar: false` leaves it out and puts **Go to** back in the top bar. In a chart grid
+the bar is the grid's: `ChartGridOptions.bottombar` (default false) puts one bar under
+the grid for the active chart; see [Chart grid](/docs/chart-grid).
 
 ```ts
 import { createWidget } from 'openalgo-charts/widget';

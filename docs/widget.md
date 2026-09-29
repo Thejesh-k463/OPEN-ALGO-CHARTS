@@ -215,7 +215,10 @@ that opens a timezone menu, and the Auto, Log and Percent price scale toggles. G
 lives in this bar; with `bottombar: false` it is back in the top bar and the status line
 shows the market status. `sessionCalendar` gives the chart its trading hours, and
 `sessionShading` (default on) washes pre-open, post-close and extended-hours bars. The
-phone layout hides the bar and lists its controls in the More sheet. See the
+phone layout hides the bar and lists its controls in the More sheet. In a chart grid the
+bar is the grid's: `ChartGridOptions.bottombar` (default false) puts one bar under the grid
+for the active chart; see the
+[chart grid](https://marketcalls.github.io/openalgo-charts/docs/chart-grid/). See the
 [bottom bar](https://marketcalls.github.io/openalgo-charts/docs/widget/#bottom-bar) on the
 website.
 
