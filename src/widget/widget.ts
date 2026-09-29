@@ -296,7 +296,7 @@ export interface Widget {
   goTo(target: DateNavigationTarget): Promise<DateNavigationResult>;
   /** Open the go-to panel. False after destruction or on an interval without time buckets. */
   openDateNavigation(): boolean;
-  /** Show a preset range (`WidgetOptions.ranges`): its interval, its span in view, and the history that needs. */
+  /** Show a preset range (`WidgetOptions.ranges`): its interval, its span in view, and the history that needs. One wider than the plot keeps its latest bars in view (`clipped`). */
   setRange(id: string): Promise<DateNavigationResult>;
   /** The preset range in force, or null: none was set, or the interval has changed since. */
   range(): string | null;

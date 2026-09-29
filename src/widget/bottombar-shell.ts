@@ -155,6 +155,22 @@ function wire(host: BottombarHost, before: HTMLElement): ShellBottombar {
     return a === null || a.interval !== host._interval ? null : ranges.find(r => r.id === a.id) ?? null;
   };
 
+  /**
+   * A range ends at the latest bar, so one wider than the plot gives up its
+   * oldest bars, not its newest: the placement keeps a range's start in view,
+   * which here would push the last price off the chart.
+   */
+  const keepLatest = (result: DateNavigationResult): DateNavigationResult => {
+    const bars = chart.primaryBars();
+    const lastBar = bars[bars.length - 1];
+    if (lastBar === undefined) return result;
+    const last = chart.dataLayer.timeToIndex(lastBar.time) ?? bars.length - 1;
+    const view = chart.getVisibleLogicalRange();
+    const from = last + 0.5 - (view.to - view.from);
+    chart.setVisibleLogicalRange({ from, to: last + 0.5 });
+    return { ...result, from: chart.dataLayer.indexToTime(Math.ceil(from + 0.5)) ?? result.from, to: lastBar.time };
+  };
+
   /** Place `range` on the bars once the load in flight has landed. */
   const place = async (range: WidgetRange, mine: number): Promise<DateNavigationResult> => {
     for (let i = 0; i < 4 && host._loading !== null; i++) {
@@ -164,8 +180,18 @@ function wire(host: BottombarHost, before: HTMLElement): ShellBottombar {
     if (mine !== request || host._destroyed) return { status: 'cancelled' };
     const bars = chart.primaryBars();
     if (bars.length === 0) return { status: 'no-data' };
-    const window = rangeWindow(range, { end: bars[bars.length - 1].time, zone: chart.timezone(), calendar: calendar(), bars });
-    return host.goTo(window);
+    // All history is asked of the source rather than read off the bars: on
+    // the interval already in force no load came first, and the bars hold
+    // only an ordinary lookback.
+    const all = range.unit === 'all';
+    const window = rangeWindow(range, { end: bars[bars.length - 1].time, zone: chart.timezone(), calendar: calendar(), bars: all ? undefined : bars });
+    let result = await host.goTo(window);
+    if (mine !== request || host._destroyed) return result;
+    // For All, history that ends is the range itself, not a shortfall to report.
+    if (all && result.status === 'partial' && (result.history === 'exhausted' || result.history === 'empty')) {
+      result = { status: result.clipped === true ? 'partial' : 'placed', from: result.from, to: result.to, ...(result.clipped === true ? { clipped: true } : {}) };
+    }
+    return result.status === 'partial' && result.clipped === true ? keepLatest(result) : result;
   };
 
   const setRange = async (id: string): Promise<DateNavigationResult> => {

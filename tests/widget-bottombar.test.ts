@@ -50,6 +50,22 @@ function sessionBars(interval: string, from: number, to: number, seed = 7): Bar[
   return out;
 }
 
+/** Weekly bars from October 2005 to September 2025, a seeded walk: twenty years, more than a plot is wide. */
+function weeklyBars(from: number, to: number): Bar[] {
+  const out: Bar[] = [];
+  let state = 11;
+  let price = 1200;
+  const next = (): number => { state = (state * 1103515245 + 12345) % 2147483648; return state / 2147483648; };
+  for (let t = ist(2005, 10, 3, 9, 15); t <= ist(2025, 9, 29, 9, 15); t += 7 * 86400) {
+    const o = price;
+    price = Math.max(1, price * (1 + (next() - 0.49) * 0.06));
+    if (t < from || t > to) continue;
+    out.push({ time: t, open: o, high: Math.max(o, price) * 1.01, low: Math.min(o, price) * 0.99, close: price, volume: 1e6 + Math.round(next() * 5e6) });
+  }
+  return out;
+}
+const WEEKS = weeklyBars(-Infinity, Infinity).length;
+
 function recordingFeed(requests: BarsRequest[]): DataFeed {
   return {
     getBars: async request => {
@@ -218,6 +234,37 @@ describe('preset ranges', () => {
     expect(requests[requests.length - 1]).toMatchObject({ symbol: 'INFY', interval: '1m', from: ist(2025, 10, 1, 9, 15) });
     const view = w.chart.getVisibleLogicalRange();
     expect(view.to - view.from).toBeCloseTo(375, 6);
+  });
+
+  it('asks the source for all its history on the interval already in force, and keeps the latest bars in view', async () => {
+    const requests: BarsRequest[] = [];
+    const feed: DataFeed = { getBars: async (r) => { requests.push(r); return weeklyBars(r.from ?? -Infinity, r.to ?? Infinity); } };
+    const { w } = make({ feed, interval: '1w' });
+    await flush();
+    expect(w.series.getData()).toHaveLength(60);
+    const result = await w.setRange('ALL');
+    await flush();
+    // Every bar the source has, not the ordinary lookback already loaded.
+    expect(w.series.getData()).toHaveLength(WEEKS);
+    const bars = w.series.getData();
+    // Twenty years is wider than the plot: the oldest bars give way, the last price stays.
+    expect(result).toMatchObject({ status: 'partial', clipped: true, to: bars[bars.length - 1].time });
+    expect(w.chart.getVisibleLogicalRange().to).toBeCloseTo(bars.length - 0.5, 6);
+    expect(result.from).toBeGreaterThan(bars[0].time);
+  });
+
+  it('keeps the latest bars in view when a range from another interval is wider than the plot', async () => {
+    const feed: DataFeed = { getBars: async r => weeklyBars(r.from ?? -Infinity, r.to ?? Infinity) };
+    const { w } = make({ feed, interval: '1d' });
+    await flush();
+    const result = await w.setRange('ALL');
+    const bars = w.series.getData();
+    expect(w.interval()).toBe('1w');
+    expect(bars).toHaveLength(WEEKS);
+    expect(result).toMatchObject({ status: 'partial', clipped: true, to: bars[bars.length - 1].time });
+    const view = w.chart.getVisibleLogicalRange();
+    expect(view.to).toBeCloseTo(bars.length - 0.5, 6);
+    expect(result.from).toBe(w.chart.dataLayer.indexToTime(Math.ceil(view.from + 0.5)));
   });
 
   it('refuses an unknown range without touching the chart', async () => {
