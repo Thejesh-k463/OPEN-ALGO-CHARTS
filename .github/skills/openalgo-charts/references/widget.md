@@ -217,7 +217,7 @@ Every mount takes the context and an optional anchor element (so it satisfies `D
 | Export | Kind | Purpose |
 |---|---|---|
 | `mountSettingsDialog(ctx, anchor?, { tab?, unavailable?, onApply?, onClose? })` | function | Chart settings, generated from `chartSettingsSchema(chart)`; Cancel and Escape revert the dirty keys. |
-| `mountIndicatorPicker(ctx, anchor?, { onAdd?, closeOnAdd? })` | function | Searchable, grouped list of every registered indicator. |
+| `mountIndicatorPicker(ctx, anchor?, { onAdd?, closeOnAdd?, templates? })` | function | Searchable, grouped list of every registered indicator. (since 2.5.10) With a template store (`templates`, default the widget's `workspaces`; null for none) that has `planIndicatorTemplateState`, a Templates button bottom left lists the saved indicator templates: Replace, Append, delete (asks first), and Save studies as template. |
 | `mountIndicatorSettings(ctx, anchor?, { instanceId?, tab?, onChange?, onClose? })` | function | Inputs and styles for one indicator, from its descriptor. `instanceId` falls back to `anchor.dataset.instanceId`, then the chart's only indicator. |
 | `mountDrawingProperties(ctx, anchor?, { ids?, tab?, onClose? })` | function | The selected drawings' fields, from `drawingSettingsSchema`, on a Style tab, and (since 2.5.9) every anchor as a date, a time and a price on a Coordinates tab (`tab: 'coordinates'` opens on it). Bottom left: Restore defaults, and (since 2.5.9) Templates when the context carries `drawingTemplates`. |
 | `mountDrawingCoordinates(ctx, host, ids, why)` | function | (since 2.5.9) The Coordinates tab on its own, for a host's own dialog: `ids()` names the drawings and `why()` is the reason they are read-only, or null. Returns a `DrawingCoordinatesHandle` (`el`, `refresh()`, `destroy()`). |
@@ -330,6 +330,8 @@ Color swatches stay compact. Theme overrides should target these tokens.
 | `drawingScope` | `'instrument' \| 'chart'` | `'instrument'` | (since 2.5.9) Whose drawings the chart shows. `'instrument'`: each symbol and exchange keeps its own, swapped by `setSymbol`, a restored layout or a watchlist pick. `'chart'`: one set that stays whatever symbol is loaded, as before; `widget.instrumentDrawings` is then null. See Drawings per instrument, below. |
 | `drawingTemplates` | `DrawingTemplateStore` | none | (since 2.5.9) Saved drawing looks: a tool's default and named templates, from `openalgo-charts/workspace` (`DrawingTemplateRepository`). Without one no template control is shown. See Drawing toolbar, style templates and coordinates, below. |
 | `drawingToolbar` | `boolean` | on with the rail | (since 2.5.9) The floating toolbar over the selected drawings on a desktop layout. |
+| `workspaces` | `WorkspaceStore` | none | (since 2.5.10) Saved layouts and indicator templates: a `WorkspaceRepository` from `openalgo-charts/workspace`, or a host's own store, taken as a type only. Adds the Layouts menu (a top bar button, and a More sheet row on a phone) and templates in the indicator picker, and reopens the layout that was active when the page last closed. See Layouts menu and indicator templates, below. |
+| `layouts` | `LayoutsController \| false` | a controller over this widget | (since 2.5.10) What the Layouts menu drives. A chart grid gives its charts `false` (no chart saves a layout of its own there) unless the host passes one controller for the whole grid, which every chart's menu then drives. `false` keeps `workspaces` for templates only. |
 | `drawingStore` | `DrawingDocumentStore` | beside the layout with `persist`, else in memory | (since 2.5.9) Where each instrument's drawings are kept in `'instrument'` scope. Not a `ChartGridOptions` field: the grid gives each cell its own. |
 | `locale` | `string` | the runtime's | BCP 47 tag for the numbers on the status line. |
 | `symbolSearch` | `(query) => SymbolMatch[] \| Promise<SymbolMatch[]>` | none | Called as the user types in the symbol box, after `SEARCH_DEBOUNCE_MS`. |
@@ -829,19 +831,24 @@ if (catalog.activeWorkspaceId) await layouts.open(catalog.activeWorkspaceId);
 ```
 
 - `LayoutTarget`: `capture(): WorkspacePayload`, `apply(payload): LayoutApplyReport`
-  (`{ applied, reason? }`; a refused apply must change nothing) and an optional
-  `subscribe(listener)` for the user's changes (without it the host calls `changed()`). For
-  one widget, capture `JSON.parse(JSON.stringify(widget.getState()))` through
-  `migrateWidgetWorkspace` and apply a one-pane payload through `restoreState`, with the
-  pane's `magnet` and `stay` spread into the widget's current `rail` as the grid does; it
-  clears the undo history as loading any layout does.
+  (`{ applied, reason? }`; a refused apply must change nothing), an optional
+  `subscribe(listener)` for the user's changes (without it the host calls `changed()`), and
+  (since 2.5.10) an optional `suspended()`: while it is true (a replay) autosave waits, `open`
+  rejects and `state().suspended` is true; the listener announces when it turns false. A
+  save the user asks for still goes through. For one widget, `widgetLayoutTarget(widget)`
+  (since 2.5.10) captures its state in the one-chart form without the viewport, bar spacing,
+  pinned price ranges or the alerts' bookkeeping (last bar judged, last touch and trigger;
+  an alert's `state` stays), applies a one-chart layout through `restoreState` (the rail's
+  `magnet` and `stay` too; it clears the undo history as loading any layout does), refuses
+  up front a layout of several charts, with comparisons, or naming an interval, chart type
+  or study the page cannot show, and is suspended while a replay runs.
 - `LayoutsController`: `store`, `state()`, `subscribe(listener)`, `reload()`, `open(id)`,
   `save()`, `saveAs(name)`, `overwrite()`, `rename(id, name)`, `duplicate(id, name)`,
   `remove(id)`, `setAutosave(enabled)`, `changed()`, `flush()`, `destroy()`. Operations run
   one at a time, in call order. `reload()` resolves with a copy of the catalog.
 - `LayoutsState`: `catalog` (the controller's own, to read and not change), `layoutId`,
   `revision` (what the next write into the held layout is checked against), `dirty`,
-  `busy`, `conflict`, `autosave` (`LayoutAutosaveStatus`: `off`, `pending`, `saving`,
+  `busy`, `suspended` (since 2.5.10), `conflict`, `autosave` (`LayoutAutosaveStatus`: `off`, `pending`, `saving`,
   `saved`, `failed`) and `error`. `LayoutsControllerOptions.autosaveDelay` (ms, default
   1000; a value that is not a finite number takes the default) is the quiet period before
   the target is compared with its layout and, with autosave on, written once.
@@ -858,6 +865,61 @@ if (catalog.activeWorkspaceId) await layouts.open(catalog.activeWorkspaceId);
   `overwrite()`, `saveAs()` or `open()`; `reload()` keeps it unless the layout is back as this
   controller left it. A failed autosave pauses until a write goes through again or a
   reload, then writes the unsaved change without waiting for another.
+
+## Layouts menu and indicator templates (since 2.5.10)
+
+`createWidget(el, { workspaces })` with a `WorkspaceStore` builds a layouts controller over
+the widget (`widget.layouts`) and the Layouts menu. Source of truth:
+`src/widget/layouts-menu.ts`, `layouts-widget.ts`, `layouts-target.ts` and
+`layouts-templates.ts`.
+
+```ts
+const workspaces = new WorkspaceRepository(createIndexedDbWorkspaceStorage(indexedDB), 'account-7');
+const widget = createWidget('#chart', { feed, symbol: 'INFY', workspaces });
+widget.openLayouts();            // false without a store or after destroy
+await widget.layouts?.flush();   // the controller behind the menu; flush before destroy
+```
+
+- The top bar's Layouts button names the held layout (its accessible name too, with what
+  the mark means when it shows, such as "Layouts: Morning, Unsaved changes") and carries
+  `data-attention="true"` with unsaved changes (autosave off), a failed autosave or a
+  conflict. The name gives way to the glyph as the bar narrows, before it would wrap. A
+  phone layout's More sheet has a Layouts row; the menu opens centred there.
+- The menu: Save (names the chart first when nothing is held, prefilled with symbol and
+  interval), Save as, Rename, Delete (asks), Recent (up to ten, `recentWorkspaceIds`), the
+  other layouts by name, and an Autosave switch (`role="switch"`) with its status: Saving,
+  Saved, Could not save, Waiting to save, or waiting for a replay to end. It reads the list
+  and flushes the controller as it opens, so Save is enabled exactly when there is
+  something to save. Its words are `schema.ui.layouts.*` message keys, the templates
+  list's `schema.ui.templates.*`, with English fallbacks.
+- Opening a layout flushes first, then asks when the held layout still has changes: Save
+  and open, Open without saving, or Cancel.
+- A conflict shows as an alert with Reload list, Save as a copy (prefilled "{name} copy")
+  and Overwrite; Save stays disabled until one is chosen. The status line says so once.
+- On creation the widget reopens `catalog.activeWorkspaceId`, writing nothing to do it; it
+  replaces the host's first chart and, with `persist` too, the state `persist` restored. A
+  change inside autosave's quiet period is written when the page is hidden, and tried
+  again on `pagehide`. Destroying the widget drops it unless the host flushed first.
+- Two widgets on one page take repositories of separate namespaces, or both hold the same
+  layout as two tabs would.
+- `openLayoutsMenu(ctx, controller, anchor?)` opens the same menu for any controller (a
+  grid host's own); `LAYOUTS_MENU_CSS` is in `WIDGET_COMPONENT_CSS`. `widgetLayoutTarget`
+  is above.
+- Indicator templates: the picker's Templates button (bottom left) appears when the store
+  has `planIndicatorTemplateState`. `applyIndicatorTemplate(ctx, store, template, mode,
+  label?)` (`IndicatorTemplateApplyMode`: `'replace'` or `'append'`; returns false when an
+  append adds nothing) and `saveIndicatorTemplate(ctx, store, name)` (captured with
+  `captureIndicatorTemplate` when the store has it, else the plain study list; never a study
+  the host keeps, and it rejects when the chart has none of the user's) are the same from
+  host code, `ctx` being `widget.context`. An apply keeps drawings, alerts and the price
+  source's place over a study it keeps, refuses during a replay, and on a failure part way
+  through its restore puts the chart back and rethrows.
+- Undo: the apply goes through `restoreState`, so it starts a new timeline (earlier steps
+  are dropped, since their studies were rebuilt) and is the one step on it: undo puts the
+  studies and panes back, keeping the drawings, alerts and view the chart has then; redo
+  applies it again. A template the chart refuses before restoring leaves the timeline alone.
+  `ChartHistory.clear()` now empties its stacks in place, so a pushed command whose undo or
+  redo restores the chart keeps its step.
 
 ## Drawings per instrument (since 2.5.9)
 

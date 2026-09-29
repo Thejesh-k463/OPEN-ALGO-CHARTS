@@ -71,7 +71,10 @@ Runtime exports:
   `rename`, `duplicate`, `remove`, `setAutosave`. A host with server-side layouts can implement
   it; its conflicts must be errors named `WorkspaceConflictError`, and its listeners must run
   before the change's promise resolves. The widget's `createLayoutsController` takes one (see
-  [widget](widget.md)).
+  [widget](widget.md)). Two optional members (since 2.5.10), `captureIndicatorTemplate(chart)`
+  and `planIndicatorTemplateState(chart, input, mode, options?)`, carry this tier's functions
+  of the same names to the widget's indicator picker, which offers templates only when the
+  store has the planner. `WorkspaceRepository` has both; a host store assigns them.
 - `createMemoryWorkspaceStorage(seed?)` (since 2.5.10): revision-checked storage in memory for
   tests, previews and hosts without IndexedDB: the IndexedDB adapter's atomic compare-and-write,
   detached copies in and out, and nothing that outlives the page.
