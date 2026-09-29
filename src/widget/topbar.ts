@@ -230,6 +230,8 @@ export interface TopbarOptions {
   indicatorsAvailable(): boolean;
   /** Refuse CSV export while the host is replacing or recovering its data. */
   dataAvailable?(): boolean;
+  /** Hook (chart grid, 2.5.10): more capture menu rows, read on every open; a string starts a group. */
+  captureRows?: () => ReadonlyArray<MenuRow | string>;
 }
 
 export interface TopbarHandle {
@@ -524,6 +526,7 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
           });
         } catch (error) { ctx.status(widgetText(ctx, 'Data export failed: {error}', { error: String((error as Error)?.message ?? error) }), 'error'); }
       } },
+      ...(opts.captureRows?.() ?? []),
     ], { ariaLabel: widgetText(ctx, 'Capture') });
   };
   snapBtn.addEventListener('click', () => openCapture(snapBtn));
