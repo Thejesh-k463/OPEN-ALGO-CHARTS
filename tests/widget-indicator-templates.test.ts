@@ -136,6 +136,26 @@ describe('templates in the indicator picker', () => {
     expect(must(templateRow(menu, 'Momentum'), '.oac-templates__meta').textContent).toBe('2 studies');
   });
 
+  it('saves none of the studies the host keeps, and no empty template', async () => {
+    const repo = repository();
+    const { widget, root } = await make({ workspaces: repo });
+    // Kept by the host: listed, but the user may not remove it.
+    widget.chart.addIndicator('rsi', {}, { policy: { removable: false } });
+    const menu = await openTemplates(widget, root);
+    const save = must(menu, '[data-action="save-template"]');
+    expect(save.getAttribute('aria-disabled')).toBe('true');
+    expect(save.title).toBe('Add a study to save a template');
+    await expect(saveIndicatorTemplate(widget.context, repo, 'Host only')).rejects.toThrow('The chart has no studies of yours to save');
+    expect((await repo.load()).templates).toHaveLength(0);
+    widget.chart.addIndicator('sma');
+    expect(must(menu, '[data-action="save-template"]').getAttribute('aria-disabled')).toBe('false');
+    const saved = await saveIndicatorTemplate(widget.context, repo, 'Mine');
+    expect(saved.indicators.map(study => study.indicatorId)).toEqual(['sma']);
+    // A store that cannot capture gets the plain list, without the host's study either.
+    const plain = { createTemplate: (name: string, input: unknown) => repo.createTemplate(name, input as never) } as unknown as WorkspaceStore;
+    expect((await saveIndicatorTemplate(widget.context, plain, 'Plain')).indicators.map(study => study.indicatorId)).toEqual(['sma']);
+  });
+
   it('puts a template in place of the studies in one undo step, and redoes it, keeping drawings and alerts', async () => {
     const repo = repository();
     const { widget, root } = await make({ workspaces: repo });

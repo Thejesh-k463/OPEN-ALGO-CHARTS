@@ -15,7 +15,7 @@
  * then), and Ctrl+Y applies the template again. Steps taken before the apply
  * are gone, because the studies they name were rebuilt.
  */
-import { isReplaying, type ChartRestoreOptions, type ChartState } from 'openalgo-charts';
+import { isReplaying, type ChartRestoreOptions, type ChartState, type IndicatorPolicy } from 'openalgo-charts';
 import type {
   IndicatorTemplateDocument, IndicatorTemplateInput, IndicatorTemplatePlan, WorkspaceCatalog, WorkspaceStore,
 } from 'openalgo-charts/workspace';
@@ -108,17 +108,31 @@ export function applyIndicatorTemplate(ctx: Pick<WidgetContext, 'chart' | 'histo
 }
 
 /**
+ * A study the host keeps from the user (one the user cannot see or remove) is
+ * the host's, as the workspace tier's template parser rules: no template
+ * holds it.
+ */
+const hostKept = (policy: IndicatorPolicy | undefined): boolean => policy?.listed === false || policy?.removable === false;
+
+/**
  * Save the user's studies on the chart as a template: with their panes and
  * scales when the store can capture them, else as the plain study list.
+ * Rejects when the chart has none of the user's own, rather than store an
+ * empty template.
  */
 export function saveIndicatorTemplate(ctx: Pick<WidgetContext, 'chart'>, store: WorkspaceStore, name: string): Promise<IndicatorTemplateDocument> {
-  const input: IndicatorTemplateInput = store.captureIndicatorTemplate?.(ctx.chart) ?? ctx.chart.getState().indicators ?? [];
+  let input: IndicatorTemplateInput;
+  try {
+    input = store.captureIndicatorTemplate?.(ctx.chart) ?? (ctx.chart.getState().indicators ?? []).filter(study => !hostKept(study.policy));
+  } catch (error) { return Promise.reject(error); }
+  const studies = Array.isArray(input) ? input : input.indicators;
+  if (studies.length === 0) return Promise.reject(new Error('The chart has no studies of yours to save'));
   return store.createTemplate(name, input);
 }
 
-/** Studies the user can see: a template holds none of the host's. */
-const listedStudies = (ctx: Pick<WidgetContext, 'chart'>): number =>
-  ctx.chart.indicators().filter(study => (study as Partial<typeof study>).policy?.().listed !== false).length;
+/** Studies a template would hold: the user's, none of the host's. */
+const userStudies = (ctx: Pick<WidgetContext, 'chart'>): number =>
+  ctx.chart.indicators().filter(study => !hostKept((study as Partial<typeof study>).policy?.())).length;
 
 /**
  * The saved templates, from the indicator picker's footer: each applies in
@@ -203,7 +217,7 @@ export function openTemplatesMenu(ctx: WidgetContext, anchor: HTMLElement, store
       row.append(name, meta, replace, append, trash);
       list.appendChild(row);
     }
-    disable(save, listedStudies(ctx) === 0 ? text('nothing', 'Add a study to save a template') : null);
+    disable(save, userStudies(ctx) === 0 ? text('nothing', 'Add a study to save a template') : null);
     if (keep !== null) {
       const row = Array.from(list.querySelectorAll<HTMLElement>('[data-template-id]')).find(item => item.dataset.templateId === keep.id) ?? null;
       // Keep goes back to the delete button it came from; a row that went, to
