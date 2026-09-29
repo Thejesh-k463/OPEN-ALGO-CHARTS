@@ -36,7 +36,7 @@ const activeTool = (page: Page): Promise<string | null> => page.evaluate(() => (
 
 test('press ?, rebind a tool chord by pressing keys, see the conflict, reload and keep it, reset to the default', async ({ page }) => {
   const errors = await mount(page);
-  await page.evaluate(() => localStorage.clear());
+  await page.evaluate(() => (window as any).__clearStore());
   await reload(page);
   await overChart(page);
 
@@ -59,7 +59,7 @@ test('press ?, rebind a tool chord by pressing keys, see the conflict, reload an
   await expect(trend.locator('kbd')).toHaveText('Alt+H');
   await expect(trend).toHaveClass(/is-changed/);
   await expect(row(page, 'tool:horizontal-line').locator('kbd')).toHaveText('Not set');
-  expect(await page.evaluate((k) => JSON.parse(localStorage.getItem(k) ?? 'null'), KEY))
+  expect(await page.evaluate((k) => (window as any).__stored(k), KEY))
     .toMatchObject({ 'tool:trend-line': 'Alt+h', 'tool:horizontal-line': null });
 
   // Escape closes the panel now that nothing is recording; the new chord picks the tool.
@@ -92,7 +92,7 @@ test('press ?, rebind a tool chord by pressing keys, see the conflict, reload an
   await expect(row(page, 'tool:horizontal-line').locator('kbd')).toHaveText('Alt+H');
   await page.keyboard.press('Escape');
   await expect(page.locator(DIALOG)).toHaveCount(0);
-  expect(await page.evaluate((k) => localStorage.getItem(k), KEY)).toBeNull();
+  expect(await page.evaluate((k) => (window as any).__stored(k), KEY)).toBeNull();
   await overChart(page);
   await page.keyboard.press('Alt+KeyT');
   expect(await activeTool(page)).toBe('trend-line');

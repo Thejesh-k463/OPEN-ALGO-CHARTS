@@ -63,6 +63,35 @@
       second.on('data', (e) => { if (e.error) errors.push(e.error); window.__loaded2 = e.bars; });
       window.__second = second;
     }
+    // Persisted chords are the widget's store's, IndexedDB by default since
+    // 2.5.10: the page is ready once it has answered and the chords are on,
+    // and the spec reads and clears that store rather than localStorage.
+    const DATABASE = 'openalgo-charts-widget';
+    const records = () => new Promise((resolve, reject) => {
+      const open = indexedDB.open(DATABASE, 1);
+      open.onupgradeneeded = () => { if (!open.result.objectStoreNames.contains('entries')) open.result.createObjectStore('entries'); };
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const db = open.result;
+        const out = {};
+        const tx = db.transaction('entries', 'readonly');
+        const cursor = tx.objectStore('entries').openCursor();
+        cursor.onsuccess = () => { const at = cursor.result; if (at) { out[at.key] = at.value; at.continue(); } };
+        tx.oncomplete = () => { db.close(); resolve(out); };
+        tx.onabort = () => { db.close(); reject(tx.error); };
+      };
+    });
+    window.__stored = async (key) => {
+      await widget.context.storage.flush();
+      const text = (await records())[key];
+      return text === undefined ? null : JSON.parse(text);
+    };
+    window.__clearStore = () => new Promise((resolve) => {
+      localStorage.clear();
+      const request = indexedDB.deleteDatabase(DATABASE);
+      request.onsuccess = request.onerror = request.onblocked = () => resolve();
+    });
+    await Promise.all([widget.ready, window.__second?.ready]);
     window.__ready = true;
   </script>
 </body>
