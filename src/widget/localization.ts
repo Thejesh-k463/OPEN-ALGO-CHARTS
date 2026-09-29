@@ -406,8 +406,6 @@ export type WidgetBuiltinMessage =
   | "{count} alert"
   | "{count} alerts"
   | "{count} bars"
-  | "{count} chart shortcut struck through: the same chord arms a drawing tool here and takes precedence."
-  | "{count} chart shortcuts struck through: the same chord arms a drawing tool here and takes precedence."
   | "{count} drawings"
   | "{count} instances on the chart"
   | "{count} objects"
@@ -459,6 +457,29 @@ export type WidgetBuiltinMessage =
   | "Coordinates"
   | "Times are on the chart clock, {zone}."
   | "{shown} of {count} objects"
+  // The shortcuts editor (keymap-editor.ts), since 2.5.10.
+  | "{count} chart shortcut struck through: a drawing tool uses the same chord here and takes precedence."
+  | "{count} chart shortcuts struck through: a drawing tool uses the same chord here and takes precedence."
+  | "Change"
+  | "Change {name}"
+  | "Cancel changing {name}"
+  | "Reset {name} to {chord}"
+  | "Reset all"
+  | "Put every shortcut back to its default?"
+  | "Every shortcut is back to its default."
+  | "Press keys"
+  | "Press the new shortcut for {name}. Esc cancels."
+  | "Not set"
+  | "Replace"
+  | "{chord} is used by {names}."
+  | "Taken from {names}."
+  | "{name} is now {chord}."
+  | "{name} is back to {chord}."
+  | "{chord} belongs to {names}, which cannot change. Press another."
+  | "{chord} belongs to the browser. Press another."
+  | "{chord} types into the chart. Add {mod} or {alt}."
+  | "That key cannot be used here. Press another."
+  | "Nothing changed."
   // Retained so host translation catalogs written for the armed wording stay
   // type compatible. The widget says active since 2.5.10; a union member takes
   // no doc tag, so COMPATIBILITY.md lists these as deprecated, and 3.0.0 drops them.
@@ -467,7 +488,9 @@ export type WidgetBuiltinMessage =
   | "On: the tool stays armed after each drawing"
   | "Tools stay armed after each drawing"
   | "{group}: chevron for the rest. Double-click keeps it armed"
-  | "{name} stays armed until Escape";
+  | "{name} stays armed until Escape"
+  | "{count} chart shortcut struck through: the same chord arms a drawing tool here and takes precedence."
+  | "{count} chart shortcuts struck through: the same chord arms a drawing tool here and takes precedence.";
 
 /** Schema keys name descriptor metadata, never saved user values. */
 export type WidgetMessageKey = WidgetBuiltinMessage | `schema.${string}`;

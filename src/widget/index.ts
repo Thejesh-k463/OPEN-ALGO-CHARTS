@@ -74,8 +74,14 @@ export type {
   OverlayOptions, OverlayStack, TipSpec, TipSource, TipSide, TipController, Box, Size,
 } from './context';
 
-export { Keymap, openShortcutsPanel, parseKeyCombo, eventKeyCombo, formatKeyCombo, fromChartCombo } from './keymap';
-export type { KeyScope, KeyEventLike, KeyAction, KeyBinding, KeyBindingOptions, KeyConflict, KeymapOptions, KeymapGroup, ChartShortcutSource } from './keymap';
+export { Keymap, parseKeyCombo, eventKeyCombo, formatKeyCombo, fromChartCombo, KEYMAP_KEY } from './keymap';
+export type {
+  KeyScope, KeyEventLike, KeyAction, KeyBinding, KeyBindingOptions, KeyConflict, KeymapOptions, KeymapGroup, KeymapRow, ChartShortcutSource,
+  KeyChordUse, KeyRebindResult, KeymapOverrides, KeymapChange,
+} from './keymap';
+// The shortcuts panel moved beside its editing controls in 2.5.10; the export is the same function.
+export { openShortcutsPanel, KEYMAP_EDITOR_CSS } from './keymap-editor';
+export type { ShortcutsPanelOptions } from './keymap-editor';
 
 export { mountRail, toolGlyph, toolName, sanitizeRailPrefs, RAIL_GROUPS, MAGNET_MODES, RAIL_PREFS_KEY } from './rail';
 export type { RailOptions, RailHandle, RailPrefs, RailGroup, RailGroupItem } from './rail';

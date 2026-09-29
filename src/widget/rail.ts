@@ -20,6 +20,7 @@ import {
   type MagnetMode,
 } from 'openalgo-charts/draw';
 import { h, glyph, editableIds, historyPress, historyReady, TIP_DWELL_MS, type TipSpec, type WidgetContext } from './context';
+import { commandChord } from './keymap';
 
 export const MAGNET_MODES: readonly MagnetMode[] = ['off', 'weak', 'strong'];
 
@@ -234,12 +235,15 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
   const savePrefs = (): void => { ctx.storage.set(RAIL_PREFS_KEY, prefs); };
   const lastOf = (g: RailGroup): string | null => prefs.last[g.id ?? ''] ?? toolsOf(g)[0] ?? null;
 
+  // Tips read the chord in force, so a tool the user moved shows where it
+  // went. A keymap without the shell's commands (a host mounting the rail on
+  // its own) falls back to the tool's declared chord, an unbound one to none.
   let chords: Record<string, string> | null = null;
+  const chordFor = (command: string, fallback: string | undefined): string | undefined => commandChord(ctx.keymap, command, fallback);
   const chordOf = (id: string | null): string | undefined => {
     if (id === null) return undefined;
     if (chords === null) chords = drawingShortcuts();
-    const c = chords[id];
-    return c === undefined ? undefined : ctx.keymap.format(c);
+    return chordFor(`tool:${id}`, chords[id]);
   };
 
   // ── controller plumbing ──────────────────────────────────────────────
@@ -598,8 +602,8 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
         // The count is what the press deletes: read-only drawings stay.
         const n = editableIds(draw, sel).length;
         return sel.length > 0
-          ? { title: n > 1 ? widgetText(ctx, 'Delete {count} drawings', { count: n }) : widgetText(ctx, 'Delete drawing'), chord: 'Del', sub: readOnlyNote(sel) ?? widgetText(ctx, 'Right-click to remove all'), side: 'right' }
-          : { title: widgetText(ctx, 'Delete drawing'), chord: 'Del', sub: widgetText(ctx, 'Select one first. Right-click to remove all'), side: 'right' };
+          ? { title: n > 1 ? widgetText(ctx, 'Delete {count} drawings', { count: n }) : widgetText(ctx, 'Delete drawing'), chord: chordFor('delete', 'Delete'), sub: readOnlyNote(sel) ?? widgetText(ctx, 'Right-click to remove all'), side: 'right' }
+          : { title: widgetText(ctx, 'Delete drawing'), chord: chordFor('delete', 'Delete'), sub: widgetText(ctx, 'Select one first. Right-click to remove all'), side: 'right' };
       },
       onClick: () => {
         for (const id of selectionOf()) draw.remove(id);
@@ -629,14 +633,15 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
     ctl.undo = makeBtn({
       cls: 'oac-rail__btn--chrome',
       glyphEl: chromeGlyph(doc, 'undo'),
-      tip: () => ({ title: widgetText(ctx, 'Undo'), chord: ctx.keymap.format('Mod+Z'), side: 'right' }),
+      tip: () => ({ title: widgetText(ctx, 'Undo'), chord: chordFor('undo', 'Mod+Z'), side: 'right' }),
       onClick: () => { historyPress(ctx, 'undo'); refreshControls(); },
     });
     box.appendChild(ctl.undo);
     ctl.redo = makeBtn({
       cls: 'oac-rail__btn--chrome',
       glyphEl: chromeGlyph(doc, 'redo'),
-      tip: () => ({ title: widgetText(ctx, 'Redo'), chord: ctx.keymap.format('Mod+Y'), side: 'right' }),
+      // Ctrl+Y while it still redoes, else wherever the listed Redo went.
+      tip: () => ({ title: widgetText(ctx, 'Redo'), chord: chordFor('redo-alt', 'Mod+Y') ?? chordFor('redo', undefined), side: 'right' }),
       onClick: () => { historyPress(ctx, 'redo'); refreshControls(); },
     });
     box.appendChild(ctl.redo);

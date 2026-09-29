@@ -94,6 +94,12 @@ export interface WidgetOptions extends Omit<ChartOptions, 'theme'> {
   /** Unclaimed letters and digits open symbol and interval entry on the focused chart. Default true. */
   typingNavigation?: boolean;
   /**
+   * The `?` panel lets the user change the widget's and the chart's chords,
+   * kept in `storage` when `persist` is on. False lists them only and applies
+   * no saved chords. Default true.
+   */
+  shortcutsEditor?: boolean;
+  /**
    * A docked watchlist: named lists from a store (a `WatchlistRepository` from
    * `openalgo-charts/workspace`), with prices only from `quotes`. Needs `panels`.
    */
@@ -307,6 +313,7 @@ const WIDGET_ONLY_KEYS: ReadonlyArray<keyof WidgetOptions> = [
   'tradingCapabilities', 'tradingMode', 'tradingLocked', 'account',
   'eventDetails',
   'panels', 'typingNavigation', 'keyboardRoute', 'watchlist', 'news', 'drawingTemplates', 'drawingToolbar',
+  'shortcutsEditor',
 ];
 
 /**
@@ -590,7 +597,8 @@ class WidgetImpl implements Widget {
     const tips = createTipController(root, overlays.layer, doc);
     this._toasts = mountToasts(toastEl, doc, options);
     const sc = this.chart.shortcuts;
-    this._keymap = new Keymap({ chart: sc === null ? null : { list: () => sc.list() }, scopes: () => keyScopes.call(this as unknown as KeysHost) });
+    // The manager itself, not a listing of it: the shortcuts editor rebinds the chart's commands through it.
+    this._keymap = new Keymap({ chart: sc, scopes: () => keyScopes.call(this as unknown as KeysHost) });
     this._keymap.onConflict((c) => this._bus.emit('keymap:conflict', { combo: c.combo, kept: c.kept, shadowed: c.shadowed }));
 
     this.context = new WidgetContextImpl(this, {

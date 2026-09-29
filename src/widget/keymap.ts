@@ -1,4 +1,3 @@
-import { widgetText } from './localization';
 /**
  * The widget keymap: one place every chord the shell, the rail and the
  * dialogs answer to is registered, resolved and listed.
@@ -7,7 +6,7 @@ import { widgetText } from './localization';
  * zoom, fit) keyed on physical key codes, and the draw tier answers
  * `matchDrawingShortcut` and `keyToDrawingAction` from `e.key`. Neither knows
  * about the other, about the rail's focus, or about a dialog being open, so
- * the two collide silently: the tier's Alt+V arms a vertical line and the
+ * the two collide silently: the tier's Alt+V picks a vertical line and the
  * engine's Alt+V toggles the vertical grid, and whichever listener ran first
  * won. This layer runs before both, in the capture phase, with scopes that
  * say where a chord applies, and it records every collision so the shortcuts
@@ -18,12 +17,18 @@ import { widgetText } from './localization';
  * has to be read out to a user is a character, and `?` has no code that means
  * the same thing on every layout.
  *
+ * A binding registered with a `command` can be moved to another chord by the
+ * user. The command is the stable name, because the chord is exactly what
+ * changes: a saved override says `tool:trend-line` goes to `Alt+Y`, and it
+ * still means that after a release adds or reorders bindings. The engine's
+ * commands are rebound here too, as `chart:<command>` in the engine's own
+ * code-based grammar, so one editor and one saved record cover both.
+ *
  * The class touches no DOM until `attach`, and `handle` takes any object
  * with the key fields, so every rule is testable without a browser.
  */
-import type { ShortcutListItem } from 'openalgo-charts';
-import { chromeIconSvg } from 'openalgo-charts/draw';
-import { h, inTextField, type WidgetContext } from './context';
+import { isReservedCombo, normalizeCombo, type ShortcutListItem } from 'openalgo-charts';
+import { inTextField } from './context';
 
 /**
  * Where a binding applies. `global` always; `widget` while the pointer or the
@@ -45,6 +50,8 @@ export interface KeyEventLike {
   target?: unknown;
   preventDefault?(): void;
   stopPropagation?(): void;
+  /** Used while a chord is being captured, so no other listener on the document sees the press. */
+  stopImmediatePropagation?(): void;
 }
 
 /**
@@ -72,12 +79,32 @@ export interface KeyBindingOptions {
    * on a chord, or one on a chord the engine binds, is recorded as a conflict.
    */
   layered?: boolean;
+  /**
+   * The stable name of what the binding does (`undo`, `tool:trend-line`),
+   * unique among live bindings. `rebind`, `reset` and a saved override name
+   * the binding by it. A binding without one cannot be rebound. The `chart:`
+   * prefix is kept for the engine's commands.
+   */
+  command?: string;
+  /**
+   * Whether a user may move the binding to another chord. Default: true when
+   * it has a `command`. False keeps a key that a convention or a neighbouring
+   * control depends on where it is: Escape, Enter, the arrows.
+   */
+  rebindable?: boolean;
 }
 
 export interface KeyBinding {
+  /** Registration number, in the order bindings were made. */
   readonly id: number;
-  /** Canonical chord, see `parseKeyCombo`. */
+  /** Canonical chord in force (see `parseKeyCombo`): the default, or the user's. `''` while unbound. */
   readonly combo: string;
+  /** The chord it was registered with, which `reset` returns it to. */
+  readonly defaultCombo: string;
+  /** Its stable name, or null for a binding registered without one. */
+  readonly command: string | null;
+  /** Whether `rebind` may move it. */
+  readonly rebindable: boolean;
   readonly scope: KeyScope;
   readonly label: string;
   readonly group: string;
@@ -99,6 +126,50 @@ export interface KeyConflict {
   /** `widget` for two widget bindings, `chart` when the engine's own keymap loses the chord. */
   readonly source: 'widget' | 'chart';
 }
+
+/** A binding that holds a chord, as a rebind or `conflictsFor` reports it. */
+export interface KeyChordUse {
+  /** Its command (`chart:<command>` for the engine's), or null for a binding registered without one. */
+  readonly command: string | null;
+  readonly label: string;
+  readonly group: string;
+  readonly source: 'widget' | 'chart';
+  /** False for a fixed binding, which no rebind can take the chord from. */
+  readonly rebindable: boolean;
+}
+
+/** What `rebind` or `reset` did. */
+export interface KeyRebindResult {
+  /** True when the command now has the chord asked for. */
+  readonly ok: boolean;
+  /**
+   * Why it did not: the command is `unknown` or `fixed`, the chord is
+   * `invalid` or `reserved` by the browser, or it is `taken` by the bindings
+   * in `conflicts`. Absent on success.
+   */
+  readonly reason?: 'unknown' | 'fixed' | 'invalid' | 'reserved' | 'taken';
+  /** The bindings on the chord: what stopped the change, or, with `replace`, what gave the chord up. */
+  readonly conflicts: readonly KeyChordUse[];
+}
+
+/**
+ * The user's chords by command, JSON-safe, as `overrides()` returns them and
+ * `applyOverrides` takes them. A widget command maps to one chord in the key
+ * grammar (`Alt+y`); an engine command (`chart:zoomIn`) to one chord or
+ * several in the engine's code grammar (`Alt+KeyZ`). Null unbinds.
+ */
+export type KeymapOverrides = Readonly<Record<string, string | readonly string[] | null>>;
+
+/** What `onChange` reports: the commands whose chord moved. */
+export interface KeymapChange {
+  readonly commands: readonly string[];
+}
+
+/** Where the widget keeps the user's chords in its storage. */
+export const KEYMAP_KEY = 'keymap';
+
+/** The prefix that names an engine command among the keymap's own. */
+const CHART = 'chart:';
 
 const MOD_ALIASES: Readonly<Record<string, 'Mod' | 'Alt' | 'Shift'>> = {
   mod: 'Mod', ctrl: 'Mod', control: 'Mod', cmd: 'Mod', command: 'Mod', meta: 'Mod', win: 'Mod',
@@ -211,6 +282,18 @@ export function formatKeyCombo(combo: string, isMac: boolean = detectMac()): str
 }
 
 /**
+ * The characters a US layout gives each punctuation and digit code, plain and
+ * with Shift. The engine's own display reads codes the same way, so the two
+ * grammars meet on the layout both of them assume.
+ */
+const US_CODES: Readonly<Record<string, string>> = {
+  Equal: '=+', Minus: '-_', Slash: '/?', Comma: ',<', Period: '.>', Semicolon: ';:', Quote: '\'"',
+  BracketLeft: '[{', BracketRight: ']}', Backslash: '\\|', Backquote: '`~',
+  Digit1: '1!', Digit2: '2@', Digit3: '3#', Digit4: '4$', Digit5: '5%', Digit6: '6^', Digit7: '7&', Digit8: '8*', Digit9: '9(', Digit0: '0)',
+  NumpadAdd: '++', NumpadSubtract: '--', NumpadMultiply: '**', NumpadDivide: '//', NumpadDecimal: '..',
+};
+
+/**
  * The engine's code-based combo (`Alt+KeyV`, `Mod+Shift+KeyS`, `Equal`) in
  * this keymap's key-based form, so the two can be compared. Layout-specific
  * symbols are read as a US layout would produce them, which is what the
@@ -223,44 +306,89 @@ export function fromChartCombo(combo: string): string {
   const mods = parts.slice(0, -1).map((m) => (m === 'Alt' ? 'Alt' : m === 'Shift' ? 'Shift' : 'Mod'));
   let key: string;
   const letter = /^Key([A-Z])$/.exec(code);
-  const digit = /^Digit([0-9])$/.exec(code);
+  const pad = /^Numpad([0-9])$/.exec(code);
   if (letter !== null) key = letter[1].toLowerCase();
-  else if (digit !== null) key = digit[1];
-  else if (code === 'Equal') key = mods.includes('Shift') ? '+' : '=';
-  else if (code === 'Minus') key = mods.includes('Shift') ? '_' : '-';
-  else if (code === 'NumpadAdd') key = '+';
-  else if (code === 'NumpadSubtract') key = '-';
-  else if (code === 'Slash') key = mods.includes('Shift') ? '?' : '/';
+  else if (pad !== null) key = pad[1];
+  else if (US_CODES[code] !== undefined) key = US_CODES[code][mods.includes('Shift') ? 1 : 0];
+  else if (code === 'NumpadEnter') key = 'Enter';
   else key = code;
   return parseKeyCombo([...mods, key].join('+'));
 }
 
-/** The slice of the engine's shortcut manager the keymap reads. */
+/** Whether the browser keeps a key-form chord for itself, the engine's `isReservedCombo` read in this grammar. */
+function reservedKey(combo: string): boolean {
+  const parts = combo.split('+');
+  const key = parts.pop() ?? '';
+  return /^[a-z]$/.test(key) && isReservedCombo([...parts, 'Key' + key.toUpperCase()].join('+'));
+}
+
+/** The scopes that are live together, so a binding in one competes with a binding in another. */
+const NESTED = new Set<KeyScope>(['global', 'widget', 'chart']);
+const meets = (a: KeyScope, b: KeyScope): boolean => a === b || (NESTED.has(a) && NESTED.has(b));
+/** A rail or overlay binding never stands between the user and the chart's own commands. */
+const reachesChart = (scope: KeyScope): boolean => scope !== 'rail' && scope !== 'overlay';
+
+/** The slice of the engine's shortcut manager the keymap reads, and drives when the user rebinds. */
 export interface ChartShortcutSource {
   list(): ShortcutListItem[];
+  /** With `disable` and `resetBinding`, what makes the chart's commands rebindable from the keymap. */
+  setBinding?(command: string, combo: string | string[]): boolean;
+  disable?(command: string): void;
+  resetBinding?(command: string): void;
 }
 
 export interface KeymapOptions {
   isMac?: boolean;
-  /** The chart's shortcut manager, for conflict detection and the panel's Chart section. */
+  /** The chart's shortcut manager, for conflict detection, the panel's Chart section and rebinding its commands. */
   chart?: ChartShortcutSource | null;
   /** Which scopes are active right now, narrowest first. Default: `['global']`. */
   scopes?: () => readonly KeyScope[];
 }
 
+/** One row of the shortcuts panel. */
+export interface KeymapRow {
+  label: string;
+  /** The chord in force, key form; `''` while unbound. */
+  combo: string;
+  display: string;
+  /** Label of the widget binding that takes this chart chord first. */
+  shadowedBy?: string;
+  /** The command a rebind names; absent for a binding registered without one. */
+  command?: string;
+  /** Whether a user may move it. Set with `command`. */
+  rebindable?: boolean;
+  /** The chord it resets to, key form. Set with `command`. */
+  defaultCombo?: string;
+  /** True when it differs from its default, so there is something to reset. */
+  changed?: boolean;
+}
+
 export interface KeymapGroup {
   readonly group: string;
-  readonly rows: ReadonlyArray<{ label: string; combo: string; display: string; shadowedBy?: string }>;
+  readonly rows: ReadonlyArray<KeymapRow>;
 }
+
+type Entry = { -readonly [K in keyof KeyBinding]: KeyBinding[K] };
+
+const fail = (reason: NonNullable<KeyRebindResult['reason']>, conflicts: readonly KeyChordUse[] = []): KeyRebindResult => ({ ok: false, reason, conflicts });
+const sameList = (a: readonly string[] | null, b: readonly string[] | null): boolean =>
+  a === b || (a !== null && b !== null && a.length === b.length && a.every((c, i) => c === b[i]));
 
 export class Keymap {
   private readonly _isMac: boolean;
   private readonly _chart: ChartShortcutSource | null;
   private _scopes: () => readonly KeyScope[];
-  private readonly _bindings: KeyBinding[] = [];
-  private readonly _byCombo = new Map<string, KeyBinding[]>();
-  private readonly _conflicts: KeyConflict[] = [];
+  private readonly _bindings: Entry[] = [];
+  private readonly _byCombo = new Map<string, Entry[]>();
   private readonly _conflictListeners = new Set<(c: KeyConflict) => void>();
+  private readonly _changeListeners = new Set<(e: KeymapChange) => void>();
+  /** The user's widget chords by command, kept for a command that registers later too. */
+  private readonly _overrides = new Map<string, string | null>();
+  /** The user's engine chords by engine command, in the engine's grammar. */
+  private readonly _chartOverrides = new Map<string, string[] | null>();
+  /** What each engine command had before the user touched it: a host's own bindings count as its default. */
+  private _chartBaseline: Map<string, string[] | null> | null = null;
+  private _capture: KeyAction | null = null;
   private _detach: (() => void) | null = null;
   private _nextId = 1;
 
@@ -279,15 +407,25 @@ export class Keymap {
 
   /**
    * Bind a chord. Returns a disposer. Throws on a chord the grammar cannot
-   * read, because a binding that can never fire is a defect at the call site,
-   * not at key time.
+   * read, or a command another live binding has, because a binding that can
+   * never fire or never be told apart is a defect at the call site, not at
+   * key time. A saved override for the command applies at once.
    */
   public register(binding: string, action: KeyAction, scope: KeyScope = 'global', opts: KeyBindingOptions = {}): () => void {
     const combo = parseKeyCombo(binding);
     if (combo === '') throw new Error(`openalgo-charts widget: "${binding}" is not a key binding`);
-    const entry: KeyBinding = {
+    const command = opts.command ?? null;
+    if (command !== null && (command === '' || command.startsWith(CHART) || this._bindings.some((b) => b.command === command))) {
+      throw new Error(`openalgo-charts widget: "${command}" is not a free command name`);
+    }
+    const rebindable = command !== null && opts.rebindable !== false;
+    const saved = command !== null && rebindable ? this._overrides.get(command) : undefined;
+    const entry: Entry = {
       id: this._nextId++,
-      combo,
+      combo: saved === undefined ? combo : saved ?? '',
+      defaultCombo: combo,
+      command,
+      rebindable,
       scope,
       label: opts.label ?? formatKeyCombo(combo, this._isMac),
       group: opts.group ?? 'Widget',
@@ -297,37 +435,62 @@ export class Keymap {
       action,
       when: opts.when,
     };
-    const list = this._byCombo.get(combo) ?? [];
-    if (opts.layered !== true) {
-      const prior = list.find((b) => b.scope === scope);
-      if (prior !== undefined) this._conflict({ combo, scope, kept: prior.label, shadowed: entry.label, source: 'widget' });
-    }
-    list.push(entry);
-    this._byCombo.set(combo, list);
+    const before = this._conflictKeys();
     this._bindings.push(entry);
+    this._index(entry);
+    if (before !== null) this._announce(before);
     return () => this._unregister(entry);
   }
 
-  private _unregister(entry: KeyBinding): void {
-    const i = this._bindings.indexOf(entry);
-    if (i >= 0) this._bindings.splice(i, 1);
-    const list = this._byCombo.get(entry.combo);
-    if (list !== undefined) {
-      const j = list.indexOf(entry);
-      if (j >= 0) list.splice(j, 1);
-      if (list.length === 0) this._byCombo.delete(entry.combo);
-    }
-    for (let k = this._conflicts.length - 1; k >= 0; k--) {
-      const c = this._conflicts[k];
-      if (c.source === 'widget' && c.combo === entry.combo && (c.kept === entry.label || c.shadowed === entry.label)) {
-        this._conflicts.splice(k, 1);
-      }
-    }
+  private _index(entry: Entry): void {
+    if (entry.combo === '') return;
+    const list = this._byCombo.get(entry.combo) ?? [];
+    // Registration order decides which binding on a chord is tried first,
+    // and a rebound one keeps its place rather than jumping the queue.
+    let at = list.length;
+    while (at > 0 && list[at - 1].id > entry.id) at--;
+    list.splice(at, 0, entry);
+    this._byCombo.set(entry.combo, list);
   }
 
-  private _conflict(c: KeyConflict): void {
-    this._conflicts.push(c);
-    for (const fn of this._conflictListeners) fn(c);
+  private _unindex(entry: Entry): void {
+    const list = this._byCombo.get(entry.combo);
+    if (list === undefined) return;
+    const j = list.indexOf(entry);
+    if (j >= 0) list.splice(j, 1);
+    if (list.length === 0) this._byCombo.delete(entry.combo);
+  }
+
+  private _unregister(entry: Entry): void {
+    const i = this._bindings.indexOf(entry);
+    if (i >= 0) this._bindings.splice(i, 1);
+    this._unindex(entry);
+  }
+
+  /** Widget against widget: a non-layered binding with an earlier one in its scope on its chord. */
+  private _widgetConflicts(): KeyConflict[] {
+    const out: KeyConflict[] = [];
+    for (const b of this._bindings) {
+      if (b.layered || b.combo === '') continue;
+      const list = this._byCombo.get(b.combo) ?? [];
+      const prior = list.slice(0, list.indexOf(b)).find((p) => p.scope === b.scope);
+      if (prior !== undefined) out.push({ combo: b.combo, scope: b.scope, kept: prior.label, shadowed: b.label, source: 'widget' });
+    }
+    return out;
+  }
+
+  /** The collisions in force, as keys; null when nobody listens for new ones. */
+  private _conflictKeys(): Set<string> | null {
+    if (this._conflictListeners.size === 0) return null;
+    return new Set(this._widgetConflicts().map((c) => `${c.combo}|${c.scope}|${c.kept}|${c.shadowed}`));
+  }
+
+  /** Tell the conflict listeners about every collision that was not there before. */
+  private _announce(before: Set<string>): void {
+    for (const c of this._widgetConflicts()) {
+      if (before.has(`${c.combo}|${c.scope}|${c.kept}|${c.shadowed}`)) continue;
+      for (const fn of this._conflictListeners) fn(c);
+    }
   }
 
   /** Be told when a registration collides with an earlier one. */
@@ -336,18 +499,52 @@ export class Keymap {
     return () => this._conflictListeners.delete(fn);
   }
 
+  /** Be told when the user's chords change: a rebind, a reset, or overrides applied. */
+  public onChange(fn: (e: KeymapChange) => void): () => void {
+    this._changeListeners.add(fn);
+    return () => this._changeListeners.delete(fn);
+  }
+
+  private _emit(commands: Iterable<string | null>): void {
+    const list = Array.from(new Set(Array.from(commands).filter((c): c is string => c !== null)));
+    if (list.length === 0) return;
+    for (const fn of this._changeListeners) fn({ commands: list });
+  }
+
+  /**
+   * Hand the next key presses to `fn` ahead of every binding, for a control
+   * that records a chord. Each press is prevented and stopped outright, so no
+   * binding, no open dialog's Escape and no chart shortcut sees it; `fn`
+   * returns false to let one through (Tab moving the focus). Returns the
+   * release. A second capture replaces the first.
+   */
+  public capture(fn: KeyAction): () => void {
+    this._capture = fn;
+    return () => { if (this._capture === fn) this._capture = null; };
+  }
+
+  /** Whether a control is recording a chord right now. */
+  public get capturing(): boolean { return this._capture !== null; }
+
   /**
    * Resolve and run the binding for an event. True when a binding claimed it,
    * in which case the event has been prevented and stopped.
    */
   public handle(e: KeyEventLike): boolean {
+    if (this._capture !== null) {
+      if (this._capture(e) === false) return false;
+      e.preventDefault?.();
+      if (e.stopImmediatePropagation !== undefined) e.stopImmediatePropagation();
+      else e.stopPropagation?.();
+      return true;
+    }
     const combo = eventKeyCombo(e);
     if (combo === '') return false;
     const list = this._byCombo.get(combo);
     if (list === undefined) return false;
     const typing = inTextField(e.target);
     for (const scope of this._scopes()) {
-      for (const b of list) {
+      for (const b of list.slice()) {
         if (b.scope !== scope) continue;
         if (typing && !b.inText) continue;
         if (b.when !== undefined && !b.when()) continue;
@@ -375,15 +572,15 @@ export class Keymap {
 
   public list(): readonly KeyBinding[] { return this._bindings.slice(); }
 
-  /** Every collision recorded so far: widget against widget, and widget against the engine's keymap. */
+  /** Every collision in force: widget against widget, and widget against the engine's keymap. */
   public conflicts(): readonly KeyConflict[] {
-    const out = this._conflicts.slice();
+    const out = this._widgetConflicts();
     if (this._chart !== null) {
       for (const item of this._chart.list()) {
         if (item.isDisabled) continue;
         for (const raw of item.combos) {
           const combo = fromChartCombo(raw);
-          const claim = (this._byCombo.get(combo) ?? []).find((b) => b.scope !== 'overlay' && b.scope !== 'rail' && !b.layered);
+          const claim = (this._byCombo.get(combo) ?? []).find((b) => reachesChart(b.scope) && !b.layered);
           if (claim !== undefined) out.push({ combo, scope: claim.scope, kept: claim.label, shadowed: item.label, source: 'chart' });
         }
       }
@@ -393,28 +590,345 @@ export class Keymap {
 
   public format(combo: string): string { return formatKeyCombo(combo, this._isMac); }
 
+  // ── rebinding ────────────────────────────────────────────────────────
+
+  private _use(b: Entry): KeyChordUse {
+    return { command: b.command, label: b.label, group: b.group, source: 'widget', rebindable: b.rebindable };
+  }
+
+  private _chartEditable(): boolean {
+    const s = this._chart;
+    return s !== null && typeof s.setBinding === 'function' && typeof s.disable === 'function' && typeof s.resetBinding === 'function';
+  }
+
+  private _chartUse(item: ShortcutListItem): KeyChordUse {
+    return { command: CHART + item.command, label: item.label, group: 'Chart', source: 'chart', rebindable: this._chartEditable() };
+  }
+
+  /** Who holds a key-form chord where a binding in `scope` would compete for it. */
+  private _holders(combo: string, scope: KeyScope, except: string | null): KeyChordUse[] {
+    const out: KeyChordUse[] = [];
+    for (const b of this._byCombo.get(combo) ?? []) {
+      if ((except !== null && b.command === except) || !meets(b.scope, scope)) continue;
+      out.push(this._use(b));
+    }
+    if (this._chart !== null && reachesChart(scope)) {
+      for (const item of this._chart.list()) {
+        if (item.isDisabled || CHART + item.command === except) continue;
+        if (item.combos.some((c) => fromChartCombo(c) === combo)) out.push(this._chartUse(item));
+      }
+    }
+    return out;
+  }
+
+  /** Who holds any of these engine chords: another engine command, or a widget binding that claims first. */
+  private _chartHolders(combos: readonly string[], except: string): KeyChordUse[] {
+    const out: KeyChordUse[] = [];
+    const s = this._chart;
+    if (s === null) return out;
+    for (const item of s.list()) {
+      if (item.isDisabled || item.command === except) continue;
+      if (item.combos.some((c) => combos.includes(c))) out.push(this._chartUse(item));
+    }
+    const seen = new Set<Entry>();
+    for (const c of combos) {
+      for (const b of this._byCombo.get(fromChartCombo(c)) ?? []) {
+        // A layered binding declines when it does not apply, so the engine still gets the key.
+        if (b.layered || !reachesChart(b.scope) || seen.has(b)) continue;
+        seen.add(b);
+        out.push(this._use(b));
+      }
+    }
+    return out;
+  }
+
+  /**
+   * The bindings that would compete with `combo` (key form) for a binding in
+   * `scope`: widget bindings on it in that scope or one live at the same time
+   * (`global`, `widget` and `chart` nest), and the engine's commands on it
+   * unless the scope is `rail` or `overlay`. An unreadable chord has none.
+   */
+  public conflictsFor(combo: string, scope: KeyScope = 'widget'): KeyChordUse[] {
+    const c = parseKeyCombo(combo);
+    return c === '' ? [] : this._holders(c, scope, null);
+  }
+
+  /**
+   * The chord a command answers to now, in key form: `''` while it is
+   * unbound, null for a command nothing registered. An engine command
+   * (`chart:<command>`) reports its first chord.
+   */
+  public chord(command: string): string | null {
+    if (command.startsWith(CHART)) {
+      const item = this._chart?.list().find((i) => CHART + i.command === command);
+      if (item === undefined) return null;
+      return item.isDisabled || item.combos.length === 0 ? '' : fromChartCombo(item.combos[0]);
+    }
+    const entry = this._bindings.find((b) => b.command === command);
+    return entry === undefined ? null : entry.combo;
+  }
+
+  private _setWidget(entry: Entry, combo: string): void {
+    if (entry.combo !== combo) {
+      this._unindex(entry);
+      entry.combo = combo;
+      this._index(entry);
+    }
+    const command = entry.command as string;
+    if (combo === entry.defaultCombo) this._overrides.delete(command);
+    else this._overrides.set(command, combo === '' ? null : combo);
+  }
+
+  private _chartNow(command: string): string[] | null | undefined {
+    const item = this._chart?.list().find((i) => i.command === command);
+    return item === undefined ? undefined : item.isDisabled ? null : item.combos.slice();
+  }
+
+  /**
+   * What an engine command had before the keymap first changed it, recorded
+   * at that moment: a host's own binding is its default, not the engine's.
+   */
+  private _base(command: string): string[] | null {
+    const map = this._chartBaseline ?? (this._chartBaseline = new Map());
+    if (!map.has(command)) map.set(command, this._chartNow(command) ?? null);
+    return map.get(command) as string[] | null;
+  }
+
+  private _setChart(command: string, combos: string[] | null): void {
+    const s = this._chart as Required<ChartShortcutSource>;
+    const base = this._base(command);
+    const put = (): void => { if (combos === null) s.disable(command); else s.setBinding(command, combos); };
+    if (sameList(base, combos)) {
+      // Back where it started: let the engine drop its override, then put a
+      // host's own binding back when the engine's default is not it.
+      s.resetBinding(command);
+      if (!sameList(this._chartNow(command) ?? null, combos)) put();
+      this._chartOverrides.delete(command);
+      return;
+    }
+    put();
+    this._chartOverrides.set(command, combos);
+  }
+
+  /** An engine command that gave chords up to a replace keeps the rest, or is unbound. */
+  private _dropChart(holder: KeyChordUse, taken: (chartCombo: string) => boolean): void {
+    const command = (holder.command as string).slice(CHART.length);
+    const rest = (this._chartNow(command) ?? []).filter((c) => !taken(c));
+    this._setChart(command, rest.length > 0 ? rest : null);
+  }
+
+  /** A widget binding that gave its chord up to a replace is left unbound. */
+  private _dropWidget(holder: KeyChordUse): void {
+    const entry = this._bindings.find((b) => b.command === holder.command);
+    if (entry !== undefined) this._setWidget(entry, '');
+  }
+
+  /**
+   * Move a command to another chord, or unbind it with null. A widget command
+   * takes one chord in the key grammar; an engine command (`chart:<command>`)
+   * one or several in the engine's code grammar, as `eventToCombo` gives
+   * them. A chord the browser keeps is refused, and so is one another binding
+   * holds, unless `replace` is set and every holder is rebindable: each then
+   * gives the chord up and is left without it.
+   */
+  public rebind(command: string, combo: string | readonly string[] | null, opts: { replace?: boolean } = {}): KeyRebindResult {
+    return this._rebind(command, combo, opts.replace === true, false);
+  }
+
+  /**
+   * Put a command back on its default chord. The default may have been taken
+   * meanwhile by a binding of the same kind (widget or chart); that is refused
+   * as `taken` unless `replace` is set, as with `rebind`. A command nothing
+   * registered yet just forgets its saved chord.
+   */
+  public reset(command: string, opts: { replace?: boolean } = {}): KeyRebindResult {
+    return this._rebind(command, undefined, opts.replace === true, true);
+  }
+
+  /** Every command back on its default chord, including those not registered yet. */
+  public resetAll(): void {
+    const changed = this._clearAll();
+    this._emit(changed);
+  }
+
+  private _clearAll(): string[] {
+    const changed: string[] = [];
+    for (const command of Array.from(this._overrides.keys())) {
+      const entry = this._bindings.find((b) => b.command === command);
+      if (entry !== undefined) this._setWidget(entry, entry.defaultCombo);
+      this._overrides.delete(command);
+      changed.push(command);
+    }
+    for (const command of Array.from(this._chartOverrides.keys())) {
+      this._setChart(command, this._base(command));
+      changed.push(CHART + command);
+    }
+    return changed;
+  }
+
+  private _rebind(command: string, combo: string | readonly string[] | null | undefined, replace: boolean, reset: boolean): KeyRebindResult {
+    if (command.startsWith(CHART)) return this._rebindChart(command.slice(CHART.length), combo, replace, reset);
+    const entry = this._bindings.find((b) => b.command === command);
+    if (entry === undefined) {
+      if (reset && this._overrides.delete(command)) this._emit([command]);
+      return reset ? { ok: true, conflicts: [] } : fail('unknown');
+    }
+    if (!entry.rebindable) return fail('fixed');
+    let next = entry.defaultCombo;
+    if (!reset) {
+      next = '';
+      if (combo !== null && combo !== undefined) {
+        const one = typeof combo === 'string' ? [combo] : combo;
+        next = one.length === 1 ? parseKeyCombo(one[0]) : '';
+        if (next === '') return fail('invalid');
+        if (reservedKey(next)) return fail('reserved');
+      }
+    }
+    if (next === entry.combo) return { ok: true, conflicts: [] };
+    // A default can shadow a chart command by design (the tier's Alt+H over
+    // the grid toggle), so a reset stands aside only for another widget binding.
+    const holders = next === '' ? [] : this._holders(next, entry.scope, command).filter((h) => !reset || h.source === 'widget');
+    if (holders.length > 0) {
+      if (!replace || holders.some((h) => !h.rebindable)) return fail('taken', holders);
+      for (const h of holders) {
+        if (h.source === 'chart') this._dropChart(h, (c) => fromChartCombo(c) === next);
+        else this._dropWidget(h);
+      }
+    }
+    this._setWidget(entry, next);
+    this._emit([command, ...holders.map((h) => h.command)]);
+    return { ok: true, conflicts: holders };
+  }
+
+  private _rebindChart(command: string, combo: string | readonly string[] | null | undefined, replace: boolean, reset: boolean): KeyRebindResult {
+    const now = this._chart === null ? undefined : this._chartNow(command);
+    if (now === undefined) return fail('unknown');
+    if (!this._chartEditable()) return fail('fixed');
+    let next: string[] | null = null;
+    if (reset) {
+      next = this._base(command);
+    } else if (combo !== null && combo !== undefined) {
+      const list = (typeof combo === 'string' ? [combo] : Array.from(combo)).map(normalizeCombo);
+      if (list.length === 0 || list.includes('')) return fail('invalid');
+      if (list.some((c) => isReservedCombo(c))) return fail('reserved');
+      next = Array.from(new Set(list));
+    }
+    if (sameList(next, now)) {
+      if (reset && this._chartOverrides.delete(command)) this._emit([CHART + command]);
+      return { ok: true, conflicts: [] };
+    }
+    const holders = next === null ? [] : this._chartHolders(next, command).filter((h) => !reset || h.source === 'chart');
+    if (holders.length > 0) {
+      if (!replace || holders.some((h) => !h.rebindable)) return fail('taken', holders);
+      const taken = next as string[];
+      for (const h of holders) {
+        if (h.source === 'chart') this._dropChart(h, (c) => taken.includes(c));
+        else this._dropWidget(h);
+      }
+    }
+    this._setChart(command, next);
+    this._emit([CHART + command, ...holders.map((h) => h.command)]);
+    return { ok: true, conflicts: holders };
+  }
+
+  /** The user's chords, JSON-safe: what a host saves and hands back to `applyOverrides`. */
+  public overrides(): Record<string, string | string[] | null> {
+    const out: Record<string, string | string[] | null> = {};
+    for (const [command, combo] of this._overrides) out[command] = combo;
+    for (const [command, combos] of this._chartOverrides) out[CHART + command] = combos === null ? null : combos.slice();
+    return out;
+  }
+
+  /**
+   * Make `overrides` the user's chords: every command it leaves out goes back
+   * to its default, and each one it names moves (null unbinds). Written for a
+   * saved record, so it reads anything: an entry that does not parse, is
+   * reserved, or names a fixed binding is dropped, and one for a command
+   * nothing registered yet is kept for when it does. Collisions a saved chord
+   * makes are reported through `onConflict`, as a registration's are.
+   */
+  public applyOverrides(overrides: unknown): void {
+    const widget = new Map<string, string | null>();
+    const chart = new Map<string, string[] | null>();
+    if (overrides !== null && typeof overrides === 'object' && !Array.isArray(overrides)) {
+      for (const [command, raw] of Object.entries(overrides as Record<string, unknown>)) {
+        if (command.startsWith(CHART)) {
+          const name = command.slice(CHART.length);
+          const list = raw === null ? null : (Array.isArray(raw) ? raw : [raw]).map((c) => (typeof c === 'string' ? normalizeCombo(c) : ''));
+          if (name === '' || (list !== null && (list.length === 0 || list.some((c) => c === '' || isReservedCombo(c))))) continue;
+          chart.set(name, list);
+        } else if (command !== '' && (raw === null || typeof raw === 'string')) {
+          const combo = raw === null ? null : parseKeyCombo(raw);
+          if (combo === '' || (combo !== null && reservedKey(combo))) continue;
+          const entry = this._bindings.find((b) => b.command === command);
+          if (entry !== undefined && !entry.rebindable) continue;
+          widget.set(command, combo);
+        }
+      }
+    }
+    const before = this._conflictKeys();
+    const was = new Map(this._bindings.map((b) => [b, b.combo]));
+    const had = this.overrides();
+    this._clearAll();
+    for (const [command, combo] of widget) {
+      const entry = this._bindings.find((b) => b.command === command);
+      if (entry === undefined) this._overrides.set(command, combo);
+      else this._setWidget(entry, combo ?? '');
+    }
+    if (this._chartEditable()) {
+      for (const [command, combos] of chart) if (this._chartNow(command) !== undefined) this._setChart(command, combos);
+    }
+    if (before !== null) this._announce(before);
+    const after = this.overrides();
+    const changed = this._bindings.filter((b) => b.command !== null && was.get(b) !== b.combo).map((b) => b.command);
+    // A saved chord for a command not registered yet changes nothing on
+    // screen, but it is still a change a store or a sibling chart must hear.
+    for (const key of new Set([...Object.keys(had), ...Object.keys(after)])) {
+      if (JSON.stringify(had[key]) !== JSON.stringify(after[key])) changed.push(key);
+    }
+    this._emit(changed);
+  }
+
+  /** The chord an engine command resets to, key form. */
+  private _chartDefault(command: string, now: readonly string[]): string {
+    const base = this._chartBaseline?.get(command);
+    const list = base === undefined ? now : (base ?? []);
+    return list.length === 0 ? '' : fromChartCombo(list[0]);
+  }
+
   /**
    * The bindings as the shortcuts panel shows them: the widget's own groups,
    * then the engine's chart commands, with any chord the widget claims first
-   * marked as shadowed.
+   * marked as shadowed. An engine command the user unbound stays listed, so
+   * it can be reset.
    */
   public describe(): KeymapGroup[] {
-    const groups = new Map<string, { label: string; combo: string; display: string; shadowedBy?: string }[]>();
+    const groups = new Map<string, KeymapRow[]>();
     for (const b of this._bindings) {
       if (b.hidden) continue;
       const rows = groups.get(b.group) ?? [];
-      rows.push({ label: b.label, combo: b.combo, display: this.format(b.combo) });
+      const row: KeymapRow = { label: b.label, combo: b.combo, display: this.format(b.combo) };
+      if (b.command !== null) {
+        row.command = b.command;
+        row.rebindable = b.rebindable;
+        row.defaultCombo = b.defaultCombo;
+        row.changed = b.combo !== b.defaultCombo;
+      }
+      rows.push(row);
       groups.set(b.group, rows);
     }
     const out: KeymapGroup[] = Array.from(groups, ([group, rows]) => ({ group, rows }));
     if (this._chart !== null) {
       const shadow = new Map<string, string>();
       for (const c of this.conflicts()) if (c.source === 'chart') shadow.set(c.shadowed + '|' + c.combo, c.kept);
-      const rows: { label: string; combo: string; display: string; shadowedBy?: string }[] = [];
+      const editable = this._chartEditable();
+      const rows: KeymapRow[] = [];
       for (const item of this._chart.list()) {
-        if (item.isDisabled || item.combos.length === 0) continue;
-        const combo = fromChartCombo(item.combos[0]);
-        const row: { label: string; combo: string; display: string; shadowedBy?: string } = { label: item.label, combo, display: this.format(combo) };
+        const mine = this._chartOverrides.has(item.command);
+        if ((item.isDisabled || item.combos.length === 0) && !mine) continue;
+        const combo = item.isDisabled || item.combos.length === 0 ? '' : fromChartCombo(item.combos[0]);
+        const row: KeymapRow = { label: item.label, combo, display: this.format(combo), command: CHART + item.command, rebindable: editable,
+          defaultCombo: this._chartDefault(item.command, item.combos), changed: mine };
         const by = shadow.get(item.label + '|' + combo);
         if (by !== undefined) row.shadowedBy = by;
         rows.push(row);
@@ -426,61 +940,24 @@ export class Keymap {
 
   public destroy(): void {
     this._detach?.();
+    this._capture = null;
     this._bindings.length = 0;
     this._byCombo.clear();
-    this._conflicts.length = 0;
+    this._overrides.clear();
+    this._chartOverrides.clear();
     this._conflictListeners.clear();
+    this._changeListeners.clear();
   }
 }
 
 /**
- * The shortcuts panel: every group from `keymap.describe()`, two columns,
- * closed by Escape or its button. Returns the closer.
+ * The chord a command answers to as a user reads it, for a tip or a menu row,
+ * so a chord the user moved is shown where it went. `fallback` stands in
+ * when nothing registered the command (chrome mounted over a host's own
+ * keymap); an unbound command shows none. Internal: the tier entry does not
+ * export it.
  */
-export function openShortcutsPanel(ctx: WidgetContext): () => void {
-  const doc = ctx.document;
-  const el = h(doc, 'div', 'oac-keys-dialog', { 'aria-label': widgetText(ctx, 'Keyboard shortcuts') });
-  const head = h(doc, 'div', 'oac-dialog__head');
-  const title = h(doc, 'div', 'oac-dialog__title');
-  title.textContent = widgetText(ctx, 'Keyboard shortcuts');
-  const x = h(doc, 'button', 'oac-btn oac-btn--icon', { type: 'button', 'aria-label': widgetText(ctx, 'Close') });
-  x.innerHTML = chromeIconSvg('close');
-  head.appendChild(title);
-  head.appendChild(x);
-  const body = h(doc, 'div', 'oac-dialog__body');
-  const cols = h(doc, 'div', 'oac-keys');
-  let shadowed = 0;
-  for (const g of ctx.keymap.describe()) {
-    const box = h(doc, 'div', 'oac-keys__group');
-    const gh = h(doc, 'div', 'oac-head');
-    gh.textContent = widgetText(ctx, `schema.shortcuts.group.${g.group}`, {}, g.group);
-    box.appendChild(gh);
-    for (const r of g.rows) {
-      const row = h(doc, 'div', 'oac-keys__row');
-      const label = h(doc, 'span');
-      label.textContent = widgetText(ctx, `schema.shortcuts.${g.group}.${r.combo}`, {}, r.label);
-      const kbd = h(doc, 'kbd');
-      kbd.textContent = r.display;
-      row.appendChild(label);
-      row.appendChild(kbd);
-      if (r.shadowedBy !== undefined) {
-        row.classList.add('is-shadowed');
-        row.title = widgetText(ctx, 'Claimed by {name}', { name: r.shadowedBy });
-        shadowed++;
-      }
-      box.appendChild(row);
-    }
-    cols.appendChild(box);
-  }
-  body.appendChild(cols);
-  if (shadowed > 0) {
-    const note = h(doc, 'div', 'oac-keys__note');
-    note.textContent = widgetText(ctx, shadowed === 1 ? '{count} chart shortcut struck through: the same chord arms a drawing tool here and takes precedence.' : '{count} chart shortcuts struck through: the same chord arms a drawing tool here and takes precedence.', { count: shadowed });
-    body.appendChild(note);
-  }
-  el.appendChild(head);
-  el.appendChild(body);
-  const close = ctx.openOverlay(el, { placement: 'center', dismissOnOutside: true });
-  x.addEventListener('click', close);
-  return close;
+export function commandChord(km: Keymap, command: string, fallback?: string): string | undefined {
+  const c = km.chord(command) ?? fallback;
+  return c === undefined || c === '' ? undefined : km.format(c);
 }
