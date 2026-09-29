@@ -23,6 +23,8 @@ export type { SymbolMatch, SymbolSearch } from './symbol-picker';
 import type { SymbolSearch } from './symbol-picker';
 import { openChartDataExportDialog } from './chart-data-export-dialog';
 import type { PanelHandle } from './form';
+import type { LayoutsController } from './layouts';
+import { layoutNeedsAttention, layoutStatusText } from './layouts-menu';
 
 /** Labels for the built-in chart types; anything else is read from its id. */
 export const CHART_TYPE_LABELS: Readonly<Record<string, string>> = {
@@ -214,6 +216,13 @@ export interface TopbarOptions {
   onNews?(anchor: HTMLElement): void | boolean;
   /** Open the date and range navigation panel, omitted without a handler. */
   onGoTo?(anchor: HTMLElement): void | boolean;
+  /**
+   * The saved layouts the Layouts button names: it shows the held layout and
+   * marks one with unsaved changes. Omitted, with `onLayouts`, without a store.
+   */
+  layouts?: LayoutsController;
+  /** Open the Layouts menu from `anchor`. */
+  onLayouts?(anchor: HTMLElement): void | boolean;
   settingsAvailable(): boolean;
   indicatorsAvailable(): boolean;
   /** Refuse CSV export while the host is replacing or recovering its data. */
@@ -376,6 +385,39 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
   const brandingSlot = h(doc, 'span', 'oac-topbar__branding-slot');
   let brandingAnchor: HTMLAnchorElement | null = null;
   host.appendChild(brandingSlot);
+
+  // ── layouts ──────────────────────────────────────────────────────────
+  // The held layout's name on the button: which document the chart is, at a
+  // glance, with a dot while it has changes that are not saved.
+  let offLayouts: (() => void) | null = null;
+  const controller = opts.layouts;
+  if (controller !== undefined && opts.onLayouts) {
+    const title = widgetText(ctx, 'schema.ui.layouts.title', {}, 'Layouts');
+    const held = (): string | null => {
+      const state = controller.state();
+      return state.layoutId === null ? null : state.catalog?.workspaces.find(doc => doc.id === state.layoutId)?.name ?? null;
+    };
+    const layouts = btn(title, 'oac-topbar__layouts');
+    layouts.setAttribute('aria-haspopup', 'dialog');
+    layouts.appendChild(glyph(doc, chromeIconSvg('layout'), 'chrome'));
+    const label = h(doc, 'span', 'oac-topbar__layouts-name');
+    layouts.appendChild(label);
+    ctx.tips.attach(layouts, () => {
+      const name = held();
+      return { title: name === null ? title : `${title}: ${name}`, sub: layoutStatusText(ctx, controller.state()), side: 'bottom' };
+    });
+    const paintLayouts = (): void => {
+      label.textContent = held() ?? title;
+      layouts.dataset.attention = String(layoutNeedsAttention(controller.state()));
+      ctx.tips.refreshLabel(layouts);
+    };
+    offLayouts = controller.subscribe(paintLayouts);
+    paintLayouts();
+    layouts.addEventListener('click', () => { opts.onLayouts?.(layouts); });
+    host.appendChild(layouts);
+    // The bar measures itself, so the name can give way before it wraps (LAYOUTS_MENU_CSS).
+    host.classList.add('has-layouts');
+  }
 
   // Tick and volume bars have no date to go to: greyed with the reason, not dead.
   const goTo = opts.onGoTo ? btn(widgetText(ctx, 'Go to'), 'oac-topbar__goto') : null;
@@ -554,6 +596,7 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
     focusSymbol: () => { symInput.focus(); },
     destroy: () => {
       dataDialog?.close();
+      offLayouts?.();
       offBranding();
       picker?.destroy();
       host.textContent = '';

@@ -67,6 +67,10 @@ import type { AccountStateSource } from 'openalgo-charts/trade';
 import { dataVariantLabel } from './data-status';
 import { installKeys, keyScopes, trackPointer, type KeysHost } from './widget-keys';
 import { applySavedLayout, flushOnPageHide, readSaved, restoreWidgetState, saveNow, scheduleSave, scopeDrawings, stripView as stripSavedView, type PersistHost } from './widget-persist';
+// Layouts: the store, the menu and the templates live in layouts-widget.ts.
+import type { WorkspaceStore } from 'openalgo-charts/workspace';
+import type { LayoutsController } from './layouts';
+import { attachWidgetLayouts, type WidgetLayouts } from './layouts-widget';
 
 /** The intervals offered when the host names none: the registry's codes are appended. */
 export const DEFAULT_INTERVALS: readonly string[] = ['1m', '5m', '15m', '1h', '1d', '1w'];
@@ -154,6 +158,16 @@ export interface WidgetOptions extends Omit<ChartOptions, 'theme'> {
   drawingStore?: DrawingDocumentStore;
   /** Saved drawing looks, a tool's default and named templates: a `DrawingTemplateRepository` from `openalgo-charts/workspace`. */
   drawingTemplates?: DrawingTemplateStore;
+  /**
+   * Saved layouts and indicator templates: a `WorkspaceRepository` from
+   * `openalgo-charts/workspace`, or a host's own `WorkspaceStore`. It adds the
+   * Layouts menu (top bar, and the More sheet on a phone) and templates in the
+   * indicator picker, and reopens the layout that was active when the page
+   * last closed. Taken as a type only: the workspace tier loads with the store.
+   */
+  workspaces?: WorkspaceStore;
+  /** What the Layouts menu drives: default a controller over this widget; a chart grid passes its own; false for no menu. */
+  layouts?: LayoutsController | false;
   /** The floating toolbar over the selected drawings on a desktop layout. Default: shown with the rail. */
   drawingToolbar?: boolean;
   /** BCP 47 tag for the numbers on the status line. Default: the runtime's. */
@@ -233,6 +247,8 @@ export interface Widget {
   readonly instrumentDrawings: InstrumentDrawings | null;
   /** The template store's catalog as the widget holds it, or null without a `drawingTemplates` store. */
   readonly drawingTemplates: DrawingTemplates | null;
+  /** The controller behind the Layouts menu, or null without one (`workspaces`, `layouts`). */
+  readonly layouts: LayoutsController | null;
   readonly alerts: AlertController;
   /** Shared inventory and supported actions for drawings, indicators and registered profiles. */
   readonly objects: ChartObjects;
@@ -281,6 +297,8 @@ export interface Widget {
   openWatchlist(): boolean;
   /** Open the docked news reader. False without a `news` source, with panels off, or after destruction. */
   openNews(): boolean;
+  /** Open the Layouts menu. False without a `workspaces` store (or `layouts` controller), or after destruction. */
+  openLayouts(): boolean;
   getState(): WidgetState;
   restoreState(state: unknown): WidgetRestoreReport;
   /** Load (or reload) bars from the feed for the current symbol and interval. */
@@ -307,6 +325,7 @@ const WIDGET_ONLY_KEYS: ReadonlyArray<keyof WidgetOptions> = [
   'tradingCapabilities', 'tradingMode', 'tradingLocked', 'account',
   'eventDetails',
   'panels', 'typingNavigation', 'keyboardRoute', 'watchlist', 'news', 'drawingTemplates', 'drawingToolbar',
+  'workspaces', 'layouts',
 ];
 
 /**
@@ -426,6 +445,7 @@ class WidgetImpl implements Widget {
   private _quickEntry: QuickEntryHandle | null = null;
   private _alertsPanel: PanelHandle | null = null;
   private _goToPanel: PanelHandle | null = null;
+  private _layouts: WidgetLayouts | null = null;
   private readonly _navigator: DateNavigator;
   /** Bumped by every go-to request and every context change, so a waiting request knows it lost. */
   private _navigation = 0;
@@ -680,6 +700,7 @@ class WidgetImpl implements Widget {
         this._cleanups.push(() => summary.destroy());
       }
     }
+    this._layouts = attachWidgetLayouts(this, options); // Layouts: before the chrome that opens the menu.
     if (options.topbar !== false) {
       this._topbar = mountTopbar(this.context, topbarEl, {
         intervals: this._intervals,
@@ -698,6 +719,7 @@ class WidgetImpl implements Widget {
         onWatchlist: this._docked('watchlist') ? () => this._dock?.toggle('watchlist') : undefined,
         onNews: this._docked('news') ? () => this._dock?.toggle('news') : undefined,
         onGoTo: (anchor) => this._openGoTo(anchor),
+        layouts: this._layouts?.controller ?? undefined, onLayouts: (anchor) => this._layouts?.open(anchor),
         settingsAvailable: () => widgetDialog('settings') !== null,
         indicatorsAvailable: () => widgetDialog('indicatorPicker') !== null,
         dataAvailable: () => this.dataController === null || this._dataState?.status === 'ready' || this._dataState?.status === 'stale',
@@ -727,6 +749,7 @@ class WidgetImpl implements Widget {
       onGoTo: (anchor) => this._openGoTo(anchor),
       onProperties: (anchor) => this._openDialog('drawingProperties', anchor),
       onCapture: (anchor) => this._topbar?.openCapture(anchor),
+      onLayouts: this._layouts?.controller ? () => this._layouts?.open() : undefined,
       settingsAvailable: () => widgetDialog('settings') !== null,
       indicatorsAvailable: () => widgetDialog('indicatorPicker') !== null,
     });
@@ -762,6 +785,7 @@ class WidgetImpl implements Widget {
 
   // ── facts ────────────────────────────────────────────────────────────
   public get series(): SeriesApi { return this._series; }
+  public get layouts(): LayoutsController | null { return this._layouts?.controller ?? null; }
   public get isDestroyed(): boolean { return this._destroyed; }
   public symbol(): string { return this._symbol; }
   public exchange(): string { return this._exchange; }
@@ -877,6 +901,7 @@ class WidgetImpl implements Widget {
   public openAlerts(): boolean { return this._openAlerts(); }
   public openWatchlist(): boolean { return this._openDocked('watchlist'); }
   public openNews(): boolean { return this._openDocked('news'); }
+  public openLayouts(): boolean { return !this._destroyed && (this._layouts?.open() ?? false); }
 
   /** Whether the dock carries this source: the option was given and panels are on. */
   private _docked(panel: 'watchlist' | 'news'): boolean {
@@ -1132,6 +1157,7 @@ class WidgetImpl implements Widget {
     this._dock?.destroy();
     this.dataController?.destroy();
     this._dataStatus.destroy();
+    this._layouts?.destroy();
     this._mobile?.destroy();
     this._mobile = null;
     this._drawbar?.destroy();

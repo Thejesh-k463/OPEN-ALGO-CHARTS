@@ -279,6 +279,10 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   // A cell in a two-column grid is often narrower than the phone threshold,
   // so cells keep desktop chrome unless the host asks for touch controls.
   Object.assign(cellOptions, { document: doc, mobile: options.mobile ?? 'never' });
+  // Layouts: a chart never saves a layout of its own inside a grid. The
+  // `workspaces` store still gives every picker its templates, and a
+  // controller the host passes drives the menu of every chart.
+  cellOptions.layouts = options.layouts ?? false;
   const store = options.persist ? (options.storage === undefined ? defaultStorage() : options.storage) : null;
   const storage = new WidgetStorage(typeof options.persist === 'string' ? options.persist : 'default', store);
   const bus = new WidgetBus<ChartGridEvents>();

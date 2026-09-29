@@ -69,6 +69,8 @@ export interface MobileOptions {
   onNews?(anchor: HTMLElement): void | boolean;
   onCapture?(anchor: HTMLElement): void;
   onGoTo?(anchor: HTMLElement): void | boolean;
+  /** Open the Layouts menu, centred. Omitted without a store. Since 2.5.10. */
+  onLayouts?(anchor: HTMLElement): void | boolean;
   onProperties(anchor: HTMLElement): boolean;
   settingsAvailable(): boolean;
   indicatorsAvailable(): boolean;
@@ -320,6 +322,8 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
           close();
           opts.onCapture?.(anchor);
         }));
+        // Layouts: the same menu as the top bar's button.
+        if (opts.onLayouts) body.appendChild(makeAction('layouts', widgetText(ctx, 'schema.ui.layouts.title', {}, 'Layouts'), () => { close(); opts.onLayouts?.(anchor); }));
         for (const [key, label, handler] of [['watchlist', 'Watchlist', opts.onWatchlist], ['news', 'News', opts.onNews]] as const) {
           if (handler) body.appendChild(makeAction(key, widgetText(ctx, `schema.ui.dock.${key}`, {}, label), () => { close(); handler(anchor); }));
         }

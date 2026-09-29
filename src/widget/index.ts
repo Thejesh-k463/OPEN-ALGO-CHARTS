@@ -34,6 +34,11 @@ export type { ChartGrid, ChartGridOptions, ChartGridCell, ChartGridLayout, Chart
 export { CHART_GRID_CSS } from './grid-styles';
 export { createLayoutsController } from './layouts';
 export type { LayoutsController, LayoutsControllerOptions, LayoutsState, LayoutTarget, LayoutApplyReport, LayoutAutosaveStatus } from './layouts';
+// Layouts: the menu, the one-widget target and indicator templates.
+export { openLayoutsMenu, LAYOUTS_MENU_CSS } from './layouts-menu';
+export { widgetLayoutTarget } from './layouts-target';
+export { applyIndicatorTemplate, saveIndicatorTemplate } from './layouts-templates';
+export type { IndicatorTemplateApplyMode } from './layouts-templates';
 export { mountObjectsPanel, createObjectsPanelContent, OBJECTS_PANEL_CSS } from './objects-panel';
 export type { ObjectsPanelOptions, ObjectsPanelContent } from './objects-panel';
 export { readDataWindow, mountDataWindow, DATA_WINDOW_CSS } from './data-window';
