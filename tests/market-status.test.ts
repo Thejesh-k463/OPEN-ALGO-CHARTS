@@ -65,6 +65,16 @@ describe('market status at an instant', () => {
       .toEqual({ phase: 'closed', changesAt: null, nextPhase: null, opensAt: null, closesAt: null });
   });
 
+  it('throws near a date whose window a clock change removes, as the docs say, and answers away from it', () => {
+    // 02:30 does not exist in New York on Sunday 8 March 2026.
+    const gap = new SessionCalendar({ timezone: 'America/New_York', sessions: ['0230-1600'] });
+    const day = (offset: number): number => time('2026-03-08T15:00:00Z') + offset * 86400;
+    for (const offset of [-15, -1, 0, 4]) expect(() => gap.marketStatusAt(day(offset))).toThrow(/session boundary is absent/);
+    for (const offset of [-16, 5]) expect(gap.marketStatusAt(day(offset)).phase).toBe('regular');
+    for (const offset of [-1, 2]) expect(() => gap.phaseAt(day(offset))).toThrow(/session boundary is absent/);
+    for (const offset of [-2, 3]) expect(gap.phaseAt(day(offset))).toBe('regular');
+  });
+
   it('answers the same from the free function, for any source that lays out phases', () => {
     const at = ist('2026-01-28T09:05:00');
     expect(marketStatusAt(instrument, at)).toEqual(instrument.marketStatusAt(at));

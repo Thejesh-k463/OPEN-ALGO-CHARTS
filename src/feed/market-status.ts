@@ -134,8 +134,10 @@ export function statusOf(source: SessionPhaseSource, utcSeconds: number): Market
  * `SessionCalendar`, `Instrument`, or the calendar a chart was given, read
  * back from `chart.dataLayer.sessionCalendar`. Null when the source is absent
  * or cannot lay out phases, such as a host's hours with `sessionFrom` alone.
- * Pass `Date.now() / 1000` for "now". A calendar that cannot answer, such as
- * a window a daylight-saving change removes, throws as its `sessionAt` does.
+ * Pass `Date.now() / 1000` for "now". A calendar with a window whose boundary
+ * a daylight-saving change removes throws, as its `sessionAt` does on that
+ * date. A status lays out the days around the instant, so it throws from
+ * about fifteen days before that date to four after, and a readout catches it.
  */
 export function marketStatusAt(
   source: { phaseSpans?: SessionPhaseSource['phaseSpans'] } | null | undefined,

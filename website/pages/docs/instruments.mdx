@@ -176,6 +176,11 @@ most 400 days. `SessionCalendar` has the same `phaseAt`, `phaseSpans` and
 | `nextPhase` | The phase from `changesAt`, or null with it. |
 | `opensAt`, `closesAt` | The regular session in force, or else the next one to open, within 14 days. |
 
+A window whose boundary falls in a daylight-saving gap cannot be resolved, so `sessionAt`
+throws on that date. `phaseAt` lays out the dates either side of the instant and throws
+from the day before to two days after it, and a status, which looks two weeks ahead,
+throws from about fifteen days before to four after: a readout on a timer catches it.
+
 The free function takes anything with `phaseSpans`, including the calendar a chart holds,
 and returns null when there is none, so a host derives the status only when it supplies
 none of its own:

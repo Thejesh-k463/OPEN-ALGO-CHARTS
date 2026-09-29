@@ -338,6 +338,23 @@ describe('market phases', () => {
     expect(overnight.phaseAt(time('2026-01-31T03:00:00Z'))).toBe('closed');
   });
 
+  it('lays out the dates either side of a range, for hours that spill across midnight into it', () => {
+    // A Thursday-night session whose post-close runs through Friday into
+    // Saturday: its hours reach two dates past the one it opens on, and are
+    // the only hours on either.
+    const late = new SessionCalendar({ timezone: 'UTC', sessions: ['2200-0200:5'], postMarketMinutes: 1439 });
+    expect(late.phaseAt(time('2026-01-31T01:00:00Z'))).toBe('post');
+    expect(late.phaseAt(time('2026-01-31T02:00:00Z'))).toBe('closed');
+    // A pre-open that begins the evening before a session opening just after
+    // midnight belongs to the next date.
+    const early = new SessionCalendar({ timezone: 'UTC', sessions: ['0030-0600:23456'], preMarketMinutes: 60 });
+    expect(early.phaseAt(time('2026-02-01T23:45:00Z'))).toBe('pre');
+    expect(early.phaseSpans(time('2026-02-01T20:00:00Z'), time('2026-02-01T23:40:00Z'))).toEqual([
+      span('closed', time('2026-02-01T20:00:00Z'), time('2026-02-01T23:30:00Z')),
+      span('pre', time('2026-02-01T23:30:00Z'), time('2026-02-01T23:40:00Z')),
+    ]);
+  });
+
   it('lays out a round-the-clock calendar as one session', () => {
     const crypto = new SessionCalendar({ timezone: 'UTC', sessions: ['0000-0000'] });
     expect(crypto.phaseSpans(time('2026-01-24T05:00:00Z'), time('2026-01-27T05:00:00Z')))
