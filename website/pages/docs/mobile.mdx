@@ -94,10 +94,29 @@ For a fixed aspect ratio at any screen width:
 ## Packaged mobile widget controls
 
 `WidgetOptions.mobile` accepts `'auto'`, `'always'` or `'never'`. The default is
-`'auto'`, which switches when the widget container is at most 640 CSS px wide or the
-primary pointer is coarse. It observes the container rather than the browser viewport,
-so a narrow chart in a wide dashboard receives the compact controls, and a phone retains
-them in landscape.
+`'auto'`, which decides from the size of the widget container rather than the browser
+viewport, so a narrow chart in a wide dashboard receives the compact controls too. The
+pointer is the primary one, as the `(pointer: coarse)` media query reports it:
+
+| Widget container (CSS px) | Fine pointer | Coarse pointer |
+| --- | --- | --- |
+| At most 640 wide | Compact | Compact |
+| 641 to 960 wide, under 600 tall | Desktop | Compact |
+| 641 to 960 wide, 600 tall or more | Desktop | Desktop |
+| Wider than 960 | Desktop | Desktop |
+
+A phone therefore keeps the compact controls in both orientations: turned on its side it
+is wide but short. A tablet in either orientation, and a touch laptop, get the full top
+bar and drawing rail, which keep every tool one tap away. From 2.5.10; earlier releases
+chose the compact controls for any coarse pointer, whatever the container size.
+
+The widget decides again whenever the container is resized (a rotation, a split view, a
+dashboard cell changing size) and whenever the primary pointer changes, as it does when
+a convertible folds into tablet mode. Two cases keep the current layout. A container that
+measures 0 wide (hidden, or not laid out yet) starts with the desktop controls, and one
+that drops to 0 later keeps the layout it had. While a text field inside the widget has
+focus, a switch waits until focus leaves it, so an on-screen keyboard that shortens the
+container never hides the field being typed in.
 
 ```ts
 import { createWidget } from 'openalgo-charts/widget';
