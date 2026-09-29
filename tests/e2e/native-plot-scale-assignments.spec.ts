@@ -123,7 +123,10 @@ for (const width of [900, 390]) test(`the documented plot assignment controls pr
   page.on('pageerror', error => errors.push(error.message));
   const response = await page.request.get('/website/pages/examples.mdx');
   expect(response.ok()).toBe(true);
-  const source = (await response.text()).split('## Assign scales to individual study plots')[1].split('code={`')[1].split('`} />')[0];
+  let source = (await response.text()).split('## Assign scales to individual study plots')[1].split('code={`')[1].split('`} />')[0];
+  // The site's template splices the shared bar generator in; do the same here.
+  const market = await (await page.request.get('/website/components/synthetic-market.ts')).text();
+  source = source.replace('${STOCK_BARS_SOURCE}', market.split('STOCK_BARS_SOURCE = `')[1].split('`;')[0]);
   await page.setViewportSize({ width, height: 600 });
   await page.route('**/plot-example.html', route => route.fulfill({ contentType: 'text/html', body:
     `<!doctype html><html><head><style>html,body{margin:0;background:#101010}#example{width:${width}px;height:600px}</style></head><body><div id="example"></div></body></html>` }));
@@ -163,7 +166,7 @@ for (const width of [900, 390]) test(`the documented plot assignment controls pr
     expect(state.formatted).toEqual([whole === 'left' ? '0%' : '0.35', '67%', '115.75']);
     expect(state.values).toEqual(before.values);
     expect(state.bars).toEqual(before.bars);
-    await expect(page.getByRole('status')).toContainText('Last: 0.35 / 67.00 / 47.00 / 115.75');
+    await expect(page.getByRole('status')).toContainText('Last: 0.45 / 62.27 / 42.27 / 99.70');
     if (label === 'Reject split band') await expect(page.getByRole('status')).toContainText('Reject split band: false');
     if (label === 'Save layout') saved = state;
     if (label === 'Restore layout') expect(state.overrides).toEqual(saved.overrides);

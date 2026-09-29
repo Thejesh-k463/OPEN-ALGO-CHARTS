@@ -45,7 +45,10 @@ for (const width of [900, 390]) test(`documented template controls retain source
   page.on('pageerror', error => errors.push(error.message));
   const response = await page.request.get('/website/pages/examples.mdx');
   expect(response.ok()).toBe(true);
-  const code = (await response.text()).split('## Copy study layouts with templates')[1].split('code={`')[1].split('`} />')[0];
+  let code = (await response.text()).split('## Copy study layouts with templates')[1].split('code={`')[1].split('`} />')[0];
+  // The site's template splices the shared bar generator in; do the same here.
+  const market = await (await page.request.get('/website/components/synthetic-market.ts')).text();
+  code = code.replace('${STOCK_BARS_SOURCE}', market.split('STOCK_BARS_SOURCE = `')[1].split('`;')[0]);
   await page.setViewportSize({ width, height: 620 });
   await page.route('**/template-example.html', route => route.fulfill({ contentType: 'text/html', body:
     `<!doctype html><html><head><style>html,body{margin:0;background:#101010}#example{width:${width}px;height:600px}</style></head><body><div id="example"></div></body></html>` }));
