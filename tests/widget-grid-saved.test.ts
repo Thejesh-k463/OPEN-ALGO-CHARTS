@@ -7,7 +7,7 @@
  * landed.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
-import type { BarsRequest, DataFeed } from '../src/index';
+import { ReplayController, type BarsRequest, type DataFeed } from '../src/index';
 import '../src/indicators/index';
 import { WorkspaceRepository, createMemoryWorkspaceStorage, type WorkspaceStorage } from '../src/workspace/index';
 import { createLayoutsController, type ChartGrid, type ChartGridOptions } from '../src/widget/index';
@@ -208,16 +208,48 @@ describe('the chart grid saved layouts', () => {
     expect(control(root).textContent).toBe('Layouts');
   });
 
+  it('hold autosave while any chart of the desk replays, and write the change once it ends', async () => {
+    const repo = account()();
+    await repo.setAutosave(true);
+    const { grid, root } = make({ workspaces: repo });
+    await settle();
+    await saveAs(root, 'Desk');
+    const replay = new ReplayController(grid.cells()[1].widget.chart, { startIndex: 60 });
+    const menu = await openMenu(root);
+    try {
+      expect(must(menu, '.oac-layouts__row').getAttribute('aria-disabled')).toBe('true');
+      grid.cells()[0].widget.setSymbol('RRR');
+      await new Promise(resolve => setTimeout(resolve, 1100));
+      await settle();
+      expect((await repo.load()).workspaces[0].panes[0].symbol).toBe('AAA');
+      expect(must(menu, '.oac-layouts__autosave-state').textContent).toBe('Autosave waits for the replay to end');
+    } finally { replay.stop(); }
+    await new Promise(resolve => setTimeout(resolve, 1100));
+    await settle();
+    expect((await repo.load()).workspaces[0].panes[0].symbol).toBe('RRR');
+  });
+
   it('drive a controller the host passes from the bar alone, never reopening or ending it', async () => {
     const repo = account()();
     let target: ChartGrid | null = null;
     const controller = createLayoutsController(repo, { capture: () => target!.getWorkspace(), apply: payload => target!.applyWorkspace(payload) });
+    // Who still listens to the host's controller: the grid's bar and menu let go of it with the grid.
+    let listening = 0;
+    const subscribe = controller.subscribe.bind(controller);
+    controller.subscribe = listener => {
+      listening++;
+      const off = subscribe(listener);
+      return () => { listening--; off(); };
+    };
     const { grid, root } = make({ workspaces: repo, layouts: controller });
     target = grid;
     expect(grid.cells().every(cell => cell.widget.layouts === null)).toBe(true);
     await saveAs(root, 'Hosted');
     expect(controller.state().layoutId).not.toBeNull();
+    await openMenu(root);
+    expect(listening).toBeGreaterThan(1);
     grid.destroy();
+    expect(listening).toBe(0);
     // Still the host's: it answers after the grid has gone.
     expect((await controller.reload()).workspaces.map(doc => doc.name)).toEqual(['Hosted']);
     controller.destroy();
