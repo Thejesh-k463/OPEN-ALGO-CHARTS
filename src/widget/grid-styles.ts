@@ -61,12 +61,15 @@ export const CHART_GRID_CSS = `
 
 /* The grid's own chrome takes the widget's controls; these rules only place it. */
 .oac-widget.oac-grid__bar { position: relative; display: flex; align-items: center; gap: 4px; flex: none; height: auto; min-height: 0;
-  padding: 4px 6px; background: var(--oac-panel); border-bottom: 1px solid var(--oac-bd-soft); overflow: visible; }
+  padding: 4px 6px; background: var(--oac-panel); border-bottom: 1px solid var(--oac-bd-soft); overflow: visible;
+  container: oac-grid-bar / inline-size; }
 .oac-grid__bar .oac-grid__bar-text { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }
 .oac-grid__bar-mark { display: inline-flex; }
 .oac-grid__spacer { flex: 1 1 auto; }
 .oac-grid__saved { min-width: 0; }
 .oac-grid__saved[data-attention="true"]::after { content: ''; width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--oac-amber); }
+/* A phone's bar keeps the glyph and the mark; the held layout's name stays in the tip and the accessible name. */
+@container oac-grid-bar (max-width: 520px) { .oac-grid__saved > .oac-grid__bar-text { display: none; } }
 /* One bar under the charts: the widget's own strip, acting on the active chart. */
 .oac-widget.oac-grid__foot { display: block; flex: none; height: auto; min-height: 0; }
 .oac-widget.oac-grid__overlay { position: absolute; inset: 0; display: block; background: transparent; pointer-events: none;

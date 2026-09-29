@@ -587,6 +587,13 @@ test('the grid bar keeps the desk saved layouts: save, change, and the saved des
   await expect(page.locator('.oac-grid__saved')).toHaveText('Morning desk');
   await readyEvery(page);
   await page.screenshot({ path: info.outputPath('grid-layouts-reopened.png') });
+  // At phone width the control keeps its glyph, rather than a name cut to a letter or two; the name stays in its tip and accessible name.
+  await page.setViewportSize({ width: 390, height: 780 });
+  await expect(page.locator('.oac-grid__saved .oac-grid__bar-text')).toBeHidden();
+  await expect(page.locator('.oac-grid__saved')).toHaveAccessibleName('Layouts: Morning desk');
+  const phone = (await page.locator('.oac-grid__saved').boundingBox())!;
+  expect(phone.x + phone.width).toBeLessThanOrEqual(390);
+  await page.locator('.oac-grid__bar').screenshot({ path: info.outputPath('grid-layouts-phone-bar.png') });
   expect(errors).toEqual([]);
 });
 
