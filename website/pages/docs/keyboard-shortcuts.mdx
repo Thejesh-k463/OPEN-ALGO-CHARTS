@@ -115,6 +115,22 @@ User rebinds always win over the active preset.
 Keys are always ignored while you type in an `input`, `textarea`, `select`, or any
 `contenteditable` element.
 
+## Chart grid
+
+A chart grid adds its own chords to each chart's keymap, in a Chart grid section of the
+shortcuts panel. Only the active chart answers them. They name no command, so the
+[shortcuts editor](#widget-shortcuts-editor) lists them without a Change
+button.
+
+| Keys | Action |
+|---|---|
+| `Alt + Enter` | Maximize or restore the active chart |
+| `Escape` | Restore the grid, when nothing else on the chart wants the key |
+| `Alt + Shift + Arrow` | Make the chart in that direction active |
+| `Mod + Shift + Arrow` | Swap the active chart with the chart in that direction |
+
+See [Chart grid](/docs/chart-grid).
+
 ## Custom shortcuts
 
 Add your own commands - they join the keymap and fire your handler:
