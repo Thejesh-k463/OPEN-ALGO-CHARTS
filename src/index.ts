@@ -183,7 +183,7 @@ export { LinkGroup, createLinkGroup, followerIndex, followerRange, LinkCrosshair
 export type {
   LinkChart, LinkOptions, LinkMemberOptions, ResolvedLinkOptions,
   LinkDataLayer, LinkMissingPolicy,
-  LinkAppearanceAdapter, LinkAppearanceValues,
+  LinkAppearanceAdapter, LinkAppearanceValues, LinkDrawingsAdapter,
 } from './link/index';
 
 export { CandleBuilder, DEFAULT_CANDLE_BUILDER_OPTIONS } from './feed/candle-builder';
