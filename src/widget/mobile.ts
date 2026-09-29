@@ -408,9 +408,10 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
     const rect = opts.container.getBoundingClientRect();
     const width = rect.width || opts.container.clientWidth;
     const height = rect.height || opts.container.clientHeight;
-    // A container hidden after it was measured reports 0; keep what it had
-    // rather than closing an open sheet over a size nobody can see.
-    if (modeApplied && !(width > 0)) return;
+    // A container hidden or collapsed after it was measured reports 0 in one
+    // dimension or both. Keep what it had rather than close an open sheet
+    // over a size nobody can see.
+    if (modeApplied && !(width * height > 0)) return;
     const next = resolveMobileMode(mode, width, height, pointerQuery?.matches === true);
     if (modeApplied && next === mobile) { held = false; return; }
     // An on-screen keyboard can shorten the container past the tablet

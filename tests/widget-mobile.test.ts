@@ -494,6 +494,19 @@ describe('auto mobile mode decision', () => {
     expect(root.classList.contains('is-mobile')).toBe(false);
   });
 
+  it('keeps the layout of a container collapsed to no height, and decides again once it has one', () => {
+    const { container, root } = make({}, 820, true, 450);
+    expect(root.classList.contains('is-mobile')).toBe(true);
+    action(root, 'draw').click();
+    // A closed accordion or a zero-height transition: the width is still there,
+    // but a height of 0 must not read as a tablet and close the open sheet.
+    resize(container, 820, 0);
+    expect(root.classList.contains('is-mobile')).toBe(true);
+    expect(root.querySelector('.oac-mobile-sheet')).not.toBeNull();
+    resize(container, 820, 1180);
+    expect(root.classList.contains('is-mobile')).toBe(false);
+  });
+
   it('starts an unmeasured container on the desktop controls and decides once it has a size', () => {
     const { container, root } = make({}, 0, true, 0);
     expect(root.classList.contains('is-mobile')).toBe(false);
