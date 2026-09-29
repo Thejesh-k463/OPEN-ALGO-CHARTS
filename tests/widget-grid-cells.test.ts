@@ -10,7 +10,7 @@ import '../src/indicators/index';
 import { parseWorkspacePayload } from '../src/workspace/index';
 import type { ChartGrid } from '../src/widget/index';
 import { ensureWindowGlobal, fire, fireKey, type FakeElement } from './helpers/fake-dom-widget';
-import { FakeResizeObserver, chartEl, el, flush, makeGrid, topbar, walk, withWindow } from './widget-grid-harness';
+import { FakeResizeObserver, MemoryStorage, chartEl, el, flush, makeGrid, topbar, walk, withWindow } from './widget-grid-harness';
 
 beforeAll(ensureWindowGlobal);
 
@@ -247,6 +247,37 @@ describe('chart grid chords', () => {
     const km = grid.cells()[1].widget.context.keymap;
     grid.setPreset('1x1');
     expect(km.list().filter(b => b.group === 'Chart grid')).toEqual([]);
+  });
+});
+
+describe('chart grid shared chords', () => {
+  const KEY = 'oac-widget:desk:keymap';
+  const chords = (grid: ChartGrid): Array<string | null> => grid.cells().map(c => c.widget.context.keymap.chord('tool:trend-line'));
+
+  it('moves a chord the user changed in one chart in every chart, keeps it for the desk, and resets it everywhere', () => {
+    const storage = new MemoryStorage();
+    const { grid } = makeGrid({ preset: '1x2', persist: 'desk', storage });
+    const [first, second] = grid.cells();
+    expect(second.widget.context.keymap.rebind('tool:trend-line', 'Alt+Y').ok).toBe(true);
+    expect(chords(grid)).toEqual(['Alt+y', 'Alt+y']);
+    expect(JSON.parse(storage.map.get(KEY)!)).toEqual({ 'tool:trend-line': 'Alt+y' });
+    // A chart a preset adds takes the desk's chords too.
+    grid.setPreset('1x3');
+    expect(chords(grid)).toEqual(['Alt+y', 'Alt+y', 'Alt+y']);
+    // A new grid on the same store opens with them.
+    const again = makeGrid({ preset: '1x2', persist: 'desk', storage }).grid;
+    expect(chords(again)).toEqual(['Alt+y', 'Alt+y']);
+    again.destroy();
+    first.widget.context.keymap.resetAll();
+    expect(chords(grid)).toEqual(['Alt+t', 'Alt+t', 'Alt+t']);
+    expect(storage.map.has(KEY)).toBe(false);
+  });
+
+  it('shares nothing when the shortcuts editor is off', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(KEY, JSON.stringify({ 'tool:trend-line': 'Alt+y' }));
+    const { grid } = makeGrid({ preset: '1x2', persist: 'desk', storage, shortcutsEditor: false });
+    expect(chords(grid)).toEqual(['Alt+t', 'Alt+t']);
   });
 });
 

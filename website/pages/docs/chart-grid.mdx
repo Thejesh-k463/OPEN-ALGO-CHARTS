@@ -150,6 +150,11 @@ chart answers them.
 While a chart is maximized, the tabs take the arrows, Home and End, with one tab stop
 for the row.
 
+A chord the user moves in one chart's shortcuts editor (since 2.5.10) moves in every
+chart of the grid, and with `persist` it is kept with the desk and applied to each chart,
+including one a later layout adds. Reset all in any chart resets them all.
+`shortcutsEditor: false` lists the chords only and shares none.
+
 ## The active chart and the keyboard
 
 Every widget listens for keys on the document, so on a page with several charts one

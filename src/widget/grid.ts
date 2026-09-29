@@ -55,6 +55,7 @@ import {
 import { mountGridBar, openLinkMenu, groupMark, type GridBarHandle, type GridBarHost } from './grid-bar';
 import { captureRatio, composeGridCapture, type CaptureBox, type GridCapturePiece } from './grid-capture';
 import { installGridKeys, installHeaderDrag, neighbour } from './grid-cells';
+import { KEYMAP_KEY } from './keymap';
 
 export { CHART_GRID_PRESETS, type ChartGridPreset } from './grid-layouts';
 
@@ -368,6 +369,10 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   const links = new GridLinks<Cell>(options.links);
   const offs: Array<() => void> = [];
   let cells: Cell[] = [];
+  // The user's chords belong to the desk, not to one chart: one record in the
+  // grid's storage, applied to every chart and passed on when a chart changes it.
+  let chords: unknown = storage.get(KEYMAP_KEY);
+  let sharing = false;
   let active: Cell | null = null;
   const splits: HTMLElement[] = [];
   let rows = 1, cols = 1, rowW = [1], colW = [1];
@@ -770,6 +775,20 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   const join = (cell: Cell): void => {
     const { widget } = cell;
     const chart = widget.chart;
+    if (options.shortcutsEditor !== false) {
+      const km = widget.context.keymap;
+      km.applyOverrides(chords);
+      cell.offs.push(km.onChange(() => {
+        if (sharing) return;
+        sharing = true;
+        try {
+          const next = km.overrides();
+          chords = next;
+          for (const other of cells) if (other !== cell) other.widget.context.keymap.applyOverrides(next);
+          if (Object.keys(next).length === 0) storage.remove(KEYMAP_KEY); else storage.set(KEYMAP_KEY, next);
+        } finally { sharing = false; }
+      }));
+    }
     let settling = false, following = false;
     // A window set by fresh bars, by the grid or by the link group following
     // another chart is not the user's navigation: the chart that was navigated

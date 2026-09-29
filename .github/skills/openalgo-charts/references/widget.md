@@ -800,7 +800,9 @@ const report = grid.applyWorkspace(parseWorkspacePayload(fileText)); // { applie
   `weights`, `workspace`, `compact`, `maximize`, `swap`), `links` (the active chart's
   channels after a link, group or active chart change), `theme`.
 - Persistence (`persist`): preset, link, group, theme, active chart, instrument, swap,
-  keyboard splitter and drawing add or remove changes are written before the task ends. Pans,
+  keyboard splitter and drawing add or remove changes are written before the task ends.
+  (since 2.5.10) The user's chords are the desk's: a change in one chart's shortcuts
+  editor is applied to every chart and kept under `KEYMAP_KEY` in the grid's storage. Pans,
   zooms and drags are debounced (`SAVE_DEBOUNCE_MS`) and flushed when the page hides
   (`visibilitychange`), on `pagehide` and on `destroy`. A stored desk that fails to
   restore (a study or chart type registered later, say) is not overwritten: the grid
