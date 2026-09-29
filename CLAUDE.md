@@ -180,6 +180,9 @@ not reduce the testing needed for changes to loading, drawing, replay or trading
    and actual `/trading` browser harness. Preserve order authority, quantity units,
    exchange timestamps, session bucketing, volume accounting and replay guards.
    A dependency upgrade cannot substitute for a required consumer migration.
+   For a minor or major release, run this as a dry run even when OpenAlgo is not
+   upgrading in the same cycle, from the version it pins today, and report what its
+   migration will meet. Commit and push nothing to OpenAlgo for a dry run.
 5. Update package and lockfile versions, `src/version.ts`, changelog, website release
    notes, current-version references, examples, API docs and skills. Follow the
    measured-facts checklist above; preserve historical release facts. Run the full
@@ -233,6 +236,50 @@ trusting the source.
 Examples are not decoration, they are the proof a feature is usable. An example that
 throws is worse than a missing one. Anything overlaid on the chart as HTML must stop
 `pointerdown`, or the chart's pointer capture eats the click.
+
+## Keep the code lean
+
+Bloat is debt. Every byte in a tier ships to every host that imports it, and every line
+is read by the next person who changes the code. A feature is worth its cost or it does
+not ship, so the cost is measured, not guessed:
+
+- **A change reports what it costs.** Brotli bytes per tier (`npx size-limit`) and the
+  chart-only import (`npm run shake`) against the previous release, plus the lines it
+  adds. Raise a budget only to the measured need, in the release that needs it, never
+  with headroom for later.
+- **The base engine and the chart-only import carry only what a plain chart needs.** A
+  feature a plain chart does not use goes behind an opt-in import, a lazy tier or a
+  function the host calls, so a host that never uses it never pays for it.
+- **Reuse before adding.** Search for an existing helper, module or pattern first.
+  Duplicate logic, an abstraction with one caller, and an option or setting no host
+  asked for are rejected in review, the same way a control with nothing behind it is.
+- **Delete as well as add.** Dead code, unused exports, superseded helpers and duplicate
+  tests leave in the change that makes them dead. A compatibility shim names its removal
+  version (COMPATIBILITY.md; `scripts/check-deprecated.mjs` enforces the tag) and is
+  removed in that version.
+- **A release candidate gets a leanness review** before it ships: growth per feature in
+  bytes, lines and public surface, with every proposed cut verified before it is applied.
+
+## Quality gates for every release
+
+Intentions do not survive a busy release, so these are checks, run before every
+release candidate is tagged. The ones marked checked at release have no script yet;
+turning each into a script is the preferred fix whenever one of them is missed.
+
+- **Compatibility.** Diff every tier's public `.d.ts` against the previous release and
+  against the version OpenAlgo pins. A removal or a narrowed type fails the release
+  unless it is a deliberate deprecation for the next major. Saved chart state,
+  workspaces and layouts written by those versions load and round-trip in tests.
+- **Warnings.** Zero lint warnings and zero typedoc warnings.
+- **Structure.** No import cycles between modules (checked at release); a module has one
+  job and its index is its only door; `scripts/line-caps.json` caps only ever go down, so
+  a file that outgrows its cap is split, never given a larger cap.
+- **Surface.** No unused exports (checked at release); `npm run skills:coverage` at 100
+  percent; every `@deprecated` names its removal version.
+- **Tests.** No skipped test without a written reason beside it (checked at release), and
+  a flaky test is fixed or reported with its failure rate, never retried into green.
+- **Readability.** Comments say why; names match the vocabulary already in the tier; the
+  same thing is done the same way across tiers.
 
 ## Testing traps that have already cost real time
 
