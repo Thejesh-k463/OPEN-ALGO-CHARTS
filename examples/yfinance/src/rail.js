@@ -1042,11 +1042,11 @@ export const RAIL_CSS = `
   cursor: pointer; transition: background .1s, color .1s, border-color .1s; }
 .rail .rail__btn:hover { background: var(--elev); color: var(--tx); }
 .rail .rail__btn:focus-visible { outline: 2px solid var(--acc-2); outline-offset: -2px; }
-.rail .rail__btn.is-on { background: rgba(34,193,164,.16); border-color: #1d6b5e; color: var(--acc-2); }
+.rail .rail__btn.is-on { background: var(--on-bg); border-color: var(--on-bd); color: var(--acc-2); }
 .rail .rail__btn.is-weak { color: var(--acc-2); }
 .rail .rail__btn.is-off { color: var(--faint); cursor: default; }
 .rail .rail__btn.is-off:hover { background: transparent; color: var(--faint); }
-.rail .rail__btn--danger:not(.is-off):hover { color: #ff8b8b; }
+.rail .rail__btn--danger:not(.is-off):hover { color: var(--danger-tx); }
 .rail .rail__glyph { display: grid; place-items: center; width: 24px; height: 24px; line-height: 0; }
 .rail .rail__glyph > svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2;
   stroke-linecap: round; stroke-linejoin: round; }
@@ -1066,7 +1066,7 @@ export const RAIL_CSS = `
 .rail .rail__sep { width: 22px; height: 1px; background: var(--bd-soft); margin: 4px 0; flex: none; }
 .rail .rail__favs { display: contents; }
 .rail .rail__ctl { margin-top: auto; position: sticky; bottom: 0; display: flex; flex-direction: column;
-  align-items: center; gap: 2px; width: 100%; padding: 4px 0 6px; background: #0c0f16;
+  align-items: center; gap: 2px; width: 100%; padding: 4px 0 6px; background: var(--panel-2);
   border-top: 1px solid var(--bd-soft); flex: none; }
 .rail .rail__ctl .rail__sep { margin: 3px 0; }
 @media (prefers-reduced-motion: reduce) { .rail .rail__btn, .rail .rail__chev { transition: none; } }
