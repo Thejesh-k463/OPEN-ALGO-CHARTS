@@ -101,6 +101,10 @@ you pass `watchlist: { store, quotes }` and `news: { feed }`. Each appears only 
 its source is supplied; `widget.openWatchlist()` and `widget.openNews()` open them.
 See [Watchlists & News](/docs/watchlists-and-news).
 
+From 2.5.10, a widget given `workspaces` has a Layouts button in the top bar;
+`widget.openLayouts()` opens the menu and `widget.layouts` is its controller. See
+[Workspaces](/docs/workspaces#layouts-and-templates-in-the-widget).
+
 ## Symbol search and direct typing
 
 `symbolSearch(query)` remains a host-supplied lookup. Existing results with
@@ -520,6 +524,8 @@ passes through to `createChart` unchanged.
 | `drawingStore` | `DrawingDocumentStore` | Where each instrument's drawings are kept (since 2.5.9). Default: beside the layout with `persist`, else in memory. |
 | `drawingTemplates` | `DrawingTemplateStore` | Saved drawing looks (since 2.5.9): a tool's default and named templates, usually a `DrawingTemplateRepository` from `openalgo-charts/workspace`. Without one no template control is shown. See [Drawing toolbar, templates and coordinates](#drawing-toolbar-templates-and-coordinates). |
 | `drawingToolbar` | `boolean` | The floating toolbar over the selected drawings on a desktop layout (since 2.5.9). Default: on with the rail. |
+| `workspaces` | `WorkspaceStore` | Saved layouts and indicator templates (since 2.5.10): usually a `WorkspaceRepository` from `openalgo-charts/workspace`. Adds the Layouts menu and templates in the indicator picker. See [Workspaces](/docs/workspaces#layouts-and-templates-in-the-widget). |
+| `layouts` | `LayoutsController \| false` | What the Layouts menu drives (since 2.5.10). Default: a controller over the widget; `false` for no menu. |
 | `locale` | `string` | A BCP 47 tag the status line formats numbers with. |
 | `symbolSearch` | `(query) => SymbolMatch[] \| Promise<SymbolMatch[]>` | Called as the user types in the symbol box; the results open as a menu under it. |
 | `lookbackBars` | `number` | Bars per load. Default 500. |
