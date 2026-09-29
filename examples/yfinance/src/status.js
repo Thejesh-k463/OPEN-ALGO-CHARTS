@@ -1,5 +1,10 @@
+import * as engine from '/dist/openalgo-charts.mjs';
 import { fmt, UP, DOWN } from './ui.js';
 import { sessionOf } from './session.js';
+
+// Read off the namespace, like the other version-dependent surfaces: an older
+// dist/ without session phases still loads, and reads the table by the clock.
+const { SessionCalendar } = engine;
 
 let app;
 export function initStatus(a) { app = a; }
@@ -55,7 +60,10 @@ export const descriptionOf = (sym) => LONG_NAMES[String(sym).toUpperCase()] || n
  * silently wrong for half of it. `null` means the venue never closes; a
  * venue absent from the table has no hours here and says so. `pre` and
  * `post` bound the extended session where the source serves one: an
- * extended chart is trading, and can go stale, from `pre` to `post`.
+ * extended chart is trading, and can go stale, from `pre` to `post`. An
+ * optional `exceptions` map closes (`[]`) or shortens local dates, in the
+ * library calendar's own form; the demo lists none, so a holiday reads as
+ * an ordinary weekday until a host supplies its venue's closed dates.
  */
 export const SESSIONS = {
   NSE: { zone: 'Asia/Kolkata', open: 9 * 60 + 15, close: 15 * 60 + 30 },
@@ -83,36 +91,80 @@ const zoneParts = (() => {
   };
 })();
 
+const hhmm = (minutes) => String(Math.floor(minutes / 60)).padStart(2, '0') + String(minutes % 60).padStart(2, '0');
+
+/** One library calendar per table entry, built on first use and rebuilt only for a replaced entry. */
+const venueCalendars = new WeakMap();
+
 /**
- * Whether the venue is trading right now, for a chart on `session`. There
- * is no holiday calendar behind this, so it says "market closed" on
- * Republic Day for the same reason it does on a Sunday. A chart on extended
- * hours is told which side of the regular session its bars come from.
+ * A venue's hours as the library's `SessionCalendar`: its regular window on
+ * weekdays, the pre-open and post-close the source serves around it, and the
+ * closed dates the table lists. The library then answers which part of the
+ * day it is, holidays included, in the venue's own zone. Null for a venue
+ * with no hours here, one that never closes, or a dist/ without calendars.
+ */
+export function venueCalendar(venue) {
+  const hours = SESSIONS[venue];
+  if (!hours || !SessionCalendar) return null;
+  let calendar = venueCalendars.get(hours);
+  if (!calendar) {
+    calendar = new SessionCalendar({
+      timezone: hours.zone,
+      sessions: [`${hhmm(hours.open)}-${hhmm(hours.close)}:23456`],
+      ...(hours.pre === undefined ? {} : { preMarketMinutes: hours.open - hours.pre, postMarketMinutes: hours.post - hours.close }),
+      ...(hours.exceptions ? { exceptions: hours.exceptions } : {}),
+    });
+    venueCalendars.set(hours, calendar);
+  }
+  return calendar;
+}
+
+/**
+ * The part of the trading day it is at a venue: 'regular', 'pre', 'post',
+ * 'holiday' or 'closed', from the library calendar. A dist/ from before
+ * session phases reads the same windows by the clock, with no dates closed.
+ */
+function venuePhase(venue, ms = Date.now()) {
+  const calendar = venueCalendar(venue);
+  if (typeof calendar?.phaseAt === 'function') return calendar.phaseAt(ms / 1000);
+  const hours = SESSIONS[venue];
+  const { day, minutes } = zoneParts(ms, hours.zone);
+  if (day < 1 || day > 5) return 'closed';
+  if (minutes >= hours.open && minutes < hours.close) return 'regular';
+  if (hours.pre !== undefined && minutes >= hours.pre && minutes < hours.open) return 'pre';
+  return hours.post !== undefined && minutes >= hours.close && minutes < hours.post ? 'post' : 'closed';
+}
+
+/**
+ * Whether the venue is trading right now, for a chart on `session`: the
+ * library's derivation from the venue calendar, so a closed date the table
+ * lists reads as a holiday. A chart on extended hours is told which side of
+ * the regular session its bars come from; a regular-hours chart has no bars
+ * there, so for it those hours are closed.
  */
 export function marketStatusReading(symbol = app.req.symbol || '', session = sessionOf(app?.req)) {
   const venue = exchangeOf(symbol);
   if (!(venue in SESSIONS)) return undefined;    // no hours for this venue
   if (SESSIONS[venue] === null) return { text: 'Open 24x7', color: UP };
-  if (venueLive(symbol)) return { text: 'Market open', color: UP };
-  if (!venueLive(symbol, session)) return { text: 'Market closed' };
-  const { minutes } = zoneParts(Date.now(), SESSIONS[venue].zone);
-  return { text: minutes < SESSIONS[venue].open ? 'Pre-market' : 'Post-market' };
+  const phase = venuePhase(venue);
+  if (phase === 'regular') return { text: 'Market open', color: UP };
+  if (session === 'extended' && phase === 'pre') return { text: 'Pre-market' };
+  if (session === 'extended' && phase === 'post') return { text: 'Post-market' };
+  return { text: phase === 'holiday' ? 'Market holiday' : 'Market closed' };
 }
 
 /**
- * Can this venue still be producing bars right now? The same table and the
- * same missing holiday calendar as the status line above, so it says "live"
- * on Republic Day for the same reason it does not say "closed" on one. A
- * chart on extended hours counts them where the venue has them. Read by
- * `barsRequest` to decide how far ahead it is worth asking for data, and by
- * `staleness` to decide whether a bar can be late at all.
+ * Can this venue still be producing bars right now? The same calendar as the
+ * status line above, so a listed holiday is not live either. A chart on
+ * extended hours counts them where the venue has them. Read by `barsRequest`
+ * to decide how far ahead it is worth asking for data, and by `staleness` to
+ * decide whether a bar can be late at all.
  */
 export function venueLive(symbol, session = 'regular') {
-  const s = SESSIONS[exchangeOf(symbol)];
+  const venue = exchangeOf(symbol), s = SESSIONS[venue];
   if (s === undefined || s === null) return true;   // unknown hours, or 24x7
-  const extended = session === 'extended' && s.pre !== undefined;
-  const { day, minutes } = zoneParts(Date.now(), s.zone);
-  return day >= 1 && day <= 5 && minutes >= (extended ? s.pre : s.open) && minutes < (extended ? s.post : s.close);
+  const phase = venuePhase(venue);
+  return phase === 'regular' || (session === 'extended' && (phase === 'pre' || phase === 'post'));
 }
 
 /** A bar's local calendar day, for spotting a session boundary. */
