@@ -145,6 +145,27 @@ describe('the chart grid saved layouts', () => {
     expect(doc.body.querySelector('.oac-layouts')).toBeNull();
   });
 
+  it('say once on the active chart status line that autosave stopped, as one widget says it', async () => {
+    const storage = createMemoryWorkspaceStorage();
+    let fail = false;
+    const flaky: WorkspaceStorage = {
+      read: key => storage.read(key),
+      write: (key, catalog, expected, options) => fail ? Promise.reject(new Error('quota exceeded')) : storage.write(key, catalog, expected, options),
+    };
+    const repo = account(flaky)();
+    await repo.setAutosave(true);
+    const { grid, root, doc } = make({ workspaces: repo });
+    await saveAs(root, 'Desk');
+    fail = true;
+    grid.cells()[0].widget.setSymbol('FFF');
+    // Hiding the page writes the change at once, rather than after the quiet period.
+    Object.assign(doc, { visibilityState: 'hidden' });
+    fire(doc, 'visibilitychange');
+    await settle();
+    expect(control(root).dataset.attention).toBe('true');
+    expect(el(grid.active().widget.root).querySelector('.oac-statusline__msg')?.textContent).toBe('Autosave stopped: the layout could not be saved');
+  });
+
   it('reopen the layout that was active once the grid own desk has landed', async () => {
     const repos = account();
     const first = make({ workspaces: repos() });

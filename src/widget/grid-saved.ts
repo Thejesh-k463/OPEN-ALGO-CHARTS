@@ -104,8 +104,17 @@ export function attachGridSaved(host: GridSavedHost): GridSaved | null {
   const controller = (given ?? own) as LayoutsController;
   let menu: PanelHandle | null = null;
   let destroyed = false;
-  // A layout that stops autosaving or conflicts needs no line of its own: the
-  // control's mark says so, and its name says it in words.
+  // An autosave that stops is said once on the active chart's status line, as
+  // one widget says it: the menu may be closed, and a screen reader hears no
+  // mark. The controller's destroy lets go of this listener.
+  let failing = false;
+  own?.subscribe(state => {
+    const failed = state.autosave === 'failed' && !state.conflict;
+    if (!failing && (failed || state.conflict)) {
+      report(failed ? text('autosaveStopped', 'Autosave stopped: the layout could not be saved') : text('conflictStatus', 'The layout was changed in another window'));
+    }
+    failing = failed || state.conflict;
+  });
   if (own !== null) {
     void host.ready.then(() => (destroyed ? null : own.reload())).then(async catalog => {
       if (destroyed || catalog == null || catalog.activeWorkspaceId === null || host.opened()) return;
