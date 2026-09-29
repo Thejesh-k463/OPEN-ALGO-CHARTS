@@ -230,4 +230,92 @@ describe('marker lanes', () => {
     layer.draw(ctx, rc);
     expect(reads).toBeLessThan(120);
   });
+
+  // Signals on every bar of a long history: buys below and sells above, each
+  // with its own colour so a recorded plate names the bar it belongs to.
+  const everyBar = (count: number): SeriesMarker[] => Array.from({ length: count }, (_, i) => {
+    const tag = i.toString(16).padStart(4, '0');
+    return i % 2 === 0
+      ? { time: at(i), position: 'belowBar', shape: 'labelUp', size: 'small', color: `#26${tag}`, text: 'Buy' }
+      : { time: at(i), position: 'aboveBar', shape: 'labelDown', size: 'small', color: `#ef${tag}`, text: 'Sell' };
+  });
+
+  it('moves a label at most five of its own heights, so a wide zoom overlaps instead of stacking out of the pane', () => {
+    const bars = walk(2000, 11);
+    const { list, rc } = paint(everyBar(2000), bars, 0.5);
+    const px = effectiveMarkerPx('small', 0.5);
+    // A 9 px plate: its body and tail, and the gap between lanes.
+    const lane = 9 + 9 * 0.64 + 9 * 0.42 + 2;
+    let most = 0;
+    for (const plate of list) {
+      const i = parseInt(plate.color.slice(3), 16);
+      const natural = plate.color.startsWith('#ef') ? rc.priceScale.priceToY(bars[i].high) - px : rc.priceScale.priceToY(bars[i].low) + px;
+      most = Math.max(most, Math.abs(plate.apexY - natural));
+    }
+    expect(list.length).toBeGreaterThan(1000);
+    // Some labels did take lanes, and none went further than five.
+    expect(most).toBeGreaterThan(lane);
+    expect(most).toBeLessThanOrEqual(5 * lane + 1e-6);
+  });
+
+  it('lays out a bounded run before the view, not the history, when labels never leave a gap', () => {
+    const n = 20_000;
+    let reads = 0;
+    const bars: Bar[] = walk(n, 3);
+    for (const b of bars) {
+      let close = b.close;
+      Object.defineProperty(b, 'close', { get: () => { reads++; return close; }, set: (v: number) => { close = v; }, enumerable: true });
+    }
+    const dl = new DataLayer();
+    const id = dl.createSeries();
+    dl.setSeriesData(id, bars);
+    const layer = new SeriesMarkers(id);
+    let texts = 0;
+    // A study sets its marks again on every recompute, so a paint right after
+    // a set must not measure or read every mark in the history either.
+    const markers = everyBar(n).map(m => {
+      const text = m.text;
+      return Object.defineProperty({ ...m }, 'text', { get: () => { texts++; return text; }, enumerable: true });
+    });
+    layer.setMarkers(markers);
+    const rc = makeRc(dl, 6);
+    const { ctx } = makeCtx();
+    reads = 0;
+    texts = 0;
+    layer.draw(ctx, rc);
+    // About a hundred bars in view, and at most two windows of 256 laid out before them.
+    expect(reads).toBeLessThan(1000);
+    expect(texts).toBeLessThan(n / 4);
+  });
+
+  it('keeps labels still while a dense run pans by a few bars', () => {
+    const bars = walk(2000, 13);
+    const markers = everyBar(2000);
+    const views = [0, 5, -7, 12].map(offset => new Map(paint(markers, bars, 6, offset).list.map(p => [p.color, p.apexY])));
+    let compared = 0;
+    for (const [color, y] of views[0]) {
+      for (const other of views.slice(1)) {
+        const moved = other.get(color);
+        if (moved === undefined) continue;
+        expect(moved).toBe(y);
+        compared++;
+      }
+    }
+    expect(compared).toBeGreaterThan(200);
+  });
+
+  it('keeps whipsaw labels apart at a fractional device pixel ratio', () => {
+    const bars = walk(120);
+    const dl = new DataLayer();
+    const id = dl.createSeries();
+    dl.setSeriesData(id, bars);
+    const layer = new SeriesMarkers(id);
+    layer.setMarkers(whipsaw(60, 99));
+    const { ctx, rec } = makeCtx();
+    layer.draw(ctx, { ...makeRc(dl), dpr: 1.25 });
+    const list = plates(rec.ops);
+    expect(sells(list)).toHaveLength(20);
+    expect(collisions(sells(list))).toEqual([]);
+    expect(collisions(buys(list))).toEqual([]);
+  });
 });

@@ -57,8 +57,10 @@ return chart;`} caption="Label plates: the tail points at the anchor price, the 
 Markers that carry text above or below the bar, or on a pane edge, take **lanes**. A label
 is wider than a bar, so on a whipsaw the signals on neighbouring bars would land on each
 other: each one moves outward just past any earlier label on its side that it overlaps,
-and a label that overlaps nothing stays exactly where it was. Labels hold their lanes
-while the chart pans. A mark at a price or in the bar keeps its place.
+and a label that overlaps nothing stays exactly where it was. A label moves at most five
+of its own heights, so where labels outnumber the room, as at a wide zoom, the rest
+overlap on their bars instead of stacking out of the pane. Labels hold their lanes while
+the chart pans. A mark at a price or in the bar keeps its place.
 
 <RunnableExample height={340} code={`${STOCK_BARS_SOURCE}
 const chart = lib.createChart(el);
