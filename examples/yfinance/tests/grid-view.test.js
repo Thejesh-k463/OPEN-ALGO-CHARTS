@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { DataLoadingController } from '/dist/openalgo-charts.mjs';
 import { parseWorkspaceDocument } from '/dist/openalgo-charts.workspace.mjs';
+import { layoutIconPath } from '/dist/openalgo-charts.draw.mjs';
+import { CHART_GRID_LAYOUTS, CHART_GRID_LAYOUT_NAMES } from '/dist/openalgo-charts.widget.mjs';
 import {
   GRID_HANDOFF_KEY, GRID_INTERVALS, GRID_PRESET_LABELS, gridFeed, gridFeeds, gridPeriod, gridViewRefusal, presetGlyph, handOffToGrid, takeGridHandoff, readGridFile, gridDocument,
 } from '../src/grid-view.js';
@@ -144,6 +146,22 @@ describe('grid view documents', () => {
     expect(() => readGridFile(JSON.stringify(monthly))).toThrow(/1mo/);
   });
 
+  it('checks saved link groups one by one: two groups may show two instruments, one group may not', () => {
+    const grouped = payload(2, 2);
+    grouped.sync.groups = [
+      { id: 'a', name: 'Tech', crosshair: true, viewport: true, symbol: true, interval: false },
+      { id: 'b', name: 'Cars', crosshair: true, viewport: false, symbol: true, interval: false, chartType: true },
+    ];
+    grouped.panes.forEach((pane, i) => { pane.linkGroup = i < 2 ? 'a' : 'b'; pane.symbol = i < 2 ? 'AAPL' : 'TSLA'; });
+    expect(gridViewRefusal(grouped)).toBe('');
+    expect(readGridFile(JSON.stringify(grouped)).sync.groups).toHaveLength(2);
+    grouped.panes[1].symbol = 'MSFT';
+    expect(gridViewRefusal(grouped)).toMatch(/linked by symbol/);
+    grouped.panes[1].symbol = 'AAPL';
+    grouped.panes[3].chartType = 'line';
+    expect(gridViewRefusal(grouped)).toMatch(/linked by chart type/);
+  });
+
   it('reads complete documents and bare payloads, and refuses malformed files before any chart changes', () => {
     const document = gridDocument(payload(2, 2), { name: 'Desk', now: 5 });
     expect(document).toMatchObject({ kind: 'workspace', version: 1, id: 'grid-5', name: 'Desk', createdAt: 5 });
@@ -202,9 +220,19 @@ describe('grid view documents', () => {
     expect(opened).toEqual(expected);
   });
 
-  it('draws one box per chart in each preset glyph, with a label for every preset', () => {
-    expect(presetGlyph('2x2').match(/<rect /g)).toHaveLength(4);
-    expect(presetGlyph('1x3').match(/<rect /g)).toHaveLength(3);
-    expect(Object.keys(GRID_PRESET_LABELS)).toEqual(['1x1', '1x2', '1x3', '2x1', '3x1', '2x2']);
+  it('names every layout the grid offers as the picker does, and draws its glyph from its own slots', () => {
+    const ids = Object.keys(CHART_GRID_LAYOUTS);
+    expect(ids).toHaveLength(26);
+    expect(Object.keys(GRID_PRESET_LABELS)).toEqual(ids);
+    for (const id of ids) {
+      expect(GRID_PRESET_LABELS[id]).toBe(CHART_GRID_LAYOUT_NAMES[id]);
+      const { rows, columns, slots } = CHART_GRID_LAYOUTS[id];
+      expect(presetGlyph(id)).toContain(`<path d="${layoutIconPath(rows, columns, slots)}"/>`);
+    }
+    expect(GRID_PRESET_LABELS['corner-7']).toBe('Large corner, seven around');
+    // A large chart spanning two cells is one pane in its glyph: no divider runs through it.
+    expect(presetGlyph('left-2')).not.toBe(presetGlyph('2x2'));
+    expect(presetGlyph('hand-made')).toBe('');
+    expect(presetGlyph('constructor')).toBe('');
   });
 });

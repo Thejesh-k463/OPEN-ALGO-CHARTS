@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
 // The reference host's grid view over the fixture server: four instruments,
-// presets, links and persistence, and the hand-off from the main page of a
+// the grid bar's layouts, links and link groups, maximize and persistence, and the hand-off from the main page of a
 // layout whose geometry only the grid view can draw.
 const ORIGIN = `http://127.0.0.1:${process.env.OAC_E2E_DEMO_PORT || '8124'}`;
 
@@ -21,22 +21,35 @@ const onNewest = (page: Page, key: string): Promise<boolean> => page.evaluate(na
   return count > 1 && range.from < count - 1 && range.to >= count - 1;
 }, key);
 
-test('the grid view loads four instruments, switches presets and links, and keeps them across a reload', async ({ page }, info) => {
+/** Pick a layout from the grid bar's picker by its name. */
+async function pickLayout(page: Page, name: string): Promise<void> {
+  await page.locator('.oac-grid__layout').click();
+  await page.getByRole('menu', { name: 'Layouts' }).getByRole('menuitemradio', { name, exact: true }).click();
+}
+const layoutText = (page: Page) => page.locator('.oac-grid__layout .oac-grid__bar-text');
+
+test('the grid view loads four instruments, switches layouts and links from the grid bar, and keeps them across a reload', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(ORIGIN + '/examples/yfinance/grid.html?test=1');
   await page.waitForFunction(() => (window as any).__grid?.cells().length === 4);
   await expect.poll(() => loaded(page), { timeout: 20_000 }).toBe(true);
   expect(await grid(page, g => g.cells().map((cell: any) => cell.widget.symbol()))).toEqual(['AAPL', 'MSFT', 'RELIANCE.NS', '^NSEI']);
-  await expect(page.getByRole('button', { name: 'Two by two' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(layoutText(page)).toHaveText('Two by two');
+  // The page's own bar keeps the file and the way back; the grid bar has the rest.
+  await expect(page.locator('#grid-presets, #grid-links')).toHaveCount(0);
   await page.screenshot({ path: info.outputPath('yfinance-grid-2x2.png') });
 
   await page.locator('.oac-grid__cell .oac-chart').nth(1).click();
-  await page.getByRole('button', { name: 'Two columns' }).click();
+  await pickLayout(page, 'Two columns');
   await expect(page.locator('.oac-grid__cell')).toHaveCount(2);
-  await expect(page.getByRole('button', { name: 'Two columns' })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'Symbol', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Symbol', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(layoutText(page)).toHaveText('Two columns');
+  await expect(page.locator('#grid-status')).toContainText('Two columns: 2 charts');
+  await page.locator('.oac-grid__link').click();
+  const symbol = page.getByRole('menu', { name: 'Linking' }).getByRole('menuitemcheckbox', { name: 'Symbol' });
+  await symbol.click();
+  await expect(symbol).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Escape');
   await expect.poll(() => grid(page, g => g.cells().map((cell: any) => cell.widget.symbol()))).toEqual(['MSFT', 'MSFT']);
   await expect.poll(() => loaded(page), { timeout: 20_000 }).toBe(true);
 
@@ -44,15 +57,72 @@ test('the grid view loads four instruments, switches presets and links, and keep
   await page.waitForFunction(() => (window as any).__grid?.cells().length === 2);
   expect(await grid(page, g => g.cells().map((cell: any) => cell.widget.symbol()))).toEqual(['MSFT', 'MSFT']);
   expect(await grid(page, g => g.linkOptions().symbol)).toBe(true);
-  await expect(page.getByRole('button', { name: 'Two columns' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(layoutText(page)).toHaveText('Two columns');
   await expect.poll(() => loaded(page), { timeout: 20_000 }).toBe(true);
   await page.screenshot({ path: info.outputPath('yfinance-grid-restored.png') });
 
   // A reload straight after a change keeps it: nothing waits on a timer or on unload.
-  await page.getByRole('button', { name: 'Three columns' }).click();
+  await pickLayout(page, 'Three columns');
   await page.reload();
   await page.waitForFunction(() => (window as any).__grid?.cells().length > 0);
   expect(await grid(page, g => g.cells().length)).toBe(3);
+  expect(errors).toEqual([]);
+});
+
+test('the grid view offers every layout to sixteen charts, names it with its glyph, and keeps link groups and a maximized view apart', async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto(ORIGIN + '/examples/yfinance/grid.html?test=1');
+  await page.waitForFunction(() => (window as any).__grid?.cells().length === 4);
+  await expect.poll(() => loaded(page), { timeout: 20_000 }).toBe(true);
+  await page.locator('.oac-grid__layout').click();
+  await expect(page.getByRole('menu', { name: 'Layouts' }).getByRole('menuitemradio')).toHaveCount(26);
+  await page.keyboard.press('Escape');
+
+  // An uneven layout: the status line names it with the library's own glyph.
+  await pickLayout(page, 'Large corner, five around');
+  await expect(page.locator('.oac-grid__cell')).toHaveCount(6);
+  await expect(page.locator('#grid-status')).toContainText('Large corner, five around: 6 charts');
+  await expect(page.locator('#grid-glyph svg path')).toHaveCount(1);
+  await expect.poll(() => loaded(page), { timeout: 20_000 }).toBe(true);
+  const big = (await page.locator('.oac-grid__cell').nth(0).boundingBox())!;
+  const small = (await page.locator('.oac-grid__cell').nth(1).boundingBox())!;
+  expect(big.width).toBeGreaterThan(small.width * 1.8);
+  await page.screenshot({ path: info.outputPath('yfinance-grid-corner-5.png') });
+
+  // Two link groups: the third chart starts its own, linked by symbol, and the fourth joins it.
+  await grid(page, g => g.setActive(g.cells()[2].id));
+  await page.locator('.oac-grid__link').click();
+  const menu = page.getByRole('menu', { name: 'Linking' });
+  await menu.getByRole('menuitem', { name: 'New group' }).click();
+  await menu.getByRole('menuitemcheckbox', { name: 'Symbol' }).click();
+  await page.keyboard.press('Escape');
+  await grid(page, g => g.setLinkGroup(g.cells()[3].id, g.linkGroups()[1].id));
+  await expect(page.locator('.oac-grid__mark').nth(2)).toHaveText('B');
+  await expect.poll(() => grid(page, g => g.cells().map((cell: any) => cell.linkGroup))).toEqual(['a', 'a', 'b', 'b', 'a', 'a']);
+  await expect.poll(() => grid(page, g => g.cells()[3].widget.symbol() === g.cells()[2].widget.symbol())).toBe(true);
+  await expect.poll(() => loaded(page), { timeout: 20_000 }).toBe(true);
+  await page.screenshot({ path: info.outputPath('yfinance-grid-groups.png') });
+
+  // Maximize is a view: it shows one chart with its full chrome, and a reload opens the grid as it is.
+  await page.locator('.oac-grid__max').click();
+  await expect(page.locator('.oac-grid__cell:visible')).toHaveCount(1);
+  await expect(page.locator('.oac-grid__cell:visible')).toHaveAttribute('data-dense', 'false');
+  await page.screenshot({ path: info.outputPath('yfinance-grid-maximized.png') });
+  await page.reload();
+  await page.waitForFunction(() => (window as any).__grid?.cells().length === 6);
+  expect(await grid(page, g => [g.maximized(), g.layout().preset, g.linkGroups().map((group: any) => group.cells.length)]))
+    .toEqual([null, 'corner-5', [4, 2]]);
+  await expect(page.locator('.oac-grid__cell:visible')).toHaveCount(6);
+
+  // Sixteen charts fit the page: each keeps a plot, not a wrapped bar.
+  await pickLayout(page, 'Four by four');
+  await expect(page.locator('.oac-grid__cell')).toHaveCount(16);
+  await expect(page.locator('#grid-status')).toContainText('Four by four: 16 charts');
+  await expect.poll(() => loaded(page), { timeout: 30_000 }).toBe(true);
+  const plots = await page.locator('.oac-grid__cell .oac-chart').evaluateAll(els => els.map(el => el.clientHeight));
+  for (const height of plots) expect(height).toBeGreaterThan(90);
+  await page.screenshot({ path: info.outputPath('yfinance-grid-4x4.png') });
   expect(errors).toEqual([]);
 });
 
@@ -171,7 +241,7 @@ test('a one or two chart layout the grid view exports opens on the main page', a
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(ORIGIN + '/examples/yfinance/grid.html?test=1');
   await page.waitForFunction(() => (window as any).__grid?.cells().length === 4);
-  await page.getByRole('button', { name: 'Two columns' }).click();
+  await pickLayout(page, 'Two columns');
   await expect(page.locator('.oac-grid__cell')).toHaveCount(2);
   await page.evaluate(() => (window as any).__grid.cells()[0].widget.setInterval('1w'));
   const pending = page.waitForEvent('download');

@@ -2,17 +2,19 @@
 // from the main page and the exported document. grid.js boots the page from
 // them, and they stay importable by the node tests without a document.
 import { parseWorkspaceDocument, parseWorkspacePayload } from '/dist/openalgo-charts.workspace.mjs';
-import { CHART_GRID_PRESETS } from '/dist/openalgo-charts.widget.mjs';
+import { layoutIconPath } from '/dist/openalgo-charts.draw.mjs';
+import { CHART_GRID_LAYOUTS, CHART_GRID_LAYOUT_NAMES } from '/dist/openalgo-charts.widget.mjs';
 import { YFinanceDataFeed, AbortedError } from './feed.js';
 
 /** Interval pills in each grid chart: widget codes this server can answer. */
 export const GRID_INTERVALS = ['1m', '5m', '15m', '1h', '1d', '1w'];
 
-/** What each preset button says, in the order the toolbar shows them. */
-export const GRID_PRESET_LABELS = {
-  '1x1': 'Single chart', '1x2': 'Two columns', '1x3': 'Three columns',
-  '2x1': 'Two rows', '3x1': 'Three rows', '2x2': 'Two by two',
-};
+/**
+ * What the status line calls each layout, in the order the grid's picker lists
+ * them: the library's own names, so the line and the picker's tiles say the
+ * same thing.
+ */
+export const GRID_PRESET_LABELS = Object.fromEntries(Object.keys(CHART_GRID_LAYOUTS).map(id => [id, CHART_GRID_LAYOUT_NAMES[id]]));
 
 /** Where the main page leaves a layout it cannot show, for this page to open. */
 export const GRID_HANDOFF_KEY = 'oac-grid-handoff';
@@ -84,7 +86,6 @@ export function gridFeeds({ ready } = {}, source = new YFinanceDataFeed()) {
  */
 export function gridViewRefusal(payload) {
   const interval = pane => ALIASES[pane.interval] || pane.interval;
-  const differ = key => new Set(payload.panes.map(key)).size > 1;
   for (const pane of payload.panes) {
     if (pane.comparisons?.length) return `${pane.symbol}: comparison symbols are not drawn in the grid view`;
     if (!(interval(pane) in PERIODS)) return `${pane.symbol}: the grid view has no ${pane.interval} interval`;
@@ -92,21 +93,30 @@ export function gridViewRefusal(payload) {
       return `${pane.symbol}: the grid view cannot load a ${pane.historyPeriod} history period`;
     }
   }
-  // A linked grid makes its charts agree, which would overwrite the ones that do not.
-  if (payload.sync?.symbol && differ(pane => `${pane.symbol}|${pane.exchange}`)) return 'the charts are linked by symbol but show different symbols';
-  if (payload.sync?.interval && differ(interval)) return 'the charts are linked by interval but show different intervals';
+  // A linked group makes its charts agree, which would overwrite the ones that do not.
+  // Saved groups each link their own charts; without groups the whole desk is one.
+  const groups = Array.isArray(payload.sync?.groups)
+    ? payload.sync.groups.map(group => ({ ...group, panes: payload.panes.filter(pane => pane.linkGroup === group.id) }))
+    : [{ ...payload.sync, panes: payload.panes }];
+  for (const group of groups) {
+    const differ = key => new Set(group.panes.map(key)).size > 1;
+    if (group.symbol && differ(pane => `${pane.symbol}|${pane.exchange}`)) return 'the charts are linked by symbol but show different symbols';
+    if (group.interval && differ(interval)) return 'the charts are linked by interval but show different intervals';
+    if (group.chartType && differ(pane => pane.chartType)) return 'the charts are linked by chart type but show different chart types';
+  }
   return '';
 }
 
-/** A small layout glyph: one outlined box per chart. */
+/**
+ * A layout's glyph for the status line: the library's layout tile, drawn from
+ * the layout's own slots, so a large chart spanning two cells reads as one.
+ * Empty for an id the catalogue does not know (a layout saved by hand).
+ */
 export function presetGlyph(preset) {
-  const [rows, cols] = CHART_GRID_PRESETS[preset];
-  const w = (14 - (cols - 1) * 2) / cols, h = (14 - (rows - 1) * 2) / rows;
-  let boxes = '';
-  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-    boxes += `<rect x="${1 + c * (w + 2)}" y="${1 + r * (h + 2)}" width="${w}" height="${h}" rx="1.5"/>`;
-  }
-  return `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2">${boxes}</svg>`;
+  const spec = Object.prototype.hasOwnProperty.call(CHART_GRID_LAYOUTS, preset) ? CHART_GRID_LAYOUTS[preset] : null;
+  if (spec === null) return '';
+  return `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"`
+    + ` stroke-linecap="round" stroke-linejoin="round"><path d="${layoutIconPath(spec.rows, spec.columns, spec.slots)}"/></svg>`;
 }
 
 /** Leave a validated document for the grid view. False when storage refuses it. */
