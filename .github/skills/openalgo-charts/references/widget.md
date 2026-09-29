@@ -785,6 +785,54 @@ const report = grid.applyWorkspace(parseWorkspacePayload(fileText)); // { applie
 - Below `compactWidth` only the active cell shows, with a tab strip to switch; splitters
   hide. `CHART_GRID_CSS` is part of `WIDGET_COMPONENT_CSS`.
 
+## Layouts controller (since 2.5.10)
+
+`createLayoutsController(store, target, options?)` holds one saved layout for one widget or
+one chart grid. It is DOM-free: a menu drives it and renders its state. Source of truth:
+`src/widget/layouts.ts`. `store` is a `WorkspaceStore` (`WorkspaceRepository` from
+`openalgo-charts/workspace`, or a host's own); the widget tier imports that tier as types
+only, so the workspace bundle loads only in a host that passes a store.
+
+```ts
+const layouts = createLayoutsController(repository, {
+  capture: () => grid.getWorkspace(),
+  apply: payload => grid.applyWorkspace(payload),
+}, { autosaveDelay: 1000 });
+const catalog = await layouts.reload();
+if (catalog.activeWorkspaceId) await layouts.open(catalog.activeWorkspaceId);
+```
+
+- `LayoutTarget`: `capture(): WorkspacePayload`, `apply(payload): LayoutApplyReport`
+  (`{ applied, reason? }`; a refused apply must change nothing) and an optional
+  `subscribe(listener)` for the user's changes (without it the host calls `changed()`). For
+  one widget, capture `JSON.parse(JSON.stringify(widget.getState()))` through
+  `migrateWidgetWorkspace` and apply a one-pane payload through `restoreState`, with the
+  pane's `magnet` and `stay` spread into the widget's current `rail` as the grid does; it
+  clears the undo history as loading any layout does.
+- `LayoutsController`: `store`, `state()`, `subscribe(listener)`, `reload()`, `open(id)`,
+  `save()`, `saveAs(name)`, `overwrite()`, `rename(id, name)`, `duplicate(id, name)`,
+  `remove(id)`, `setAutosave(enabled)`, `changed()`, `flush()`, `destroy()`. Operations run
+  one at a time, in call order. `reload()` resolves with a copy of the catalog.
+- `LayoutsState`: `catalog` (the controller's own, to read and not change), `layoutId`,
+  `revision` (what the next write into the held layout is checked against), `dirty`,
+  `busy`, `conflict`, `autosave` (`LayoutAutosaveStatus`: `off`, `pending`, `saving`,
+  `saved`, `failed`) and `error`. `LayoutsControllerOptions.autosaveDelay` (ms, default
+  1000; a value that is not a finite number takes the default) is the quiet period before
+  the target is compared with its layout and, with autosave on, written once.
+- `open` autosaves a change still waiting into the layout being left, applies the new one,
+  then records it as active and recent, writing nothing when it already is (as after a page
+  load). When that autosave fails, `open` rejects and changes nothing, so the change stays
+  on the target; opening again goes ahead without it. When the record is refused the
+  previous layout goes back on the target. Change events raised during an apply are not
+  edits.
+- A write refused because the catalog moved is tried again after a fresh read when what it
+  acts on is unchanged there: the held layout's charts for a save or autosave, the named
+  layout for `open`, `rename`, `duplicate` and `remove`. A change to the held layout
+  elsewhere sets `conflict` and `dirty`, and `save()` and autosave stay refused until
+  `overwrite()`, `saveAs()` or `open()`; `reload()` keeps it unless the layout is back as this
+  controller left it. A failed autosave pauses until a write goes through again or a
+  reload, then writes the unsaved change without waiting for another.
+
 ## Drawings per instrument (since 2.5.9)
 
 A widget keeps drawings per instrument by default (`drawingScope: 'instrument'`):
