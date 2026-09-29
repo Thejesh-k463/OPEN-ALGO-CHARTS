@@ -2,7 +2,8 @@ import { test, expect, type Page } from '@playwright/test';
 import { VERSION } from '../../src/version';
 
 // The chart grid in a real browser: layout, measured charts, splitters,
-// keyboard routing, the compact view and all-or-nothing workspace import.
+// keyboard routing, the compact view, all-or-nothing workspace import and
+// the desk kept in IndexedDB.
 async function mount(page: Page, preset = '2x2', size = { width: 1200, height: 800 }, extra = ''): Promise<string[]> {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -482,6 +483,28 @@ test('at phone width the bar stays usable: menus fit, maximize and capture say w
     expect(await label.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
   }
   await page.screenshot({ path: info.outputPath('grid-phone-capture.png') });
+  expect(errors).toEqual([]);
+});
+
+test('a desk kept in localStorage, as 2.5.9 kept it, opens from IndexedDB and stays there', async ({ page }) => {
+  const errors = await mount(page, '1x2', { width: 1200, height: 800 }, '&persist=legacy&storage=local');
+  await setSymbols(page, ['AAA', 'BBB']);
+  const second = await page.evaluate(() => (window as any).fixture.grid.cells()[1].id);
+  await page.evaluate(id => (window as any).fixture.grid.setActive(id), second);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('oac-widget:legacy:grid') ?? '{}').activePaneId)).toBe(second);
+  await page.evaluate(() => (window as any).fixture.grid.destroy());
+  // The same page with the default store: the desk is copied in on this first visit.
+  await mount(page, '2x2', { width: 1200, height: 800 }, '&persist=legacy');
+  await page.evaluate(() => (window as any).fixture.grid.ready);
+  expect(await symbols(page)).toEqual(['AAA', 'BBB']);
+  expect(await activeIndex(page)).toBe(1);
+  await setSymbols(page, ['EEE', 'BBB']);
+  await page.reload();
+  await page.waitForFunction(version => (window as any).fixture?.version === version, VERSION);
+  await page.evaluate(() => (window as any).fixture.grid.ready);
+  expect(await symbols(page)).toEqual(['EEE', 'BBB']);
+  // The copy 2.5.9 left stays as it was, for going back to it.
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('oac-widget:legacy:grid')!).panes.map((p: any) => p.symbol))).toEqual(['AAA', 'BBB']);
   expect(errors).toEqual([]);
 });
 

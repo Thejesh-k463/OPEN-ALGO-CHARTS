@@ -37,9 +37,10 @@ import type { ChartTheme, DataFeed, DataVariant, LinkChart, LinkOptions, Resolve
 import type { WorkspaceChartState, WorkspacePane, WorkspacePayload } from 'openalgo-charts/workspace';
 import type { DrawingsDocument } from 'openalgo-charts/draw';
 import {
-  WidgetBus, WidgetStorage, createOverlayStack, createTipController, defaultStorage, h,
-  type OverlayStack, type StorageLike, type TipController,
+  WidgetBus, WidgetStorage, createOverlayStack, createTipController, h,
+  type AsyncStorageLike, type OverlayStack, type StorageLike, type TipController,
 } from './context';
+import { defaultWidgetStore } from './storage';
 import { widgetText } from './localization';
 import { applyTokens, widgetTokens, TOKEN_PREFIX, WIDGET_FONT, type WidgetThemeName } from './tokens';
 import { captureName, type MenuRow } from './topbar';
@@ -72,8 +73,13 @@ export interface ChartGridOptions extends Omit<WidgetOptions, 'persist' | 'stora
   compactWidth?: number;
   /** Keep the workspace between visits: `true` for one shared namespace, a string to name one. Default off. */
   persist?: boolean | string;
-  /** The store behind `persist`. Default: the page's `localStorage`. */
-  storage?: StorageLike | null;
+  /**
+   * The store behind `persist`. Default: IndexedDB where the page has it
+   * (since 2.5.10), else the page's `localStorage`. Over an asynchronous
+   * store the saved desk lands when `ready` settles; a synchronous one, such
+   * as `localStorage` passed here, restores it before `createChartGrid` returns.
+   */
+  storage?: StorageLike | AsyncStorageLike | null;
   /**
    * Show the grid bar over the charts: the layout picker, maximize and
    * restore, the link menu and a capture of every chart. Default false, so a
@@ -150,10 +156,18 @@ export interface ChartGrid {
   layout(): ChartGridLayout;
   /**
    * What restoring the persisted workspace did when the grid was built: null
-   * when nothing was stored. A refused desk stays stored, untouched, until the
-   * user changes the grid.
+   * when nothing was stored, and until `ready` settles over an asynchronous
+   * store. A refused desk stays stored, untouched, until the user changes the grid.
    */
   restored(): ChartGridApplyReport | null;
+  /**
+   * Settles once the persisted workspace has been read and applied (since
+   * 2.5.10): at once without `persist` or over a synchronous store. Over an
+   * asynchronous one (IndexedDB, the default) the grid is built from the
+   * preset, out of sight and loading nothing, until then; a workspace applied
+   * meanwhile wins over the stored one. Never rejects.
+   */
+  readonly ready: Promise<void>;
   /**
    * Reflow into a layout. The charts that fit keep their state in reading
    * order and new ones copy the active chart's instrument; in an uneven layout
@@ -285,15 +299,40 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   // `workspaces` store still gives every picker its templates, and a
   // controller the host passes drives the menu of every chart.
   cellOptions.layouts = options.layouts ?? false;
-  const store = options.persist ? (options.storage === undefined ? defaultStorage() : options.storage) : null;
-  const storage = new WidgetStorage(typeof options.persist === 'string' ? options.persist : 'default', store);
+  const store = options.persist ? (options.storage === undefined ? defaultWidgetStore() : options.storage) : null;
+  const storage = new WidgetStorage(typeof options.persist === 'string' ? options.persist : 'default', store, {
+    // The grid has no status line of its own; the active chart's says it. A
+    // read that failed is a toast as well, as in one widget: the charts'
+    // first loads take the status line over at once.
+    onError: failure => {
+      if (destroyed || active === null) return;
+      const error = failure.error instanceof Error ? failure.error.message : String(failure.error);
+      const context = active.widget.context;
+      if (failure.operation !== 'load') {
+        context.status(widgetText(text, 'Saved chart settings could not be written: {error}', { error }), 'error');
+        return;
+      }
+      const message = widgetText(text, 'Saved chart settings could not be read, so changes are kept for this session only: {error}', { error });
+      context.status(message, 'error');
+      context.toast(message, 'error');
+    },
+  });
+  /**
+   * An asynchronous store has not answered yet: nothing is written, so the
+   * preset cannot be saved over the desk it holds, and the preset's charts
+   * are built without an instrument, so none of them asks the feed for one.
+   */
+  let restoring = !storage.loaded;
+  /** A workspace the host applied while the store was read: it wins over the stored one. */
+  let given = false;
   const bus = new WidgetBus<ChartGridEvents>();
   const links = new GridLinks<Cell>(options.links);
   const offs: Array<() => void> = [];
   let cells: Cell[] = [];
   // The user's chords belong to the desk, not to one chart: one record in the
-  // grid's storage, applied to every chart and passed on when a chart changes it.
-  let chords: unknown = storage.get(KEYMAP_KEY);
+  // grid's storage, applied to every chart and passed on when a chart changes
+  // it. Read when the stored desk is, since an asynchronous store has no copy before.
+  let chords: unknown = null;
   let sharing = false;
   let active: Cell | null = null;
   const splits: HTMLElement[] = [];
@@ -358,7 +397,7 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   };
   function saveNow(): void {
     if (saveTimer !== 0) { clearTimeout(saveTimer); saveTimer = 0; }
-    if (!storage.enabled || destroyed || held || active === null) return;
+    if (!storage.enabled || destroyed || held || restoring || active === null) return;
     storage.set(STATE_KEY, grid.getWorkspace());
     // Only the charts on the grid: a chart the grid dropped takes its drawings with it.
     const charts: Record<string, Record<string, DrawingsDocument>> = {};
@@ -634,12 +673,13 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
     parent.appendChild(element);
     const { historyPeriod } = source, feed = options.feed;
     const cell = { id, element, row: 0, column: 0, rowSpan: 1, columnSpan: 1, offs: [], span: 0, hold: false, historyPeriod, group: null, mark: null, type: '' } as unknown as Cell;
+    const chartOptions: WidgetOptions = {
+      ...cellOptions, theme: cellTheme, symbol: restoring ? undefined : source.symbol, exchange: source.exchange, interval: source.interval,
+      variant: source.variant, chartType: source.chartType, keyboardRoute: () => route(cell),
+      feed: typeof feed === 'function' ? feed({ id, historyPeriod }) : feed, drawingStore: cellDrawingStore(id, docs),
+    };
     try {
-      cell.widget = createWidget(element, {
-        ...cellOptions, theme: cellTheme, symbol: source.symbol, exchange: source.exchange, interval: source.interval,
-        variant: source.variant, chartType: source.chartType, keyboardRoute: () => route(cell),
-        feed: typeof feed === 'function' ? feed({ id, historyPeriod }) : feed, drawingStore: cellDrawingStore(id, docs),
-      });
+      cell.widget = createWidget(element, chartOptions);
     } catch (error) {
       element.remove();
       throw error;
@@ -897,9 +937,11 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
     capture: { blocked: captureBlocked, download: downloadAll, copy: copyAll, canCopy },
   };
   let bar: GridBarHandle | null = null;
+  let ready: Promise<void> = Promise.resolve();
 
   const grid: ChartGrid = {
     root,
+    get ready() { return ready; },
     get isDestroyed() { return destroyed; },
     restored: () => restored,
     cells: () => cells.slice() as unknown as ChartGridCell[],
@@ -1129,12 +1171,18 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
     },
 
     applyWorkspace(payload) {
-      return apply(payload, new Map());
+      const report = apply(payload, new Map());
+      // A desk applied before the store answered is the newer one: the stored one does not replace it.
+      if (restoring && report.applied) given = true;
+      return report;
     },
 
     destroy() {
       if (destroyed) return;
       saveNow();
+      // Sends an asynchronous store's writes, and stops following other tabs' changes to it.
+      void storage.flush();
+      storage.close();
       destroyed = true;
       for (const off of offs.splice(0)) off();
       chromeLayer?.overlays.destroy();
@@ -1257,24 +1305,56 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
     observer.observe(root);
     offs.push(() => observer.disconnect());
   }
+  // A debounced save still pending when the tab closes is the user's last
+  // change; an asynchronous store journals what may not land in time.
+  const leaving = (): void => { saveNow(); void storage.flush(); };
   if (win != null && typeof win.addEventListener === 'function') {
     if (Observer === undefined) listen(win, 'resize', measure);
-    // A debounced save still pending when the tab closes is the user's last change.
-    listen(win, 'pagehide', saveNow);
+    listen(win, 'pagehide', leaving);
   }
   // Hiding is the last moment a page is sure to see; unload may never come.
-  listen(doc, 'visibilitychange', () => { if (doc.visibilityState === 'hidden') saveNow(); });
+  listen(doc, 'visibilitychange', () => { if (doc.visibilityState === 'hidden') leaving(); });
 
-  const stored = storage.get(STATE_KEY);
-  restored = stored === null ? null : apply(stored as WorkspacePayload, readChartDrawings(storage.get(DRAWINGS_KEY)));
-  if (restored?.applied !== true) {
-    grid.setPreset(options.preset ?? '1x1');
+  /** The desk's chords on every chart built before the store answered. */
+  const shareChords = (): void => {
+    if (options.shortcutsEditor === false) return;
+    sharing = true;
+    try { for (const cell of cells) cell.widget.context.keymap.applyOverrides(chords); } finally { sharing = false; }
+  };
+  /** The stored desk, or the preset when none can be applied. `late`: the preset was built while the store was read. */
+  const restore = (late: boolean): void => {
+    chords = storage.get(KEYMAP_KEY);
+    // Written now, since nothing was while the store was read; the stored desk is older.
+    if (given) { shareChords(); saveSoon(); return; }
+    const stored = storage.get(STATE_KEY);
+    restored = stored === null ? null : apply(stored as WorkspacePayload, readChartDrawings(storage.get(DRAWINGS_KEY)));
+    if (restored?.applied === true) return;
+    if (!late) grid.setPreset(options.preset ?? '1x1');
+    else {
+      shareChords();
+      // Built with no instrument, so none asked the feed for one; they load it
+      // now. Before `held` is set: a symbol change clears it.
+      if (options.symbol !== undefined) for (const cell of cells) cell.widget.setSymbol(options.symbol, options.exchange);
+    }
     if (restored !== null) {
       // The stored desk may only be waiting for a study or chart type the page
       // registers later, so it is kept, not overwritten by this fallback.
       held = true;
       grid.active().widget.context.toast(widgetText(text, 'The saved layout could not be restored: {error}', { error: restored.reason ?? '' }), 'error');
     }
+  };
+  if (!restoring) restore(false);
+  else {
+    grid.setPreset(options.preset ?? '1x1');
+    root.style.visibility = 'hidden';
+    ready = storage.load().then(() => {
+      if (destroyed) return;
+      restoring = false;
+      // `ready` never rejects: a desk that cannot be applied is reported, as the widget reports its own.
+      try { restore(true); } catch (error) {
+        grid.active().widget.context.toast(widgetText(text, 'The saved layout could not be restored: {error}', { error: error instanceof Error ? error.message : String(error) }), 'error');
+      } finally { root.style.visibility = ''; }
+    });
   }
   measure();
   return grid;

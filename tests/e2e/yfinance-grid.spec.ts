@@ -14,6 +14,25 @@ test.beforeEach(async ({ request }) => {
 const grid = <T>(page: Page, fn: (grid: any) => T): Promise<T> =>
   page.evaluate(`(${fn.toString()})(window.__grid)`) as Promise<T>;
 const loaded = (page: Page): Promise<boolean> => grid(page, g => g.cells().every((cell: any) => cell.widget.series.getData().length > 0));
+/**
+ * The grid's saved desk, read from the widget's IndexedDB store, or written
+ * there with `value`: the store the grid persists through by default.
+ */
+const savedGrid = (page: Page, value?: string): Promise<string | null> => page.evaluate(value => new Promise<string | null>((resolve, reject) => {
+  const open = indexedDB.open('openalgo-charts-widget', 1);
+  open.onupgradeneeded = () => { if (!open.result.objectStoreNames.contains('entries')) open.result.createObjectStore('entries'); };
+  open.onerror = () => reject(open.error);
+  open.onsuccess = () => {
+    const db = open.result;
+    const tx = db.transaction('entries', value === undefined ? 'readonly' : 'readwrite');
+    const store = tx.objectStore('entries');
+    const request = value === undefined ? store.get('oac-widget:yfinance-grid:grid') : store.put(value, 'oac-widget:yfinance-grid:grid');
+    let result: string | null = null;
+    request.onsuccess = () => { result = value === undefined ? (request.result as string | undefined) ?? null : value; };
+    tx.oncomplete = () => { db.close(); resolve(result); };
+    tx.onabort = () => { db.close(); reject(tx.error); };
+  };
+}), value);
 /** Whether a main page chart's window reaches its newest bar, rather than bars it does not have. */
 const onNewest = (page: Page, key: string): Promise<boolean> => page.evaluate(name => {
   const chart = (window as any).__oac.app[name];
@@ -147,7 +166,7 @@ test('the grid view lets a chart put its price pane below a study, and a reload 
   await expect.poll(() => grid(page, g => g.cells()[0].widget.chart.primaryPaneIndex())).toBe(1);
   await expect.poll(() => grid(page, g => g.cells()[0].widget.chart.indicators()[0].paneIndex)).toBe(0);
   await page.screenshot({ path: info.outputPath('yfinance-grid-price-below.png') });
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('oac-widget:yfinance-grid:grid') ?? '{}').panes?.[0].chart.primaryPane)).toBe(1);
+  await expect.poll(async () => JSON.parse((await savedGrid(page)) ?? '{}').panes?.[0].chart.primaryPane).toBe(1);
   await page.reload();
   await page.waitForFunction(() => (window as any).__grid?.cells().length === 4);
   expect(await grid(page, g => g.cells()[0].widget.chart.primaryPaneIndex())).toBe(1);
@@ -163,17 +182,20 @@ test('a saved grid the page cannot restore is kept and reported, not overwritten
   const text = await page.evaluate(() => {
     const payload = (window as any).__grid.getWorkspace();
     payload.panes[0].chart.indicators = [{ indicatorId: 'registered-later', settings: {}, paneIndex: 0 }];
-    const value = JSON.stringify(payload);
     (window as any).__grid.destroy();
-    localStorage.setItem('oac-widget:yfinance-grid:grid', value);
-    return value;
+    return JSON.stringify(payload);
   });
+  // The grid's last writes may still queue behind one in flight; its unload
+  // journal is dropped once they have all landed, and only then is this
+  // write the last one.
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('oac-widget-journal:yfinance-grid'))).toBeNull();
+  await savedGrid(page, text);
   await page.reload();
   await page.waitForFunction(() => (window as any).__grid?.cells().length === 4);
   await expect(page.locator('#grid-status')).toContainText('could not be restored');
   await expect(page.locator('#grid-status')).toContainText('registered-later');
   await expect.poll(() => loaded(page), { timeout: 20_000 }).toBe(true);
-  expect(await page.evaluate(() => localStorage.getItem('oac-widget:yfinance-grid:grid'))).toBe(text);
+  expect(await savedGrid(page)).toBe(text);
 });
 
 const handPane = (id: string, symbol: string, historyPeriod?: string) => ({ id, symbol, exchange: '', interval: '1d', chartType: 'candlestick',
@@ -231,8 +253,8 @@ test('the main page hands a layout it cannot draw to the grid view, which opens 
   // its requests before the hand-off was applied would have sent IBM here.
   expect(asked.filter(ask => ask.startsWith('IBM:'))).toEqual([]);
   // The periods stay with the charts, so the saved grid and an exported layout carry them back.
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('oac-widget:yfinance-grid:grid')!).panes
-    .map((pane: { historyPeriod?: string }) => pane.historyPeriod ?? null))).toEqual([null, 'max', '6mo', null]);
+  await expect.poll(async () => JSON.parse((await savedGrid(page))!).panes
+    .map((pane: { historyPeriod?: string }) => pane.historyPeriod ?? null)).toEqual([null, 'max', '6mo', null]);
   expect(errors).toEqual([]);
 });
 
