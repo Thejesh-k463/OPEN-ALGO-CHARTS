@@ -89,9 +89,18 @@ try {
   const options = await page.locator('body').innerText();
   assert.match(options, /showSessionOpen/);
   assert.match(options, /showLastPrice/);
-  await page.setViewportSize({ width: 390, height: 844 });
+  // Keyed on the page's scroll width, not on typedoc's class names, which a
+  // typedoc upgrade renames. The pages are the index and the ones with the
+  // longest type and member names, which do not break without help.
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const route of ['/api/', '/api/classes/index.Chart.html', '/api/interfaces/profile.MarketProfilePrimitiveOptions.html',
+      '/api/classes/workspace.DrawingTemplateConflictError.html', '/api/modules/workspace.html']) {
+      await page.goto(`${base}${route}`);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `API page ${route} must fit ${width}px viewport`);
+    }
+  }
   await page.goto(`${base}/api/`);
-  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'API mobile page must not overflow');
   await page.getByRole('link', { name: 'Menu', exact: true }).click();
   await expect(page.locator('html')).toHaveClass(/has-menu/);
   await page.screenshot({ path: 'artifacts/website-premium-api-mobile.png' });

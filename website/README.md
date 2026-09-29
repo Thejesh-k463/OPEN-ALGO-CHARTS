@@ -61,6 +61,8 @@ The 2.2.0 build retains these captures because their renderer/demo source
 fingerprints are unchanged. The gallery shows the current profile implementation;
 the 2.1.1 release notes record when its themes and footprint controls shipped.
 CI and Pages run the profile, depth and drawing checks before publishing the site.
+CI also runs the site design check, which holds the pages and the API reference to
+phone widths (320 and 390 px) without horizontal scrolling.
 
 ## Interactive and API checks
 
