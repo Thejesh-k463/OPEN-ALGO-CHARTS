@@ -7,6 +7,7 @@
 import { VERSION } from '/dist/openalgo-charts.mjs';
 import '/dist/openalgo-charts.indicators.mjs';
 import { createChartGrid } from '/dist/openalgo-charts.widget.mjs';
+import { WorkspaceRepository, createIndexedDbWorkspaceStorage } from '/dist/openalgo-charts.workspace.mjs';
 const T = 1700000040;
 const history = [];
 const params = new URLSearchParams(location.search);
@@ -40,9 +41,10 @@ const grid = createChartGrid(document.getElementById('grid'), {
   preset: params.get('preset') || '2x2', rail: params.get('rail') === '1', statusline: params.get('statusline') === '1',
   toolbar: params.get('toolbar') === '1', theme: params.get('theme') === 'light' ? 'light' : 'dark',
   links: { crosshair: true, viewport: false },
-  // ?bottombar=1 one bar under the grid;
+  // ?bottombar=1 one bar under the grid; ?workspaces=1 saved desks in IndexedDB;
   // ?persist=<name> the desk kept between visits, in IndexedDB unless ?storage=local.
   bottombar: params.get('bottombar') === '1',
+  workspaces: params.get('workspaces') === '1' ? new WorkspaceRepository(createIndexedDbWorkspaceStorage(indexedDB, 'grid-fixture'), 'desk') : undefined,
   persist: params.get('persist') ?? undefined,
   storage: params.get('storage') === 'local' ? localStorage : undefined,
 });

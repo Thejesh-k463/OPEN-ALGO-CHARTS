@@ -6,6 +6,7 @@
 // nothing.
 import '/dist/openalgo-charts.indicators.mjs';
 import { createChartGrid } from '/dist/openalgo-charts.widget.mjs';
+import { WorkspaceRepository, createIndexedDbWorkspaceStorage } from '/dist/openalgo-charts.workspace.mjs';
 import {
   GRID_INTERVALS, GRID_PRESET_LABELS, gridFeeds, presetGlyph, takeGridHandoff, readGridFile, gridDocument,
 } from './grid-view.js';
@@ -42,13 +43,17 @@ export function initGridView(doc = document) {
     // Each chart loads the history period its layout saved.
     document: doc, feed: gridFeeds({ ready }), symbol: 'AAPL', exchange: '', interval: '1d', intervals: GRID_INTERVALS,
     theme, preset: '2x2', persist: PERSIST, links: { crosshair: true, viewport: true },
-    // The grid's own bar: layouts up to sixteen charts, maximize, link groups
-    // and one picture of every chart. The page's bar keeps only the file. The
-    // bar under the charts acts on the active one.
+    // The grid's own bar: layouts up to sixteen charts, maximize, link groups,
+    // one picture of every chart and the desk's saved layouts. The page's bar
+    // keeps only the file. The bar under the charts acts on the active one.
     toolbar: true, bottombar: true,
     // Each chart's venue hours, as on the main page: the bar under the charts
     // says whether the active chart's market is open, and sizes its ranges in sessions.
     sessionCalendar: ({ symbol }) => sessionCalendarFor(symbol),
+    // Saved desks for the bar's Layouts control, and indicator templates in
+    // every chart's picker, in a database of their own: the main page's
+    // layouts are one chart each, and its catalog lists only those.
+    workspaces: new WorkspaceRepository(createIndexedDbWorkspaceStorage(view.indexedDB, 'yfinance-grid'), 'desk'),
     // Touch devices get the auto rule in each chart (compact in a phone-sized
     // cell, desktop in a tablet-sized one); a mouse keeps the desktop bar even
     // when a chart in a four-way split is narrow.

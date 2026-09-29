@@ -1,8 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 
 // The reference host's grid view over the fixture server: four instruments,
-// the grid bar's layouts, links and link groups, maximize and persistence, and the hand-off from the main page of a
-// layout whose geometry only the grid view can draw.
+// the grid bar's layouts, links and link groups, maximize, saved desks, the
+// bar under the charts and persistence, and the hand-off from the main page
+// of a layout whose geometry only the grid view can draw.
 const ORIGIN = `http://127.0.0.1:${process.env.OAC_E2E_DEMO_PORT || '8124'}`;
 
 test.use({ viewport: { width: 1360, height: 900 } });
@@ -142,6 +143,44 @@ test('the grid view offers every layout to sixteen charts, names it with its gly
   const plots = await page.locator('.oac-grid__cell .oac-chart').evaluateAll(els => els.map(el => el.clientHeight));
   for (const height of plots) expect(height).toBeGreaterThan(90);
   await page.screenshot({ path: info.outputPath('yfinance-grid-4x4.png') });
+  expect(errors).toEqual([]);
+});
+
+test('the grid view has one bar under the charts for the active one, and keeps saved desks in its grid bar', async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto(ORIGIN + '/examples/yfinance/grid.html?test=1');
+  await page.waitForFunction(() => (window as any).__grid?.cells().length === 4);
+  await expect.poll(() => loaded(page), { timeout: 20_000 }).toBe(true);
+  const bar = page.locator('.oac-grid__foot .oac-bottombar');
+  await expect(bar).toBeVisible();
+  await expect(page.locator('.oac-grid__cell .oac-topbar__goto')).toHaveCount(0);
+  // The status is the active chart's: AAPL first, then the NSE chart after a click.
+  await expect(bar.locator('.oac-bottombar__status')).toBeVisible();
+  await page.locator('.oac-grid__cell .oac-chart').nth(2).click();
+  await bar.locator('.oac-bottombar__range[data-range="1Y"]').click();
+  await expect.poll(() => grid(page, g => g.cells().map((cell: any) => cell.widget.range()))).toEqual([null, null, '1Y', null]);
+  await expect.poll(() => loaded(page), { timeout: 20_000 }).toBe(true);
+  await page.screenshot({ path: info.outputPath('yfinance-grid-bottom-bar.png') });
+
+  await page.locator('.oac-grid__saved').click();
+  const menu = page.locator('.oac-grid__overlay .oac-layouts');
+  await expect(menu).toBeVisible();
+  await menu.locator('[data-action="save-as"]').click();
+  await menu.locator('.oac-layouts__input').fill('Four markets');
+  await menu.locator('[data-action="submit-name"]').click();
+  await expect(page.locator('.oac-grid__saved')).toHaveText('Four markets');
+  await page.screenshot({ path: info.outputPath('yfinance-grid-layouts.png') });
+  await page.keyboard.press('Escape');
+  await pickLayout(page, 'Two columns');
+  await expect(page.locator('.oac-grid__cell')).toHaveCount(2);
+  // The grid's own desk comes back with two charts, then the layout that was active opens over it.
+  await page.reload();
+  await page.waitForFunction(() => (window as any).__grid !== undefined);
+  await expect.poll(() => grid(page, g => g.cells().map((cell: any) => cell.widget.symbol())), { timeout: 20_000 })
+    .toEqual(['AAPL', 'MSFT', 'RELIANCE.NS', '^NSEI']);
+  await expect(page.locator('.oac-grid__saved')).toHaveText('Four markets');
+  await expect.poll(() => loaded(page), { timeout: 20_000 }).toBe(true);
   expect(errors).toEqual([]);
 });
 

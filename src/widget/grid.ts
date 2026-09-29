@@ -38,7 +38,7 @@
  *   market status until a bar under the grid takes them over.
  */
 import type { ChartTheme, DataFeed, DataVariant, LinkChart, LinkOptions, ResolvedLinkOptions } from 'openalgo-charts';
-import type { WorkspaceChartState, WorkspacePane, WorkspacePayload } from 'openalgo-charts/workspace';
+import type { WorkspaceChartState, WorkspacePane, WorkspacePayload, WorkspaceStore } from 'openalgo-charts/workspace';
 import type { DrawingsDocument } from 'openalgo-charts/draw';
 import {
   WidgetBus, WidgetStorage, createOverlayStack, createTipController, h,
@@ -46,10 +46,12 @@ import {
 } from './context';
 import { defaultWidgetStore } from './storage';
 import { mountBottombar, type BottombarHandle } from './bottombar';
+import type { LayoutsController } from './layouts';
 import { widgetText } from './localization';
 import { applyTokens, widgetTokens, TOKEN_PREFIX, WIDGET_FONT, type WidgetThemeName } from './tokens';
 import { captureName, type MenuRow } from './topbar';
 import { GRID_BAR_CHARTS, createWidget, resolveTheme, SAVE_DEBOUNCE_MS, type Widget, type WidgetOptions } from './widget';
+import { attachGridSaved, type GridSaved } from './grid-saved';
 import { cellDrawingStore, checkWorkspace, readChartDrawings, type ChartDrawings } from './grid-payload';
 import { CHART_GRID_LAYOUTS, focusSlot, isChartGridLayout, type ChartGridLayoutId } from './grid-layouts';
 import {
@@ -87,8 +89,9 @@ export interface ChartGridOptions extends Omit<WidgetOptions, 'persist' | 'stora
   storage?: StorageLike | AsyncStorageLike | null;
   /**
    * Show the grid bar over the charts: the layout picker, maximize and
-   * restore, the link menu and a capture of every chart. Default false, so a
-   * host with its own controls keeps its page as it was.
+   * restore, the link menu, a capture of every chart and, with `workspaces`,
+   * the desk's saved layouts. Default false, so a host with its own controls
+   * keeps its page as it was.
    */
   toolbar?: boolean;
   /**
@@ -99,6 +102,24 @@ export interface ChartGridOptions extends Omit<WidgetOptions, 'persist' | 'stora
    * chart keeps both.
    */
   bottombar?: boolean;
+  /**
+   * Saved layouts of the whole desk, and indicator templates in every
+   * chart's picker: a `WorkspaceRepository` from `openalgo-charts/workspace`,
+   * or a host's own `WorkspaceStore`. With the grid bar (`toolbar`) the grid
+   * keeps a layouts controller over every chart: a Layouts control in the bar
+   * saves and opens the desk, autosave follows it, and the layout that was
+   * active when the page last closed opens once `ready` settles. Without the
+   * bar the charts get their templates only. Taken as a type only.
+   */
+  workspaces?: WorkspaceStore;
+  /**
+   * What the grid bar's Layouts control drives instead of the grid's own
+   * controller: one the host built over this grid; false for no control.
+   * Without the bar (`toolbar`), a controller given here drives each chart's
+   * own Layouts button instead. A chart never saves a layout of its own inside
+   * a grid.
+   */
+  layouts?: LayoutsController | false;
   /**
    * The layouts the bar's picker offers, in its order, as `intervals` lists
    * the intervals beside `interval`. Default: every `CHART_GRID_LAYOUTS`
@@ -310,9 +331,10 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   // one, acts on the active chart.
   cellOptions.bottombar = false;
   // Layouts: a chart never saves a layout of its own inside a grid. The
-  // `workspaces` store still gives every picker its templates, and a
-  // controller the host passes drives the menu of every chart.
-  cellOptions.layouts = options.layouts ?? false;
+  // `workspaces` store still gives every picker its templates. The desk's
+  // Layouts control is the grid bar's; without the bar, a controller the host
+  // passes drives the menu of every chart.
+  cellOptions.layouts = options.toolbar === true ? false : options.layouts ?? false;
   const store = options.persist ? (options.storage === undefined ? defaultWidgetStore() : options.storage) : null;
   const storage = new WidgetStorage(typeof options.persist === 'string' ? options.persist : 'default', store, {
     // The grid has no status line of its own; the active chart's says it. A
@@ -431,9 +453,9 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   };
   /**
    * A chart's context over the grid's own layer: a panel the grid's chrome
-   * opens for a chart (the go-to panel) hangs over the whole grid, next to
-   * the control that opened it, where one small chart would clip it. One
-   * opened with no anchor hangs from `anchor`.
+   * opens for a chart (the Layouts menu, the go-to panel) hangs over the
+   * whole grid, next to the control that opened it, where one small chart
+   * would clip it. One opened with no anchor hangs from `anchor`.
    */
   const overGrid = (ctx: WidgetContext, anchor?: () => HTMLElement | null): WidgetContext => Object.create(ctx, {
     root: { value: chrome().el },
@@ -962,9 +984,11 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
       },
     },
     capture: { blocked: captureBlocked, download: downloadAll, copy: copyAll, canCopy },
+    get saved() { return saved ?? undefined; },
   };
   let bar: GridBarHandle | null = null;
   let foot: BottombarHandle | null = null;
+  let saved: GridSaved | null = null;
   let ready: Promise<void> = Promise.resolve();
 
   const grid: ChartGrid = {
@@ -1213,6 +1237,7 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
       storage.close();
       destroyed = true;
       for (const off of offs.splice(0)) off();
+      saved?.destroy();
       // Before the overlays: the bar closes its zone menu there.
       foot?.destroy();
       chromeLayer?.overlays.destroy();
@@ -1297,7 +1322,6 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
 
   paintTheme();
   container.appendChild(root);
-  if (barEl !== null) bar = mountGridBar(barHost, barEl);
   const listen = (target: EventTarget, type: string, fn: (e: Event) => void, capture = false): void => {
     target.addEventListener(type, fn, capture);
     offs.push(() => target.removeEventListener(type, fn, capture));
@@ -1336,8 +1360,9 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
     offs.push(() => observer.disconnect());
   }
   // A debounced save still pending when the tab closes is the user's last
-  // change; an asynchronous store journals what may not land in time.
-  const leaving = (): void => { saveNow(); void storage.flush(); };
+  // change, and so is a layout's inside autosave's quiet period; an
+  // asynchronous store journals what may not land in time.
+  const leaving = (): void => { saveNow(); void storage.flush(); saved?.flush(); };
   if (win != null && typeof win.addEventListener === 'function') {
     if (Observer === undefined) listen(win, 'resize', measure);
     listen(win, 'pagehide', leaving);
@@ -1397,6 +1422,14 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
     }, strip, { target: () => active?.widget ?? null, ranges: options.ranges, now: options.now, onGoTo: () => active?.widget.openDateNavigation() });
     offs.push(bus.on('active', () => foot?.refresh()));
   }
+  // The desk's saved layouts come with the bar that shows them.
+  if (options.toolbar === true) {
+    saved = attachGridSaved({
+      grid, ready, workspaces: options.workspaces, layouts: options.layouts,
+      context: () => overGrid((active as Cell).widget.context),
+    });
+  }
+  if (barEl !== null) bar = mountGridBar(barHost, barEl);
   measure();
   return grid;
 }

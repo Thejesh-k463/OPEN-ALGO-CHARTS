@@ -192,7 +192,7 @@ export interface WidgetOptions extends Omit<ChartOptions, 'theme'>, WidgetBottom
    * last closed. Taken as a type only: the workspace tier loads with the store.
    */
   workspaces?: WorkspaceStore;
-  /** What the Layouts menu drives: default a controller over this widget; a chart grid gives its charts the one its host passes, or none; false for no menu. */
+  /** What the Layouts menu drives: default a controller over this widget; false for no menu. A chart grid decides what its charts get (`ChartGridOptions.layouts`). */
   layouts?: LayoutsController | false;
   /** The floating toolbar over the selected drawings on a desktop layout. Default: shown with the rail. */
   drawingToolbar?: boolean;
