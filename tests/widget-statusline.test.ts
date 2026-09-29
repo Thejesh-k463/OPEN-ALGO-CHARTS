@@ -9,7 +9,7 @@
  */
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { Bar, BarsRequest, DataFeed } from '../src/index';
-import { createChartGrid, createWidget, type ChartGrid, type Widget, type WidgetOptions } from '../src/widget/index';
+import { createChartGrid, createWidget, mountStatusline, type ChartGrid, type Widget, type WidgetOptions } from '../src/widget/index';
 import { ensureWindowGlobal, fakeContainer, fakeWidgetDocument, type FakeElement } from './helpers/fake-dom-widget';
 
 beforeAll(ensureWindowGlobal);
@@ -171,6 +171,41 @@ describe('status line follows the latest bar while the pointer is away', () => {
     const b = walk(20, 640, 23);
     w.series.setData(b);
     expect(read(root, 'c')).toBe(price(last(b).close));
+  });
+});
+
+describe('a status line a host mounts itself', () => {
+  it('names the bars already on the chart when it is first titled', () => {
+    const { w } = make({ statusline: false });
+    const a = walk(30, 100, 37);
+    w.series.setData(a);
+    const doc = (w.root as unknown as FakeElement).ownerDocument as unknown as Document;
+    const el = doc.createElement('div');
+    const line = mountStatusline(w.context, el);
+    line.setSymbol('AAA', 'NSE', '1d');
+    const root = el as unknown as FakeElement;
+    expect(read(root, 'c')).toBe(price(last(a).close));
+    // A second, different title is a change: the old readings go.
+    line.setSymbol('BBB', 'NSE', '1d');
+    expect(read(root, 'c')).toBeNull();
+    line.destroy();
+  });
+
+  it('reads the latest bar on a live tick without copying the history', () => {
+    const { w, root } = make({ symbol: 'AAA' });
+    const a = walk(500, 100, 41);
+    w.series.setData(a);
+    const primary = w.chart.primarySeries()!;
+    const copy = primary.getData.bind(primary);
+    let copies = 0;
+    primary.getData = () => { copies++; return copy(); };
+    let tail = last(a);
+    for (let k = 1; k <= 10; k++) {
+      tail = { ...tail, close: tail.close + 0.25 };
+      w.series.update(tail);
+    }
+    expect(read(root, 'c')).toBe(price(tail.close));
+    expect(copies).toBe(0);
   });
 });
 

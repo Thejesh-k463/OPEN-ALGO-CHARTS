@@ -36,9 +36,16 @@ export interface StatuslineHandle {
   readonly el: HTMLElement;
   /** Put a transient message at the right. `error` tints it. */
   setMessage(text: string, kind?: 'info' | 'error'): void;
-  /** The title: symbol, optional exchange, and the interval code. */
+  /**
+   * The title: symbol, optional exchange, and the interval code. Changing a
+   * title already set clears the readings until the chart's primary data is
+   * next replaced, since the bars still on the chart are the previous title's.
+   */
   setSymbol(symbol: string, exchange: string, interval: string): void;
-  /** Show a bar's readings; null clears them (the pointer left and there is no last bar). */
+  /**
+   * Show a bar's readings and hold them. Null lets the row follow the latest
+   * bar again, as it does while the pointer is away.
+   */
   setBar(bar: Bar | null, time: number | null): void;
   /** Re-read the chart's switches and repaint. */
   refresh(): void;
@@ -126,6 +133,7 @@ export function mountStatusline(ctx: WidgetContext, host: HTMLElement, opts: Sta
   // instrument's (a feed keeps them until the new ones land). The row stays
   // empty until the next full replace rather than label old prices new.
   let awaiting = false;
+  let titled = false;
 
   const write = (el: HTMLElement, text: string): void => { if (el.textContent !== text) el.textContent = text; };
   const show = (el: HTMLElement, on: boolean): void => { if (el.hidden === on) el.hidden = !on; };
@@ -169,7 +177,8 @@ export function mountStatusline(ctx: WidgetContext, host: HTMLElement, opts: Sta
 
   const lastBar = (): { bar: Bar | null; time: number | null } => {
     if (awaiting) return { bar: null, time: null };
-    const data = chart.primarySeries()?.getData() ?? [];
+    // The live array, not a copy: this runs on every tick.
+    const data = chart.primaryBars();
     const last = data[data.length - 1];
     return last === undefined ? { bar: null, time: null } : { bar: last, time: last.time };
   };
@@ -212,14 +221,17 @@ export function mountStatusline(ctx: WidgetContext, host: HTMLElement, opts: Sta
     },
     setSymbol: (symbol, exchange, interval) => {
       const name = exchange ? `${exchange}:${symbol}` : symbol;
-      if (name === sym.textContent && interval === iv.textContent) return;
+      if (titled && name === sym.textContent && interval === iv.textContent) return;
       write(sym, name);
       write(iv, interval);
-      // The readings belong to the old title: drop them now, and take the
-      // latest bar again once the new instrument's bars replace the series.
-      awaiting = true;
+      // The first title names the bars already there. After that the readings
+      // belong to the old title: drop them now, and take the latest bar again
+      // once the new instrument's bars replace the series.
+      awaiting = titled;
+      titled = true;
       following = true;
-      setBar(null, null);
+      if (awaiting) setBar(null, null);
+      else follow();
     },
     setBar: (b, t) => { following = b === null; setBar(b, t); },
     refresh: () => {
