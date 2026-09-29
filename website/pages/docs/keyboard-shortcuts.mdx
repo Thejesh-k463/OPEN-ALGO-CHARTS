@@ -87,7 +87,11 @@ chart.shortcuts?.resetAll();
 
 chart.shortcuts?.list();   // [{ command, label, combos, isCustom, isDisabled }]
 chart.shortcuts?.state();  // { preset, overrides, disabled } - serializable
+chart.shortcuts?.onChange(() => refresh()); // since 2.5.10: after every change; returns an unsubscribe
 ```
+
+The time navigator's key hints follow a rebind (since 2.5.10), unless the host passed its
+own `timeNavigator.hints`.
 
 <Callout type="info">
 Browser/OS-reserved combos (`Mod+KeyW`, `Mod+KeyT`, `Mod+KeyR`, …) can't be bound -
