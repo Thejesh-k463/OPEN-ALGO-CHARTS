@@ -220,6 +220,15 @@ selection and revision. Abort a preparation's controller when its owner changes
 or a newer open supersedes it. Cancellation cannot undo an already committed
 transaction; retain host generation checks when publishing the prepared grid.
 
+Since 2.5.10 every change (`createWorkspace`, `saveWorkspace`, `rename`, `duplicate`,
+`remove`, `setAutosave`, `createTemplate`, `saveTemplate`, `importDocument`) takes the same
+`expectedRevision` in its `WorkspaceOperationOptions`: a catalog that moved past it rejects
+with `WorkspaceConflictError` after the read and before any write. `subscribe(listener)` is
+called with a detached catalog copy after each commit, before that change's promise
+resolves, and returns the unsubscribe. The repository implements `WorkspaceStore`, the
+contract the widget tier's `createLayoutsController` takes. `createMemoryWorkspaceStorage(seed?)`
+keeps the same compare-and-write contract in memory, for tests and previews.
+
 `setAutosave` stores a preference. Hosts must debounce actual saves, suppress
 them during restoration and replay, cancel pending timers on account changes,
 and show success only after the returned promise resolves. Use a new repository
