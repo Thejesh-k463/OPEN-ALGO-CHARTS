@@ -1,5 +1,9 @@
+// Hook (chart grid, 2.5.10): the grid keeps its messages beside it in grid-text.ts.
+import type { ChartGridMessage } from './grid-text';
+
 /** English source keys keep fallback messages available without a locale bundle. */
 export type WidgetBuiltinMessage =
+  | ChartGridMessage
   | "Only loaded rows are exported. Blank bounds include all loaded times."
   | "From (UTC seconds)"
   | "To (UTC seconds)"

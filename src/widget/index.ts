@@ -31,6 +31,12 @@ export { createWidget, stripView, resolveTheme, loadWindow, DEFAULT_INTERVALS, D
 export type { Widget, WidgetOptions, WidgetState, WidgetChartState, WidgetRestoreReport, WidgetEventName, WidgetWatchlistOptions, WidgetNewsOptions } from './widget';
 export { createChartGrid, CHART_GRID_PRESETS } from './grid';
 export type { ChartGrid, ChartGridOptions, ChartGridCell, ChartGridLayout, ChartGridPreset, ChartGridApplyReport, ChartGridEvents, ChartGridEventName } from './grid';
+// Hook (chart grid, 2.5.10): the layout catalogue, link groups and the grid's message keys.
+export { CHART_GRID_LAYOUTS } from './grid-layouts';
+export type { ChartGridLayoutId, ChartGridUnevenLayout, ChartGridLayoutSpec, ChartGridLayoutSlot } from './grid-layouts';
+export type { ChartGridLinkGroup } from './grid-links';
+export { CHART_GRID_LAYOUT_NAMES } from './grid-text';
+export type { ChartGridMessage } from './grid-text';
 export { CHART_GRID_CSS } from './grid-styles';
 export { createLayoutsController } from './layouts';
 export type { LayoutsController, LayoutsControllerOptions, LayoutsState, LayoutTarget, LayoutApplyReport, LayoutAutosaveStatus } from './layouts';

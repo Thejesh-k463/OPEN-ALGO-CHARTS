@@ -126,7 +126,9 @@ describe('chart grid presets and lifecycle', () => {
       expect(grid.cells()).toHaveLength(rows * columns);
       expect(grid.layout()).toMatchObject({ rows, columns, preset: name });
     }
-    expect(() => grid.setPreset('4x4' as never)).toThrow(/preset/);
+    // Four by four is a preset since 2.5.10; past it, and a name off the prototype, are not.
+    expect(() => grid.setPreset('5x5' as never)).toThrow(/preset/);
+    expect(() => grid.setPreset('constructor' as never)).toThrow(/preset/);
   });
 
   it('keeps the active chart when it survives a smaller preset and moves to the first when it does not', () => {

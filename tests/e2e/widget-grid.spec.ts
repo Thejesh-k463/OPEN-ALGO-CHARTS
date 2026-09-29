@@ -3,11 +3,11 @@ import { VERSION } from '../../src/version';
 
 // The chart grid in a real browser: layout, measured charts, splitters,
 // keyboard routing, the compact view and all-or-nothing workspace import.
-async function mount(page: Page, preset = '2x2', size = { width: 1200, height: 800 }): Promise<string[]> {
+async function mount(page: Page, preset = '2x2', size = { width: 1200, height: 800 }, extra = ''): Promise<string[]> {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.setViewportSize(size);
-  await page.goto(`/tests/e2e/widget-grid-fixture.html?preset=${preset}`);
+  await page.goto(`/tests/e2e/widget-grid-fixture.html?preset=${preset}${extra}`);
   await page.waitForFunction(version => (window as any).fixture?.version === version, VERSION);
   return errors;
 }
@@ -254,5 +254,355 @@ test('a linked appearance change is a step of the chart it was made on, and undo
   await page.keyboard.press('ControlOrMeta+y');
   await expect.poll(vertical).toEqual([!start[0], !start[0]]);
   await page.screenshot({ path: info.outputPath('grid-linked-redone.png') });
+  expect(errors).toEqual([]);
+});
+
+// 2.5.10: the grid bar, layouts to sixteen charts, cell moves, link groups and capture.
+
+/** Answer every request until each chart holds its bars: charts built late ask late. */
+async function readyEvery(page: Page, bars = 120): Promise<void> {
+  await expect.poll(async () => {
+    await page.evaluate(() => (window as any).fixture.readyAll());
+    return (await counts(page)).every(n => n === bars);
+  }, { timeout: 15_000 }).toBe(true);
+}
+const symbols = (page: Page): Promise<string[]> => page.evaluate(() => (window as any).fixture.grid.cells().map((c: any) => c.widget.symbol()));
+const setSymbols = (page: Page, names: string[]): Promise<void> => page.evaluate(list => {
+  (window as any).fixture.grid.cells().forEach((c: any, i: number) => c.widget.setSymbol(list[i]));
+}, names);
+
+test('the grid bar lays out four by four and an uneven layout from the picker, by pointer and by keyboard', async ({ page }, info) => {
+  const errors = await mount(page, '2x2', { width: 1360, height: 900 }, '&toolbar=1');
+  await readyEvery(page);
+  await page.locator('.oac-grid__layout').click();
+  const picker = page.getByRole('menu', { name: 'Layouts' });
+  await expect(picker).toBeVisible();
+  await expect(picker.getByRole('menuitemradio')).toHaveCount(26);
+  await expect(picker.getByRole('menuitemradio', { name: 'Two by two' })).toHaveAttribute('aria-checked', 'true');
+  await page.screenshot({ path: info.outputPath('grid-picker.png') });
+  await picker.getByRole('menuitemradio', { name: 'Four by four' }).click();
+  await expect(picker).toBeHidden();
+  await expect(page.locator('.oac-grid__cell')).toHaveCount(16);
+  await readyEvery(page);
+  const body = (await page.locator('.oac-grid__cells').boundingBox())!;
+  const boxes = await page.locator('.oac-grid__cell').evaluateAll(els => els.map(el => el.getBoundingClientRect().toJSON()));
+  for (const box of boxes) {
+    expect(Math.abs(box.width - (body.width - 12) / 4)).toBeLessThan(2);
+    expect(Math.abs(box.height - (body.height - 12) / 4)).toBeLessThan(2);
+  }
+  // Sixteen cells are dense: one row of chart controls, the rest of the cell is the chart.
+  expect(await page.locator('.oac-grid__cell[data-dense="true"]').count()).toBe(16);
+  const plots = await page.locator('.oac-grid__cell .oac-chart').evaluateAll(els => els.map(el => el.clientHeight));
+  for (const height of plots) expect(height).toBeGreaterThan(body.height / 4 - 90);
+  for (const index of [0, 5, 15]) await expect.poll(() => painted(page, index)).toBe(true);
+  await page.screenshot({ path: info.outputPath('grid-4x4.png') });
+
+  // The keyboard: the checked tile has the focus, the arrows walk the rows.
+  await page.locator('.oac-grid__layout').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.oac-grid__tile[data-layout="4x4"]')).toBeFocused();
+  for (const key of ['ArrowUp', 'ArrowUp', 'ArrowUp', 'ArrowRight', 'ArrowRight']) await page.keyboard.press(key);
+  await expect(page.locator('.oac-grid__tile[data-layout="corner-7"]')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.oac-grid__cell')).toHaveCount(8);
+  await readyEvery(page);
+  const large = (await page.locator('.oac-grid__cell').nth(0).boundingBox())!;
+  const small = (await page.locator('.oac-grid__cell').nth(1).boundingBox())!;
+  expect(large.width).toBeGreaterThan(small.width * 2.8);
+  expect(large.height).toBeGreaterThan(small.height * 2.8);
+  await expect(page.locator('.oac-grid__layout .oac-grid__bar-text')).toHaveText('Large corner, seven around');
+  await page.screenshot({ path: info.outputPath('grid-corner-7.png') });
+  expect(errors).toEqual([]);
+});
+
+test('a chart maximizes from the bar, a double click on its bar and Alt+Enter, and a drag on its bar swaps it', async ({ page }, info) => {
+  const errors = await mount(page, '2x2', { width: 1360, height: 900 }, '&toolbar=1');
+  await setSymbols(page, ['AAA', 'BBB', 'CCC', 'DDD']);
+  await readyEvery(page);
+  const cells = page.locator('.oac-grid__cell');
+  await cells.nth(1).locator('.oac-chart').click();
+  await page.locator('.oac-grid__max').click();
+  await expect(page.locator('.oac-grid__cell:visible')).toHaveCount(1);
+  await expect(cells.nth(1)).toBeVisible();
+  await expect(page.locator('.oac-grid__tab')).toHaveCount(4);
+  await expect(page.locator('.oac-grid__max')).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => cells.nth(1).locator('.oac-chart').evaluate(el => el.clientWidth)).toBeGreaterThan(1200);
+  await expect.poll(() => painted(page, 1)).toBe(true);
+  await page.screenshot({ path: info.outputPath('grid-maximized.png') });
+  await page.locator('.oac-grid__max').click();
+  await expect(page.locator('.oac-grid__cell:visible')).toHaveCount(4);
+
+  // A double click on the bar's background, then Alt+Enter on the chart the pointer rests on.
+  // Mid-height on the bar's own padding: its top few pixels are the row splitter's grab zone.
+  const head = (await cells.nth(2).locator('.oac-topbar').boundingBox())!;
+  await page.mouse.dblclick(head.x + 3, head.y + head.height / 2);
+  await expect(page.locator('.oac-grid__cell:visible')).toHaveCount(1);
+  expect(await activeIndex(page)).toBe(2);
+  await page.mouse.move(head.x + 300, head.y + 300);
+  await page.keyboard.press('Alt+Enter');
+  await expect(page.locator('.oac-grid__cell:visible')).toHaveCount(4);
+
+  // Drag the first chart by its bar onto the last chart's place.
+  const from = (await cells.nth(0).locator('.oac-topbar').boundingBox())!;
+  const to = (await cells.nth(3).boundingBox())!;
+  await page.mouse.move(from.x + 3, from.y + 3);
+  await page.mouse.down();
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 });
+  await expect(cells.nth(3)).toHaveAttribute('data-drop', 'true');
+  await page.screenshot({ path: info.outputPath('grid-drag.png') });
+  await page.mouse.up();
+  await expect.poll(() => symbols(page)).toEqual(['DDD', 'BBB', 'CCC', 'AAA']);
+  await expect(page.locator('.oac-grid__cell[data-drop]')).toHaveCount(0);
+  // The page order follows the places, so Tab and a screen reader read the charts as they stand.
+  const inPage = (): Promise<string[]> => page.locator('.oac-grid__cell').evaluateAll(els => els.map(el => (el as HTMLElement).dataset.paneId!));
+  expect(await inPage()).toEqual(await page.evaluate(() => (window as any).fixture.grid.cells().map((c: any) => c.id)));
+  // The keyboard swaps too: the moved chart is active and trades places with its left neighbour,
+  // keeping the focus, so a second chord moves it again.
+  await page.locator('.oac-grid__cell').nth(3).locator('.oac-chart').click();
+  await page.keyboard.press('ControlOrMeta+Shift+ArrowLeft');
+  await expect.poll(() => symbols(page)).toEqual(['DDD', 'BBB', 'AAA', 'CCC']);
+  expect(await page.evaluate(() => (document.activeElement as HTMLElement).closest('.oac-grid__cell')?.getAttribute('aria-label'))).toBe('Chart 3');
+  await page.keyboard.press('ControlOrMeta+Shift+ArrowUp');
+  await expect.poll(() => symbols(page)).toEqual(['AAA', 'BBB', 'DDD', 'CCC']);
+  expect(await inPage()).toEqual(await page.evaluate(() => (window as any).fixture.grid.cells().map((c: any) => c.id)));
+  await page.screenshot({ path: info.outputPath('grid-swapped.png') });
+  expect(errors).toEqual([]);
+});
+
+test('link groups: a drawing reaches its group partner and not another group, and the chart type follows', async ({ page }, info) => {
+  const errors = await mount(page, '1x3', { width: 1500, height: 820 }, '&toolbar=1');
+  await readyEvery(page);
+  const cells = page.locator('.oac-grid__cell');
+  // The third chart starts a group of its own from the link menu.
+  await cells.nth(2).locator('.oac-chart').click();
+  await page.locator('.oac-grid__link').click();
+  const menu = page.getByRole('menu', { name: 'Linking' });
+  await menu.getByRole('menuitem', { name: 'New group' }).click();
+  await expect(menu.getByRole('menuitemradio', { name: /Group B/ })).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Escape');
+  // The first chart's group links drawings and the chart type.
+  await cells.nth(0).locator('.oac-chart').click();
+  await page.locator('.oac-grid__link').click();
+  await menu.getByRole('menuitemcheckbox', { name: 'Drawings' }).click();
+  await menu.getByRole('menuitemcheckbox', { name: 'Chart type' }).click();
+  await expect(menu.getByRole('menuitemcheckbox', { name: 'Drawings' })).toHaveAttribute('aria-checked', 'true');
+  await page.screenshot({ path: info.outputPath('grid-link-menu.png') });
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.oac-grid__mark')).toHaveText(['A', 'A', 'B']);
+
+  const lines = (): Promise<number[]> => page.evaluate(() => (window as any).fixture.grid.cells()
+    .map((c: any) => c.widget.draw.drawings().filter((d: any) => d.tool === 'trend-line').length));
+  // A trend line from the swing low to the highest high after it, on the first chart's own bars.
+  await page.evaluate(() => {
+    const cell = (window as any).fixture.grid.cells()[0];
+    const bars = cell.widget.series.getData();
+    const low = bars.reduce((a: any, b: any) => (b.low < a.low ? b : a));
+    const high = bars.filter((b: any) => b.time > low.time).reduce((a: any, b: any) => (b.high > a.high ? b : a), { high: -Infinity });
+    cell.widget.draw.add({ tool: 'trend-line', paneIndex: 0, style: {}, points: [{ time: low.time, price: low.low }, { time: high.time, price: high.high }] });
+  });
+  await expect.poll(lines).toEqual([1, 1, 0]);
+  await cells.nth(0).locator('.oac-topbar__type').click();
+  await cells.nth(0).getByRole('menuitemradio', { name: 'Line', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).fixture.grid.cells().map((c: any) => c.widget.chartType())))
+    .toEqual(['line', 'line', 'candlestick']);
+  await page.screenshot({ path: info.outputPath('grid-link-groups.png') });
+  await page.evaluate(() => (window as any).fixture.grid.setTheme('light'));
+  await page.screenshot({ path: info.outputPath('grid-link-groups-light.png') });
+  const saved = await page.evaluate(() => (window as any).fixture.grid.getWorkspace());
+  expect(saved.sync.groups.map((g: any) => [g.id, g.drawings === true, g.chartType === true])).toEqual([['a', true, true], ['b', false, false]]);
+  expect(saved.panes.map((p: any) => p.linkGroup)).toEqual(['a', 'a', 'b']);
+  expect(errors).toEqual([]);
+});
+
+test('one PNG of the whole grid puts each chart own pixels at its place, from the bar or from a chart', async ({ page }, info) => {
+  const errors = await mount(page, '1x2', { width: 1200, height: 700 }, '&toolbar=1');
+  await setSymbols(page, ['AAA', 'MMM']);
+  await readyEvery(page);
+  for (const index of [0, 1]) await expect.poll(() => painted(page, index)).toBe(true);
+  const result = await page.evaluate(() => {
+    const grid = (window as any).fixture.grid;
+    const out: HTMLCanvasElement = grid.takeScreenshot();
+    const body = document.querySelector('.oac-grid__cells')!.getBoundingClientRect();
+    const ratio = window.devicePixelRatio;
+    const block = (canvas: HTMLCanvasElement, x: number, y: number): number[] => {
+      const { data } = canvas.getContext('2d')!.getImageData(Math.round(x), Math.round(y), 40, 40);
+      const sum = [0, 0, 0];
+      for (let p = 0; p < data.length; p += 4) { sum[0] += data[p]; sum[1] += data[p + 1]; sum[2] += data[p + 2]; }
+      return sum.map(v => v / (data.length / 4));
+    };
+    const cells = grid.cells().map((cell: any) => {
+      const chart = cell.widget.root.querySelector('.oac-chart')!.getBoundingClientRect();
+      const own: HTMLCanvasElement = cell.widget.chart.takeScreenshot();
+      const x = chart.width * 0.4, y = chart.height * 0.4;
+      return { grid: block(out, (chart.left - body.left + x) * ratio, (chart.top - body.top + y) * ratio), own: block(own, x * ratio, y * ratio) };
+    });
+    return { width: out.width, height: out.height, expected: [Math.round(body.width * ratio), Math.round(body.height * ratio)], cells };
+  });
+  expect([result.width, result.height]).toEqual(result.expected);
+  for (const cell of result.cells) for (let c = 0; c < 3; c++) expect(Math.abs(cell.grid[c] - cell.own[c])).toBeLessThan(8);
+  // The two charts show different instruments, so the check could tell them apart.
+  expect(result.cells[0].own.some((v: number, c: number) => Math.abs(v - result.cells[1].own[c]) > 1)).toBe(true);
+
+  await page.locator('.oac-grid__capture').click();
+  const pending = page.waitForEvent('download');
+  await page.getByRole('menuitem', { name: 'Download PNG of every chart' }).click();
+  expect((await pending).suggestedFilename()).toMatch(/^charts-1x2-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}\.png$/);
+  // The chart's own capture menu offers the same, next to its own picture.
+  await page.locator('.oac-grid__cell').nth(1).locator('.oac-topbar button[aria-label="Capture chart"]').click();
+  await expect(page.locator('.oac-grid__cell').nth(1).locator('.oac-menu .oac-head')).toHaveText('Every chart');
+  const second = page.waitForEvent('download');
+  await page.locator('.oac-grid__cell').nth(1).getByRole('menuitemradio', { name: 'Download PNG of every chart' }).click();
+  expect((await second).suggestedFilename()).toMatch(/^charts-1x2-/);
+  await page.screenshot({ path: info.outputPath('grid-capture.png') });
+  expect(errors).toEqual([]);
+});
+
+test('at phone width the bar stays usable: menus fit, maximize and capture say why they wait', async ({ page }, info) => {
+  const errors = await mount(page, '2x2', { width: 400, height: 780 }, '&toolbar=1&theme=light');
+  await readyEvery(page);
+  await expect(page.locator('.oac-grid__bar')).toBeVisible();
+  await expect(page.locator('.oac-grid__tab')).toHaveCount(4);
+  await expect(page.locator('.oac-grid__max')).toHaveAttribute('aria-disabled', 'true');
+  await page.locator('.oac-grid__layout').click();
+  const picker = (await page.getByRole('menu', { name: 'Layouts' }).boundingBox())!;
+  expect(picker.x).toBeGreaterThanOrEqual(0);
+  expect(picker.x + picker.width).toBeLessThanOrEqual(400);
+  await page.screenshot({ path: info.outputPath('grid-phone-picker.png') });
+  await page.keyboard.press('Escape');
+  await page.locator('.oac-grid__capture').click();
+  const download = page.getByRole('menuitem', { name: 'Download PNG of every chart' });
+  await expect(download).toHaveAttribute('aria-disabled', 'true');
+  // The reason is said once, names the width rather than a step the user cannot take, and is tied to the row.
+  await expect(download).toHaveAccessibleDescription('The grid shows one chart at a time at this width');
+  const menuBox = (await page.getByRole('menu', { name: 'Capture every chart' }).boundingBox())!;
+  expect(menuBox.x).toBeGreaterThanOrEqual(0);
+  expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(400);
+  // Each label shows whole: nothing beside it squeezes it to an ellipsis.
+  for (const label of await page.locator('.oac-grid__menu .oac-menu__label').all()) {
+    expect(await label.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  }
+  await page.screenshot({ path: info.outputPath('grid-phone-capture.png') });
+  expect(errors).toEqual([]);
+});
+
+test('the grid bar and its menus keep a strict style policy', async ({ page }) => {
+  const NONCE = 'openalgo-grid-csp-test';
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.addInitScript(() => {
+    (window as any).__cspViolations = [];
+    document.addEventListener('securitypolicyviolation', event => (window as any).__cspViolations.push(event.effectiveDirective));
+  });
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.route('**/widget-grid-csp-fixture.html', route => route.fulfill({
+    contentType: 'text/html',
+    headers: { 'Content-Security-Policy': `default-src 'self'; script-src 'self'; style-src-elem 'nonce-${NONCE}'; style-src-attr 'unsafe-inline'; img-src 'self' data:` },
+    body: `<!doctype html><html><head><meta charset="utf-8"><style nonce="${NONCE}">html,body{margin:0;height:100%}#desk{position:absolute;inset:0}</style></head><body><div id="desk"></div></body></html>`,
+  }));
+  await page.goto('/widget-grid-csp-fixture.html');
+  await page.evaluate(async nonce => {
+    const url = '/dist/openalgo-charts.widget.mjs';
+    const { createChartGrid } = await import(url);
+    (window as any).__grid = createChartGrid(document.getElementById('desk'), { styleNonce: nonce, toolbar: true, preset: '1x2', rail: false });
+  }, NONCE);
+  await page.locator('.oac-grid__layout').click();
+  await expect(page.locator('.oac-grid__picker')).toHaveCSS('display', 'flex');
+  await page.keyboard.press('Escape');
+  await page.locator('.oac-grid__link').click();
+  await page.getByRole('menuitem', { name: 'New group' }).click();
+  await expect(page.locator('.oac-grid__menu')).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await page.keyboard.press('Escape');
+  await page.locator('.oac-grid__capture').click();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.oac-grid__bar')).toHaveCSS('display', 'flex');
+  await expect(page.locator('.oac-grid__mark')).toHaveCount(2);
+  expect(await page.evaluate(() => (window as any).__cspViolations)).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('sixteen charts: frame time while every chart follows a linked pan and crosshair, and the memory they take', async ({ page, browserName }, info) => {
+  test.slow();
+  // Full widgets, rail and status line included: what a host that asks for sixteen charts gets.
+  const errors = await mount(page, '1x1', { width: 1360, height: 900 }, '&toolbar=1&rail=1&statusline=1');
+  await readyEvery(page);
+  // Chromium reports an exact heap and the main thread's busy time through its protocol;
+  // the page's own memory figure is rounded to whole buckets there, and absent elsewhere.
+  const cdp = browserName === 'chromium' ? await page.context().newCDPSession(page) : null;
+  if (cdp !== null) await cdp.send('Performance.enable');
+  const heap = async (): Promise<number | null> => {
+    if (cdp === null) return null;
+    await cdp.send('HeapProfiler.collectGarbage');
+    return Math.round((await cdp.send('Runtime.getHeapUsage')).usedSize / 1e5) / 10;
+  };
+  const busy = async (): Promise<number | null> => {
+    if (cdp === null) return null;
+    const { metrics } = await cdp.send('Performance.getMetrics');
+    return (metrics.find((m: { name: string }) => m.name === 'TaskDuration')?.value ?? 0) * 1000;
+  };
+  const oneChart = await heap();
+  await page.evaluate(() => (window as any).fixture.grid.setPreset('2x2'));
+  await readyEvery(page);
+  const fourCharts = await heap();
+  const built = await page.evaluate(() => {
+    const t0 = performance.now();
+    (window as any).fixture.grid.setPreset('4x4');
+    return performance.now() - t0;
+  });
+  await readyEvery(page);
+  for (const index of [0, 7, 15]) await expect.poll(() => painted(page, index)).toBe(true);
+  const sixteenCharts = await heap();
+  await page.evaluate(() => (window as any).fixture.grid.setLinks({ viewport: true, crosshair: true }));
+
+  /** Frame intervals over 60 frames while `step(n)` runs once a frame, and the main thread's work per frame. */
+  const frames = async (kind: 'pan' | 'crosshair'): Promise<{ meanMs: number; p95Ms: number; busyMs: number | null }> => {
+    const before = await busy();
+    const out = await page.evaluate(which => new Promise<number[]>(resolve => {
+      const grid = (window as any).fixture.grid;
+      const chart = grid.cells()[0].widget.chart;
+      const box = grid.cells()[0].widget.root.querySelector('.oac-chart').getBoundingClientRect();
+      const list: number[] = [];
+      let last = performance.now(), n = 0;
+      const tick = (): void => {
+        const now = performance.now();
+        if (n > 0) list.push(now - last);
+        last = now;
+        if (n++ >= 60) { resolve(list); return; }
+        // The leader pans a bar, or the pointer crosses it; the fifteen followers draw with it.
+        if (which === 'pan') chart.setVisibleLogicalRange({ from: 30 + (n % 40), to: 90 + (n % 40) });
+        else {
+          const x = box.left + box.width * (0.2 + 0.6 * (n % 30) / 30), y = box.top + box.height / 2;
+          document.elementFromPoint(x, y)?.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true, pointerType: 'mouse' }));
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }), kind);
+    const after = await busy();
+    const sorted = out.slice().sort((a, b) => a - b);
+    return {
+      meanMs: Math.round(out.reduce((a, b) => a + b, 0) / out.length * 10) / 10,
+      p95Ms: Math.round(sorted[Math.floor(sorted.length * 0.95)] * 10) / 10,
+      busyMs: before === null || after === null ? null : Math.round((after - before) / out.length * 10) / 10,
+    };
+  };
+  const pan = await frames('pan');
+  // The last chart hears the sweep through its link group, so the frames below include its crosshair.
+  await page.evaluate(() => {
+    const w = window as any;
+    w.followerReadouts = 0;
+    w.fixture.grid.cells()[15].widget.chart.on('crosshair:readout', () => { w.followerReadouts++; });
+  });
+  const crosshair = await frames('crosshair');
+  expect(await page.evaluate(() => (window as any).followerReadouts)).toBeGreaterThan(20);
+  // Canvas pixels live outside the script heap: every layer of every chart, four bytes a pixel.
+  const canvasMB = await page.evaluate(() => Math.round([...document.querySelectorAll('.oac-grid__cell canvas')]
+    .reduce((sum, c) => sum + (c as HTMLCanvasElement).width * (c as HTMLCanvasElement).height * 4, 0) / 1e5) / 10);
+  const stats = { browser: browserName, buildMs: Math.round(built), pan, crosshair, heapMB: { oneChart, fourCharts, sixteenCharts }, canvasMB };
+  info.annotations.push({ type: 'grid-16-perf', description: JSON.stringify(stats) });
+  console.log(`grid-16-perf ${JSON.stringify(stats)}`);
+  // Budgets against a collapse, not a benchmark: frames of a linked pan and a linked crosshair across sixteen charts.
+  expect(pan.p95Ms).toBeLessThan(250);
+  expect(crosshair.p95Ms).toBeLessThan(250);
+  await page.screenshot({ path: info.outputPath('grid-16-linked.png') });
   expect(errors).toEqual([]);
 });
