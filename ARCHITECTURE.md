@@ -212,7 +212,9 @@ src/
 │   ├── openalgo-ws.ts       # live tick/quote/depth subscription
 │   └── candle-builder.ts    # ticks/quotes to interval OHLC (§10.2)
 └── widget/                  # the chrome as a tier (separate entry point, §8.5); the only DOM under src/
-    ├── widget.ts            # createWidget: the shell, symbol/interval/theme, persistence, the keymap wiring
+    ├── widget.ts            # createWidget: the shell, symbol/interval/theme, the chrome wiring
+    ├── widget-keys.ts       # the shell's key scopes, pointer tracking and key bindings
+    ├── widget-persist.ts    # the saved layout: read and applied, per-instrument drawings, restoreState, debounced save, pagehide flush
     ├── context.ts           # WidgetContext, bus, storage, overlay stack, tips, the dialog registry
     ├── keymap.ts            # one capture-phase keymap with scopes and conflict reporting
     ├── rail.ts / topbar.ts / statusline.ts / toast.ts
