@@ -306,6 +306,8 @@ widget.openSettings();        // false when no settings dialog is registered
 widget.openIndicatorPicker();
 widget.openObjects();         // searchable inventory, false after destruction
 await widget.reload();        // fetch again for the current symbol and interval
+await widget.setRange('5D');  // a preset range: its interval, its sessions in view (since 2.5.10)
+widget.range();               // '5D', or null once the interval is changed by hand
 const saved = widget.getState();   // { version, symbol, exchange, interval, chartType, theme, variant?, chart, rail }
 widget.restoreState(saved);        // { applied, reason?, chart? }
 widget.destroy();                  // saves if persisting, removes the chrome, destroys the chart
@@ -362,7 +364,9 @@ Draw, Studies, Objects and More according to the same `topbar`, `rail` and `indi
 switches as desktop chrome. Drawing selection adds Properties, Lock or Unlock, and Delete.
 The Drawing sheet includes Finish, Cancel, Undo, Redo, Magnet and Stay while a tool is
 active, and the More sheet opens with Undo and Redo, disabled when there is nothing to take
-back. `rail.tools` restricts both layouts to the same allowed drawing ids.
+back. The desktop [bottom bar](#bottom-bar) is hidden here, so the More sheet also shows the
+market status and the clock, the preset ranges, the price scale toggles and the timezone.
+`rail.tools` restricts both layouts to the same allowed drawing ids.
 
 Both layouts drive one `DrawingController`, `ChartObjects` inventory, overlay stack,
 selection and chart-wide undo history. A container resize changes the controls without replacing
@@ -376,6 +380,99 @@ entry exports `MobileMode`, `MobileOptions` and `MobileHandle` as types. `create
 is the usual entry because it supplies the shared context and teardown. See
 [Mobile and Touch](/docs/mobile) and
 [Scales and Panes](/docs/scales-and-panes#navigation-and-autoscale-animation).
+
+## Bottom bar
+
+Since 2.5.10 a thin strip sits under the chart, between the plot and the status line.
+On the left are the preset ranges and **Go to**; on the right are the market status,
+a clock in the chart's timezone and the price scale toggles. It is on by default, and
+`bottombar: false` leaves it out and puts **Go to** back in the top bar.
+
+```ts
+import { createWidget } from 'openalgo-charts/widget';
+import { SessionCalendar } from 'openalgo-charts';
+
+const nse = new SessionCalendar({ timezone: 'Asia/Kolkata', sessions: ['0915-1530:23456'] });
+
+const widget = createWidget('#terminal', {
+  feed, symbol: 'RELIANCE', exchange: 'NSE', interval: '5m',
+  // Trading hours per instrument, applied on every symbol change.
+  sessionCalendar: ({ exchange }) => (exchange === 'NSE' ? nse : null),
+});
+const result = await widget.setRange('1D');   // what the 1D button does
+```
+
+**A range is sized in trading sessions, not in hours.** Each button sets the interval,
+the history the feed is asked for and the visible window. One NSE day at one minute is
+the 375 bars from the 09:15 open, not the 1,440 minutes back from the clock: with a
+session calendar the range walks back through its sessions, so a weekend or a closed
+date is skipped rather than counted, and a date with a midday break counts once. Before
+the open, over a weekend, or with a feed that lags, **1D** is the last session that
+traded, because the window ends at the latest bar rather than the wall clock. Without a
+calendar the fetch reaches back over weekdays, and the placement counts the dates the
+loaded bars fall on. A fetch never asks for less than an ordinary load, so older pages
+keep a useful width.
+
+| Button | Interval | Span |
+|---|---|---|
+| 1D, 5D | `1m`, `5m` | one and five trading sessions |
+| 1M, 3M, 6M | `30m`, `1h`, `1d` | calendar months back, to midnight on the same date |
+| YTD, 1Y, 5Y | `1d`, `1d`, `1w` | the first of January, one year, five years |
+| All | `1w` | from the first bar the source has |
+
+When the widget does not offer a range's interval, the range uses the nearest one it
+does offer by ratio, the longer on a tie. A range holds while its interval does: a
+symbol change keeps it and places the same span on the new instrument, and an interval
+picked by hand leaves it, after which loads go back to `lookbackBars`. `setRange`
+resolves to the same result as `goTo` (`placed`, `partial`, `no-data` and the rest,
+reported on the status line) and to `invalid` for an id the widget does not know. Pass
+`ranges` for a list of your own, as `WidgetRange` objects with an `id`, a `label`, an
+`interval`, a `unit` (`'session'`, `'month'`, `'year'`, `'ytd'` or `'all'`) and a
+`count`, or `ranges: []` to leave the buttons out. `DEFAULT_RANGES`, `rangeWindow` and
+`rangeInterval` are exported for a host that sizes ranges itself.
+
+**The market status comes from the instrument calendar.** The bar reads
+`marketStatusAt` on the chart's session calendar: market open with its close, pre-open
+with its opening, post-close and extended hours with when they end, closed or holiday
+with the next opening, all on the chart's clock. It is checked again on a timer at the
+next change of phase, and a calendar that cannot answer shows no status rather than
+stopping the bar. Without a calendar, or with **Session state** off in the chart
+settings, no status is shown. With the bar off, the status line says it instead.
+
+**The clock opens the timezone choice.** It shows the time and the zone's offset from
+UTC, and a click opens a searchable menu: the zones the settings dialog offers first,
+then every zone the runtime knows. A zone picked there moves the time axis and the
+sessions, and is saved with the layout.
+
+**The scale toggles follow the price scale.** Auto-fit, logarithmic and percent act on
+the scale the primary series reads from, and show what it is doing, including after a
+drag of the price axis, an undo or a double-click reset. A mode change is a step on the
+chart's undo timeline.
+
+**Session shading is on by default.** `sessionShading` attaches `attachSessionShading`
+to the chart: a faint wash behind pre-open, post-close and extended-hours bars, read from
+the chart's calendar. A calendar without those hours, or no calendar, shades nothing, so
+a regular-hours chart looks as before. `sessionShading: false` turns it off.
+
+In the phone layout the bar is hidden and the **More** sheet carries its controls: the
+market status and the clock at the top, then the ranges, the scale toggles and the
+timezone. A chart grid gives its cells no bar of their own. For a host of your own,
+`mountBottombar(context, element, options)` builds the strip over any chart: its
+`target` option is read at every use, so one bar can follow whichever chart has the
+focus, and its `controls` drive the same actions without the markup. The reference
+host mounts it under its stage this way.
+
+The bar's words go through `translate` like the rest of the chrome. A range button's
+text is `schema.ui.range.<id>` (`schema.ui.range.1D`), its accessible name
+`schema.ui.rangeName` (`Range {range}`), its tooltip's second line
+`schema.ui.rangeSpan.<unit>` (`session`, `sessions`, `month`, `months`, `year`, `years`,
+`ytd`, `all`, with `{count}`), and what it did `schema.ui.rangeResult.placed` or
+`schema.ui.rangeResult.empty`. The status is `schema.ui.market.<phase>` (`regular`,
+`pre`, `post`, `extended`, `closed`, `holiday`) with `schema.ui.market.closes`,
+`schema.ui.market.opens` or `schema.ui.market.until` and a `{time}`. The labels of the
+controls themselves are under `schema.ui.bottombar.`: `label`, `ranges`, `noRanges`,
+`scale`, `auto`, `log`, `percent`, `noScale`, `timezone` (with `{zone}`),
+`timezoneHint`, `timezones`, `findZone`, `allZones` and `badZone`.
 
 ## Options
 
@@ -403,7 +500,11 @@ passes through to `createChart` unchanged.
 | `theme` | `'dark'` \| `'light'` \| `ChartTheme` | A named palette or a full theme object. Drives both the canvas and the chrome tokens (see below). Default `'dark'` (the engine's own default is light). |
 | `rail` | `boolean` \| `RailOptions` | The drawing rail. `false` hides it; `tools` restricts which registered tool ids appear (the order follows the rail's own groups); `favorites` seeds the pins when nothing is stored. |
 | `topbar` | `boolean` | The symbol, interval, chart type, indicators, capture, settings and theme controls. |
-| `statusline` | `boolean` | The status line under the chart: the readings of the bar under the pointer, and of the latest bar, updated live, while the pointer is away. |
+| `statusline` | `boolean` | The status line under the chart: the readings of the bar under the pointer, and of the latest bar, updated live, while the pointer is away. With the bottom bar off it also shows the market status. |
+| `bottombar` | `boolean` | The strip under the chart with preset ranges, Go to, the market status, the clock and the price scale toggles (since 2.5.10). Default on. See [Bottom bar](#bottom-bar). |
+| `ranges` | `WidgetRange[]` | The preset ranges for the bottom bar and `setRange` (since 2.5.10). Default `DEFAULT_RANGES`; `[]` leaves the buttons out. |
+| `sessionCalendar` | `SessionCalendarSource` \| `(instrument) => SessionCalendarSource \| null` | Trading hours, applied to the chart for the first symbol and on every symbol change (since 2.5.10). They size ranges in sessions and give the market status and the shading their hours. Default: the chart's calendar is left to the host. |
+| `sessionShading` | `boolean` | Shade pre-open, post-close and extended-hours bars from the chart's calendar (since 2.5.10). Default on; nothing is shaded without such hours. |
 | `mobile` | `'auto'` \| `'always'` \| `'never'` | Responsive widget controls. Default `'auto'`, active at a container width of 640 CSS px or less, or up to 960 px wide and under 600 px tall with a coarse primary pointer. |
 | `indicators` | `boolean` | The Indicators button and picker. Turn it off for a host that manages indicators itself. |
 | `persist` | `boolean` \| `string` | `true` saves the state under the `default` namespace (`oac-widget:default:state`) and restores it on the next `createWidget`; a string names the namespace, for more than one widget per origin. |
@@ -746,8 +847,8 @@ See [data loading](/docs/data-loading) for the interactive failure/retry example
 
 ## Go to a date or range
 
-**Go to** in the toolbar (or **More**, then **Go to** on a narrow screen) opens a
-compact panel. **Date** shows one date at the current zoom; **Range** fits two
+**Go to** in the bottom bar (in the top bar with `bottombar: false`, or **More**, then
+**Go to** on a narrow screen) opens a compact panel. **Date** shows one date at the current zoom; **Range** fits two
 dates, or two date and time pairs, to the plot. Dates and times are read in the
 chart timezone, IST unless the host sets another. A blank time is the start of
 the day, or its end for the To field. Daily and longer intervals show the date
