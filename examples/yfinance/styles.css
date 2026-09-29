@@ -937,7 +937,6 @@ body[data-fullscreen-pane="2"] .p2plot .inspect-layout { left: 42px; }
 .gridbar { flex: none; }
 .gridbar .brand { gap: 8px; padding: 0 4px; }
 .gridbar__name { white-space: nowrap; }
-.gridbar__label { color: var(--mut); font-size: 11px; font-weight: 600; letter-spacing: .6px; text-transform: uppercase; }
 .gridbar__status { margin-left: auto; color: var(--mut); font-size: 12px; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; max-width: 42ch; }
 .gridbar svg { width: 16px; height: 16px; }
