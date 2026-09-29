@@ -2,7 +2,8 @@ import { test, expect, type Page } from '@playwright/test';
 import { VERSION } from '../../src/version';
 
 // The chart grid in a real browser: layout, measured charts, splitters,
-// keyboard routing, the compact view and all-or-nothing workspace import.
+// keyboard routing, the compact view, all-or-nothing workspace import, the
+// bars over and under the charts, saved desks and the desk kept in IndexedDB.
 async function mount(page: Page, preset = '2x2', size = { width: 1200, height: 800 }, extra = ''): Promise<string[]> {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -485,6 +486,139 @@ test('at phone width the bar stays usable: menus fit, maximize and capture say w
   expect(errors).toEqual([]);
 });
 
+test('one bar under the grid acts on the active chart, and its Go to opens over the grid', async ({ page }, info) => {
+  for (const theme of ['dark', 'light']) {
+    const errors = await mount(page, '2x2', { width: 1360, height: 900 }, `&toolbar=1&bottombar=1&theme=${theme}`);
+    await readyEvery(page);
+    const bar = page.locator('.oac-grid__foot .oac-bottombar');
+    await expect(page.locator('.oac-bottombar')).toHaveCount(1);
+    // The charts leave Go to to the bar.
+    await expect(page.locator('.oac-grid__cell .oac-topbar__goto')).toHaveCount(0);
+    const barBox = (await bar.boundingBox())!;
+    const cellsBox = (await page.locator('.oac-grid__cells').boundingBox())!;
+    const topBox = (await page.locator('.oac-grid__bar').boundingBox())!;
+    expect(topBox.y).toBe(0);
+    expect(Math.abs(barBox.y - (cellsBox.y + cellsBox.height))).toBeLessThanOrEqual(1);
+    expect(barBox.y + barBox.height).toBeCloseTo(900, 0);
+    expect(barBox.height).toBe(28);
+    // A press on the second chart makes it the one the bar acts on.
+    const second = (await page.locator('.oac-grid__cell').nth(1).locator('.oac-chart').boundingBox())!;
+    await page.mouse.click(second.x + second.width / 2, second.y + second.height / 2);
+    await expect.poll(() => activeIndex(page)).toBe(1);
+    await bar.locator('.oac-bottombar__icon[data-scale="log"]').click();
+    expect(await page.evaluate(() => (window as any).fixture.grid.cells().map((c: any) => c.widget.chart.priceAxisState(c.widget.chart.primaryPaneIndex(), 'right').mode)))
+      .toEqual(['linear', 'logarithmic', 'linear', 'linear']);
+    await expect(bar.locator('.oac-bottombar__icon[data-scale="log"]')).toHaveAttribute('aria-pressed', 'true');
+    // Go to opens over the grid, above its own button, and gives the focus back to it.
+    const goTo = bar.locator('.oac-bottombar__goto');
+    await goTo.click();
+    const panel = page.locator('.oac-grid__overlay .oac-goto');
+    await expect(panel).toBeVisible();
+    const box = (await panel.boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height).toBeLessThanOrEqual(barBox.y + 1);
+    await page.screenshot({ path: info.outputPath(`grid-bottom-bar-${theme}.png`) });
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+    await expect(goTo).toBeFocused();
+    expect(errors).toEqual([]);
+  }
+});
+
+test('the bar under a four by four grid opens Go to whole for a small chart, and fits a phone', async ({ page }, info) => {
+  const errors = await mount(page, '4x4', { width: 1360, height: 900 }, '&toolbar=1&bottombar=1');
+  await readyEvery(page);
+  await page.locator('.oac-grid__cell').nth(5).locator('.oac-chart').click();
+  await expect.poll(() => activeIndex(page)).toBe(5);
+  await page.locator('.oac-bottombar__goto').click();
+  const panel = page.locator('.oac-grid__overlay .oac-goto');
+  await expect(panel).toBeVisible();
+  // Taller than the chart it is for, and still whole.
+  const cell = (await page.locator('.oac-grid__cell').nth(5).boundingBox())!;
+  const box = (await panel.boundingBox())!;
+  expect(box.height).toBeGreaterThan(cell.height);
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(1360);
+  await expect(panel.locator('[data-action="go-to"]')).toBeInViewport();
+  await page.screenshot({ path: info.outputPath('grid-4x4-goto.png') });
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({ width: 390, height: 780 });
+  const bar = (await page.locator('.oac-bottombar').boundingBox())!;
+  expect(bar.x + bar.width).toBeLessThanOrEqual(390);
+  for (const control of ['.oac-bottombar__clock', '.oac-bottombar__icon[data-scale="percent"]']) {
+    const b = (await page.locator(control).boundingBox())!;
+    expect(b.x + b.width).toBeLessThanOrEqual(390);
+  }
+  await page.screenshot({ path: info.outputPath('grid-phone-bottom-bar.png') });
+  expect(errors).toEqual([]);
+});
+
+test('the grid bar keeps the desk saved layouts: save, change, and the saved desk back after a reload', async ({ page }, info) => {
+  const errors = await mount(page, '2x2', { width: 1360, height: 900 }, '&toolbar=1&bottombar=1&workspaces=1&persist=desk&theme=light');
+  await page.evaluate(() => (window as any).fixture.grid.ready);
+  await setSymbols(page, ['AAA', 'BBB', 'CCC', 'DDD']);
+  await readyEvery(page);
+  await expect(page.locator('.oac-grid__cell .oac-topbar__layouts')).toHaveCount(0);
+  const control = page.locator('.oac-grid__bar .oac-grid__saved');
+  await expect(control).toHaveText('Layouts');
+  await control.click();
+  const menu = page.locator('.oac-grid__overlay .oac-layouts');
+  await expect(menu).toBeVisible();
+  const box = (await menu.boundingBox())!;
+  const at = (await control.boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(at.y + at.height);
+  expect(box.x + box.width).toBeLessThanOrEqual(1360);
+  await menu.locator('[data-action="save-as"]').click();
+  await menu.locator('.oac-layouts__input').fill('Morning desk');
+  await menu.locator('[data-action="submit-name"]').click();
+  await expect(control).toHaveText('Morning desk');
+  await page.screenshot({ path: info.outputPath('grid-layouts-menu.png') });
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  // A change to the desk is unsaved (autosave is off), and the mark says so.
+  await page.evaluate(() => (window as any).fixture.grid.setPreset('1x1'));
+  await expect(control).toHaveAttribute('data-attention', 'true');
+  await expect(control).toHaveAccessibleName('Layouts: Morning desk, Unsaved changes');
+  // The grid's own desk comes back as the one chart, and then the layout that was active opens over it.
+  await page.reload();
+  await page.waitForFunction(version => (window as any).fixture?.version === version, VERSION);
+  await expect.poll(async () => { await page.evaluate(() => (window as any).fixture.readyAll()); return symbols(page); }, { timeout: 15_000 })
+    .toEqual(['AAA', 'BBB', 'CCC', 'DDD']);
+  await expect(page.locator('.oac-grid__saved')).toHaveText('Morning desk');
+  await readyEvery(page);
+  await page.screenshot({ path: info.outputPath('grid-layouts-reopened.png') });
+  // At phone width the control keeps its glyph, rather than a name cut to a letter or two; the name stays in its tip and accessible name.
+  await page.setViewportSize({ width: 390, height: 780 });
+  await expect(page.locator('.oac-grid__saved .oac-grid__bar-text')).toBeHidden();
+  await expect(page.locator('.oac-grid__saved')).toHaveAccessibleName('Layouts: Morning desk');
+  const phone = (await page.locator('.oac-grid__saved').boundingBox())!;
+  expect(phone.x + phone.width).toBeLessThanOrEqual(390);
+  await page.locator('.oac-grid__bar').screenshot({ path: info.outputPath('grid-layouts-phone-bar.png') });
+  expect(errors).toEqual([]);
+});
+
+test('a desk kept in localStorage, as 2.5.9 kept it, opens from IndexedDB and stays there', async ({ page }) => {
+  const errors = await mount(page, '1x2', { width: 1200, height: 800 }, '&persist=legacy&storage=local');
+  await setSymbols(page, ['AAA', 'BBB']);
+  const second = await page.evaluate(() => (window as any).fixture.grid.cells()[1].id);
+  await page.evaluate(id => (window as any).fixture.grid.setActive(id), second);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('oac-widget:legacy:grid') ?? '{}').activePaneId)).toBe(second);
+  await page.evaluate(() => (window as any).fixture.grid.destroy());
+  // The same page with the default store: the desk is copied in on this first visit.
+  await mount(page, '2x2', { width: 1200, height: 800 }, '&persist=legacy');
+  await page.evaluate(() => (window as any).fixture.grid.ready);
+  expect(await symbols(page)).toEqual(['AAA', 'BBB']);
+  expect(await activeIndex(page)).toBe(1);
+  await setSymbols(page, ['EEE', 'BBB']);
+  await page.reload();
+  await page.waitForFunction(version => (window as any).fixture?.version === version, VERSION);
+  await page.evaluate(() => (window as any).fixture.grid.ready);
+  expect(await symbols(page)).toEqual(['EEE', 'BBB']);
+  // The copy 2.5.9 left stays as it was, for going back to it.
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('oac-widget:legacy:grid')!).panes.map((p: any) => p.symbol))).toEqual(['AAA', 'BBB']);
+  expect(errors).toEqual([]);
+});
+
 test('the grid bar and its menus keep a strict style policy', async ({ page }) => {
   const NONCE = 'openalgo-grid-csp-test';
   const errors: string[] = [];
@@ -503,7 +637,10 @@ test('the grid bar and its menus keep a strict style policy', async ({ page }) =
   await page.evaluate(async nonce => {
     const url = '/dist/openalgo-charts.widget.mjs';
     const { createChartGrid } = await import(url);
-    (window as any).__grid = createChartGrid(document.getElementById('desk'), { styleNonce: nonce, toolbar: true, preset: '1x2', rail: false });
+    const workspace = '/dist/openalgo-charts.workspace.mjs';
+    const { WorkspaceRepository, createMemoryWorkspaceStorage } = await import(workspace);
+    (window as any).__grid = createChartGrid(document.getElementById('desk'), { styleNonce: nonce, toolbar: true, bottombar: true, preset: '1x2', rail: false,
+      workspaces: new WorkspaceRepository(createMemoryWorkspaceStorage(), 'desk') });
   }, NONCE);
   await page.locator('.oac-grid__layout').click();
   await expect(page.locator('.oac-grid__picker')).toHaveCSS('display', 'flex');
@@ -515,6 +652,10 @@ test('the grid bar and its menus keep a strict style policy', async ({ page }) =
   await page.locator('.oac-grid__capture').click();
   await page.keyboard.press('Escape');
   await expect(page.locator('.oac-grid__bar')).toHaveCSS('display', 'flex');
+  await expect(page.locator('.oac-grid__foot .oac-bottombar')).toHaveCSS('display', 'flex');
+  await page.locator('.oac-grid__saved').click();
+  await expect(page.locator('.oac-grid__overlay .oac-layouts')).toHaveCSS('width', '380px');
+  await page.keyboard.press('Escape');
   await expect(page.locator('.oac-grid__mark')).toHaveCount(2);
   expect(await page.evaluate(() => (window as any).__cspViolations)).toEqual([]);
   expect(errors).toEqual([]);

@@ -1,6 +1,7 @@
 /**
  * The chart grid's bar and its menus: the layout picker, maximize, the link
- * menu and whole-grid capture.
+ * menu, whole-grid capture and, when the grid keeps them, the desk's saved
+ * layouts (the widget's own Layouts menu, grid-saved.ts).
  *
  * The grid has no widget of its own, so it has no overlay stack to open a
  * menu in. It keeps one over its whole area instead (`createOverlayStack` on
@@ -15,7 +16,9 @@ import { h, type OverlayStack, type TipController } from './context';
 import { glyphSvg } from './form';
 import { CHART_GRID_LAYOUTS, isChartGridLayout, type ChartGridLayoutId } from './grid-layouts';
 import type { ChartGridLinkGroup, LinkChannel } from './grid-links';
+import type { GridSaved } from './grid-saved';
 import { chartCount, layoutName } from './grid-text';
+import { layoutNeedsAttention } from './layouts-menu';
 import { widgetText, type WidgetTranslationOptions } from './localization';
 
 /** What the bar and its menus read from the grid and ask it to do. */
@@ -50,6 +53,8 @@ export interface GridBarHost {
     copy(): void;
     canCopy(): boolean;
   };
+  /** The desk's saved layouts, when the grid keeps them: the bar then has a Layouts control. */
+  readonly saved?: Pick<GridSaved, 'controller' | 'open' | 'status'>;
 }
 
 export interface GridBarHandle {
@@ -406,9 +411,42 @@ export function mountGridBar(host: GridBarHost, el: HTMLElement): GridBarHandle 
 
   const sep = (): HTMLElement => h(doc, 'span', 'oac-sep', { role: 'separator' });
   el.append(layout, max, sep(), link, sep(), capture);
+
+  // The desk's saved layouts, at the far end as in a chart's own bar: the
+  // held layout's name, with a dot while it needs the user (unsaved, failing
+  // or changed elsewhere), which its name then says in words.
+  let saved: HTMLButtonElement | null = null;
+  let offSaved: (() => void) | null = null;
+  if (host.saved !== undefined) {
+    const { controller } = host.saved;
+    const title = widgetText(t, 'schema.ui.layouts.title', {}, 'Layouts');
+    const held = (): string | null => {
+      const state = controller.state();
+      return state.catalog?.workspaces.find(doc => doc.id === state.layoutId)?.name ?? null;
+    };
+    const b = saved = button('oac-grid__saved', title);
+    b.setAttribute('aria-haspopup', 'dialog');
+    const name = h(doc, 'span', 'oac-grid__bar-text');
+    b.append(chrome(doc, chromeIconSvg('folder')), name);
+    host.tips.attach(b, () => {
+      const at = held();
+      return { title: at === null ? title : `${title}: ${at}`, sub: host.saved?.status(), side: 'bottom' };
+    });
+    const paint = (): void => {
+      const attention = layoutNeedsAttention(controller.state());
+      name.textContent = held() ?? title;
+      b.dataset.attention = String(attention);
+      host.tips.refreshLabel(b);
+      if (attention) b.setAttribute('aria-label', `${b.getAttribute('aria-label') ?? title}, ${host.saved?.status() ?? ''}`);
+    };
+    offSaved = controller.subscribe(paint);
+    paint();
+    b.addEventListener('click', () => host.saved?.open(b));
+    el.append(h(doc, 'span', 'oac-grid__spacer'), b);
+  }
   // A toolbar's own keys: the arrows, Home and End move between its controls,
   // claimed here so no chart pans with them. Tab still reaches each one.
-  const controls = [layout, max, link, capture].filter(control => !control.hidden);
+  const controls = [layout, max, link, capture, saved].filter((control): control is HTMLButtonElement => control !== null && !control.hidden);
   el.addEventListener('keydown', e => {
     const at = controls.indexOf(doc.activeElement as HTMLButtonElement);
     const to = at < 0 ? -1 : e.key === 'ArrowRight' ? (at + 1) % controls.length : e.key === 'ArrowLeft' ? (at + controls.length - 1) % controls.length
@@ -444,6 +482,6 @@ export function mountGridBar(host: GridBarHost, el: HTMLElement): GridBarHandle 
   return {
     el,
     refresh,
-    destroy: () => { el.textContent = ''; },
+    destroy: () => { offSaved?.(); el.textContent = ''; },
   };
 }

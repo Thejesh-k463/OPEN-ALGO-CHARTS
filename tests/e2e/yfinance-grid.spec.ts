@@ -1,8 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 
 // The reference host's grid view over the fixture server: four instruments,
-// the grid bar's layouts, links and link groups, maximize and persistence, and the hand-off from the main page of a
-// layout whose geometry only the grid view can draw.
+// the grid bar's layouts, links and link groups, maximize, saved desks, the
+// bar under the charts and persistence, and the hand-off from the main page
+// of a layout whose geometry only the grid view can draw.
 const ORIGIN = `http://127.0.0.1:${process.env.OAC_E2E_DEMO_PORT || '8124'}`;
 
 test.use({ viewport: { width: 1360, height: 900 } });
@@ -14,6 +15,25 @@ test.beforeEach(async ({ request }) => {
 const grid = <T>(page: Page, fn: (grid: any) => T): Promise<T> =>
   page.evaluate(`(${fn.toString()})(window.__grid)`) as Promise<T>;
 const loaded = (page: Page): Promise<boolean> => grid(page, g => g.cells().every((cell: any) => cell.widget.series.getData().length > 0));
+/**
+ * The grid's saved desk, read from the widget's IndexedDB store, or written
+ * there with `value`: the store the grid persists through by default.
+ */
+const savedGrid = (page: Page, value?: string): Promise<string | null> => page.evaluate(value => new Promise<string | null>((resolve, reject) => {
+  const open = indexedDB.open('openalgo-charts-widget', 1);
+  open.onupgradeneeded = () => { if (!open.result.objectStoreNames.contains('entries')) open.result.createObjectStore('entries'); };
+  open.onerror = () => reject(open.error);
+  open.onsuccess = () => {
+    const db = open.result;
+    const tx = db.transaction('entries', value === undefined ? 'readonly' : 'readwrite');
+    const store = tx.objectStore('entries');
+    const request = value === undefined ? store.get('oac-widget:yfinance-grid:grid') : store.put(value, 'oac-widget:yfinance-grid:grid');
+    let result: string | null = null;
+    request.onsuccess = () => { result = value === undefined ? (request.result as string | undefined) ?? null : value; };
+    tx.oncomplete = () => { db.close(); resolve(result); };
+    tx.onabort = () => { db.close(); reject(tx.error); };
+  };
+}), value);
 /** Whether a main page chart's window reaches its newest bar, rather than bars it does not have. */
 const onNewest = (page: Page, key: string): Promise<boolean> => page.evaluate(name => {
   const chart = (window as any).__oac.app[name];
@@ -126,6 +146,44 @@ test('the grid view offers every layout to sixteen charts, names it with its gly
   expect(errors).toEqual([]);
 });
 
+test('the grid view has one bar under the charts for the active one, and keeps saved desks in its grid bar', async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto(ORIGIN + '/examples/yfinance/grid.html?test=1');
+  await page.waitForFunction(() => (window as any).__grid?.cells().length === 4);
+  await expect.poll(() => loaded(page), { timeout: 20_000 }).toBe(true);
+  const bar = page.locator('.oac-grid__foot .oac-bottombar');
+  await expect(bar).toBeVisible();
+  await expect(page.locator('.oac-grid__cell .oac-topbar__goto')).toHaveCount(0);
+  // The status is the active chart's: AAPL first, then the NSE chart after a click.
+  await expect(bar.locator('.oac-bottombar__status')).toBeVisible();
+  await page.locator('.oac-grid__cell .oac-chart').nth(2).click();
+  await bar.locator('.oac-bottombar__range[data-range="1Y"]').click();
+  await expect.poll(() => grid(page, g => g.cells().map((cell: any) => cell.widget.range()))).toEqual([null, null, '1Y', null]);
+  await expect.poll(() => loaded(page), { timeout: 20_000 }).toBe(true);
+  await page.screenshot({ path: info.outputPath('yfinance-grid-bottom-bar.png') });
+
+  await page.locator('.oac-grid__saved').click();
+  const menu = page.locator('.oac-grid__overlay .oac-layouts');
+  await expect(menu).toBeVisible();
+  await menu.locator('[data-action="save-as"]').click();
+  await menu.locator('.oac-layouts__input').fill('Four markets');
+  await menu.locator('[data-action="submit-name"]').click();
+  await expect(page.locator('.oac-grid__saved')).toHaveText('Four markets');
+  await page.screenshot({ path: info.outputPath('yfinance-grid-layouts.png') });
+  await page.keyboard.press('Escape');
+  await pickLayout(page, 'Two columns');
+  await expect(page.locator('.oac-grid__cell')).toHaveCount(2);
+  // The grid's own desk comes back with two charts, then the layout that was active opens over it.
+  await page.reload();
+  await page.waitForFunction(() => (window as any).__grid !== undefined);
+  await expect.poll(() => grid(page, g => g.cells().map((cell: any) => cell.widget.symbol())), { timeout: 20_000 })
+    .toEqual(['AAPL', 'MSFT', 'RELIANCE.NS', '^NSEI']);
+  await expect(page.locator('.oac-grid__saved')).toHaveText('Four markets');
+  await expect.poll(() => loaded(page), { timeout: 20_000 }).toBe(true);
+  expect(errors).toEqual([]);
+});
+
 test('the grid view lets a chart put its price pane below a study, and a reload keeps it there', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -147,7 +205,7 @@ test('the grid view lets a chart put its price pane below a study, and a reload 
   await expect.poll(() => grid(page, g => g.cells()[0].widget.chart.primaryPaneIndex())).toBe(1);
   await expect.poll(() => grid(page, g => g.cells()[0].widget.chart.indicators()[0].paneIndex)).toBe(0);
   await page.screenshot({ path: info.outputPath('yfinance-grid-price-below.png') });
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('oac-widget:yfinance-grid:grid') ?? '{}').panes?.[0].chart.primaryPane)).toBe(1);
+  await expect.poll(async () => JSON.parse((await savedGrid(page)) ?? '{}').panes?.[0].chart.primaryPane).toBe(1);
   await page.reload();
   await page.waitForFunction(() => (window as any).__grid?.cells().length === 4);
   expect(await grid(page, g => g.cells()[0].widget.chart.primaryPaneIndex())).toBe(1);
@@ -163,17 +221,20 @@ test('a saved grid the page cannot restore is kept and reported, not overwritten
   const text = await page.evaluate(() => {
     const payload = (window as any).__grid.getWorkspace();
     payload.panes[0].chart.indicators = [{ indicatorId: 'registered-later', settings: {}, paneIndex: 0 }];
-    const value = JSON.stringify(payload);
     (window as any).__grid.destroy();
-    localStorage.setItem('oac-widget:yfinance-grid:grid', value);
-    return value;
+    return JSON.stringify(payload);
   });
+  // The grid's last writes may still queue behind one in flight; its unload
+  // journal is dropped once they have all landed, and only then is this
+  // write the last one.
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('oac-widget-journal:yfinance-grid'))).toBeNull();
+  await savedGrid(page, text);
   await page.reload();
   await page.waitForFunction(() => (window as any).__grid?.cells().length === 4);
   await expect(page.locator('#grid-status')).toContainText('could not be restored');
   await expect(page.locator('#grid-status')).toContainText('registered-later');
   await expect.poll(() => loaded(page), { timeout: 20_000 }).toBe(true);
-  expect(await page.evaluate(() => localStorage.getItem('oac-widget:yfinance-grid:grid'))).toBe(text);
+  expect(await savedGrid(page)).toBe(text);
 });
 
 const handPane = (id: string, symbol: string, historyPeriod?: string) => ({ id, symbol, exchange: '', interval: '1d', chartType: 'candlestick',
@@ -231,8 +292,41 @@ test('the main page hands a layout it cannot draw to the grid view, which opens 
   // its requests before the hand-off was applied would have sent IBM here.
   expect(asked.filter(ask => ask.startsWith('IBM:'))).toEqual([]);
   // The periods stay with the charts, so the saved grid and an exported layout carry them back.
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('oac-widget:yfinance-grid:grid')!).panes
-    .map((pane: { historyPeriod?: string }) => pane.historyPeriod ?? null))).toEqual([null, 'max', '6mo', null]);
+  await expect.poll(async () => JSON.parse((await savedGrid(page))!).panes
+    .map((pane: { historyPeriod?: string }) => pane.historyPeriod ?? null)).toEqual([null, 'max', '6mo', null]);
+  expect(errors).toEqual([]);
+});
+
+test('a hand-off from the main page is not replaced by the saved desk that was open', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  // A saved desk held as the open layout, which a plain reload of the grid view opens again.
+  await page.goto(ORIGIN + '/examples/yfinance/grid.html?test=1');
+  await page.waitForFunction(() => (window as any).__grid?.cells().length === 4);
+  await page.locator('.oac-grid__saved').click();
+  const menu = page.locator('.oac-grid__overlay .oac-layouts');
+  await menu.locator('[data-action="save-as"]').click();
+  await menu.locator('.oac-layouts__input').fill('Four markets');
+  await menu.locator('[data-action="submit-name"]').click();
+  await expect(page.locator('.oac-grid__saved')).toHaveText('Four markets');
+  await page.goto(ORIGIN + '/examples/yfinance/index.html?test=1');
+  await page.waitForFunction(() => (window as any).__oac?.app.chart && !(window as any).__oac.app.loading);
+  const desk = deskOf([handPane('a', 'AAPL'), handPane('b', 'MSFT'), handPane('c', 'TSLA'), handPane('d', 'NVDA')]);
+  await page.getByRole('button', { name: 'Layouts', exact: true }).click();
+  await page.locator('#ws-file').setInputFiles({ name: 'desk.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(desk)) });
+  await page.getByRole('button', { name: 'Open in grid view' }).click();
+  await page.waitForURL(/grid\.html/);
+  await expect(page.locator('#grid-status')).toContainText('Opened the layout from the main view: 4 charts');
+  // The menu lists the saved desk once its store has been read, which is when
+  // the desk that was open would be opened again; give that time to land.
+  await page.locator('.oac-grid__saved').click();
+  await expect(menu.locator('.oac-layouts__row-name', { hasText: 'Four markets' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(1500);
+  // The page was opened by the hand-off, without the test hook, so the charts are read from their symbol boxes.
+  expect(await page.locator('.oac-grid__cell').getByRole('textbox', { name: 'Symbol' }).evaluateAll(boxes => boxes.map(box => (box as HTMLInputElement).value)))
+    .toEqual(['AAPL', 'MSFT', 'TSLA', 'NVDA']);
+  await expect(page.locator('.oac-grid__saved')).toHaveText('Layouts');
   expect(errors).toEqual([]);
 });
 

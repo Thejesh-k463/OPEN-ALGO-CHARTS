@@ -6,10 +6,12 @@
 // nothing.
 import '/dist/openalgo-charts.indicators.mjs';
 import { createChartGrid } from '/dist/openalgo-charts.widget.mjs';
+import { WorkspaceRepository, createIndexedDbWorkspaceStorage } from '/dist/openalgo-charts.workspace.mjs';
 import {
   GRID_INTERVALS, GRID_PRESET_LABELS, gridFeeds, presetGlyph, takeGridHandoff, readGridFile, gridDocument,
 } from './grid-view.js';
 import { THEME_KEY } from './ui.js';
+import { sessionCalendarFor } from './ticks.js';
 import { referenceWatchlists, referenceQuotes, referenceNewsFeed } from './market-panels.js';
 
 const PERSIST = 'yfinance-grid';
@@ -27,12 +29,12 @@ export function initGridView(doc = document) {
     try { storage?.setItem(THEME_KEY, name); } catch { /* private mode */ }
   };
   const theme = read(THEME_KEY) === 'light' ? 'light' : 'dark';
-  const fresh = read(`oac-widget:${PERSIST}:grid`) === null;
   paintPage(theme);
 
-  // The grid restores its own last layout as it is built, and a hand-off then
-  // replaces those charts. Their requests wait until the hand-off is applied;
-  // by then the replaced charts have cancelled them, so none reaches the source.
+  // The grid restores its own last layout once its store (IndexedDB) has
+  // answered, and a hand-off then replaces those charts. Their requests wait
+  // until the hand-off is applied; by then the replaced charts have cancelled
+  // them, so none reaches the source.
   const handed = takeGridHandoff((() => { try { return view.sessionStorage; } catch { return null; } })());
   let release = () => {};
   const ready = handed === null ? undefined : new Promise(resolve => { release = resolve; });
@@ -41,9 +43,17 @@ export function initGridView(doc = document) {
     // Each chart loads the history period its layout saved.
     document: doc, feed: gridFeeds({ ready }), symbol: 'AAPL', exchange: '', interval: '1d', intervals: GRID_INTERVALS,
     theme, preset: '2x2', persist: PERSIST, links: { crosshair: true, viewport: true },
-    // The grid's own bar: layouts up to sixteen charts, maximize, link groups
-    // and one picture of every chart. The page's bar keeps only the file.
-    toolbar: true,
+    // The grid's own bar: layouts up to sixteen charts, maximize, link groups,
+    // one picture of every chart and the desk's saved layouts. The page's bar
+    // keeps only the file. The bar under the charts acts on the active one.
+    toolbar: true, bottombar: true,
+    // Each chart's venue hours, as on the main page: the bar under the charts
+    // says whether the active chart's market is open, and sizes its ranges in sessions.
+    sessionCalendar: ({ symbol }) => sessionCalendarFor(symbol),
+    // Saved desks for the bar's Layouts control, and indicator templates in
+    // every chart's picker, in a database of their own: the main page's
+    // layouts are one chart each, and its catalog lists only those.
+    workspaces: new WorkspaceRepository(createIndexedDbWorkspaceStorage(view.indexedDB, 'yfinance-grid'), 'desk'),
     // Touch devices get the auto rule in each chart (compact in a phone-sized
     // cell, desktop in a tablet-sized one); a mouse keeps the desktop bar even
     // when a chart in a four-way split is narrow.
@@ -56,9 +66,6 @@ export function initGridView(doc = document) {
     watchlist: { store: referenceWatchlists(), quotes: referenceQuotes() },
     news: { feed: referenceNewsFeed },
   });
-  // A first visit shows four different instruments rather than one repeated.
-  if (fresh && handed === null) grid.cells().forEach((cell, i) => cell.widget.setSymbol(FIRST_VISIT[i] || 'AAPL'));
-
   const status = text => { $('grid-status-text').textContent = text; };
   const glyph = $('grid-glyph');
   glyph.style.display = 'inline-block';
@@ -104,11 +111,17 @@ export function initGridView(doc = document) {
     status('Layout exported');
   });
 
-  const restored = grid.restored();
-  if (handed !== null) openLayout(handed, 'the main view');
-  else if (restored?.applied === false) status(`The saved grid could not be restored and is kept until you change this one: ${restored.reason}`);
-  else status(`${grid.cells().length} charts. Click a chart to make it active; drag a chart's bar to move it, double-click it to maximize.`);
-  release();
-  if (new URLSearchParams(view.location.search).get('test') === '1') view.__grid = grid;
+  void grid.ready.then(() => {
+    const restored = grid.restored();
+    // A first visit shows four different instruments rather than one repeated.
+    if (restored === null && handed === null) grid.cells().forEach((cell, i) => cell.widget.setSymbol(FIRST_VISIT[i] || 'AAPL'));
+    showLayout();
+    if (handed !== null) openLayout(handed, 'the main view');
+    else if (restored?.applied === false) status(`The saved grid could not be restored and is kept until you change this one: ${restored.reason}`);
+    else status(`${grid.cells().length} charts. Click a chart to make it active; drag a chart's bar to move it, double-click it to maximize.`);
+    release();
+    // For the tests: the grid as the page shows it, once its saved desk has landed.
+    if (new URLSearchParams(view.location.search).get('test') === '1') view.__grid = grid;
+  });
   return grid;
 }

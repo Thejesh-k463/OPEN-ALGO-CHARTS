@@ -32,24 +32,30 @@
  * - **Maximizing is a view, not a layout.** It shows the active chart alone
  *   the way the compact width does, keeps every other chart alive behind it,
  *   and is not saved: a desk reopens as the grid it is.
+ * - **The grid's chrome is the host's choice.** The bar over the charts and
+ *   the one under them are off unless asked for, so a host with controls of
+ *   its own keeps its page as it was, and each chart keeps its own Go to and
+ *   market status until a bar under the grid takes them over.
  */
+import type { ChartTheme, DataFeed, DataVariant, LinkChart, LinkOptions, ResolvedLinkOptions } from 'openalgo-charts';
+import type { WorkspaceChartState, WorkspacePane, WorkspacePayload, WorkspaceStore } from 'openalgo-charts/workspace';
+import type { DrawingsDocument } from 'openalgo-charts/draw';
 import {
-  isKnownInterval, registeredChartTypes, registeredIndicators,
-  type ChartTheme, type DataFeed, type DataVariant, type LinkChart, type LinkOptions, type ResolvedLinkOptions,
-} from 'openalgo-charts';
-import type { WorkspaceChartState, WorkspacePane, WorkspacePayload } from 'openalgo-charts/workspace';
-import type { DrawingDocumentStore, DrawingsDocument } from 'openalgo-charts/draw';
-import {
-  WidgetBus, WidgetStorage, createOverlayStack, createTipController, defaultStorage, h,
-  type OverlayStack, type StorageLike, type TipController,
+  WidgetBus, WidgetStorage, createOverlayStack, createTipController, h,
+  type AsyncStorageLike, type OverlayOptions, type OverlayStack, type StorageLike, type TipController, type WidgetContext,
 } from './context';
+import { defaultWidgetStore } from './storage';
+import { mountBottombar, type BottombarHandle } from './bottombar';
+import type { LayoutsController } from './layouts';
 import { widgetText } from './localization';
 import { applyTokens, widgetTokens, TOKEN_PREFIX, WIDGET_FONT, type WidgetThemeName } from './tokens';
 import { captureName, type MenuRow } from './topbar';
-import { createWidget, resolveTheme, SAVE_DEBOUNCE_MS, type Widget, type WidgetOptions } from './widget';
+import { GRID_BAR_CHARTS, createWidget, resolveTheme, SAVE_DEBOUNCE_MS, type Widget, type WidgetOptions } from './widget';
+import { attachGridSaved, type GridSaved } from './grid-saved';
+import { cellDrawingStore, checkWorkspace, readChartDrawings, type ChartDrawings } from './grid-payload';
 import { CHART_GRID_LAYOUTS, focusSlot, isChartGridLayout, type ChartGridLayoutId } from './grid-layouts';
 import {
-  ALL_OFF, GridLinks, channelsOf, checkLinks, describeGroups, instrument,
+  ALL_OFF, GridLinks, channelsOf, describeGroups, instrument,
   type ChartGridLinkGroup, type GridGroup, type LinkChannel,
 } from './grid-links';
 import { mountGridBar, openLinkMenu, groupMark, type GridBarHandle, type GridBarHost } from './grid-bar';
@@ -74,14 +80,47 @@ export interface ChartGridOptions extends Omit<WidgetOptions, 'persist' | 'stora
   compactWidth?: number;
   /** Keep the workspace between visits: `true` for one shared namespace, a string to name one. Default off. */
   persist?: boolean | string;
-  /** The store behind `persist`. Default: the page's `localStorage`. */
-  storage?: StorageLike | null;
+  /**
+   * The store behind `persist`. Default: IndexedDB where the page has it
+   * (since 2.5.10), else the page's `localStorage`. Over an asynchronous
+   * store the saved desk lands when `ready` settles; a synchronous one, such
+   * as `localStorage` passed here, restores it before `createChartGrid` returns.
+   */
+  storage?: StorageLike | AsyncStorageLike | null;
   /**
    * Show the grid bar over the charts: the layout picker, maximize and
-   * restore, the link menu and a capture of every chart. Default false, so a
-   * host with its own controls keeps its page as it was.
+   * restore, the link menu, a capture of every chart and, with `workspaces`,
+   * the desk's saved layouts. Default false, so a host with its own controls
+   * keeps its page as it was.
    */
   toolbar?: boolean;
+  /**
+   * One bottom bar under the grid, acting on the active chart: preset ranges,
+   * Go to, the market status, the clock and the price scale toggles (since
+   * 2.5.10). The charts then leave Go to out of their own bars and the market
+   * status off their status lines. Default false, as for `toolbar`: each
+   * chart keeps both.
+   */
+  bottombar?: boolean;
+  /**
+   * Saved layouts of the whole desk, and indicator templates in every
+   * chart's picker: a `WorkspaceRepository` from `openalgo-charts/workspace`,
+   * or a host's own `WorkspaceStore`. With the grid bar (`toolbar`) the grid
+   * keeps a layouts controller over every chart: a Layouts control in the bar
+   * saves and opens the desk, autosave follows it, and the layout that was
+   * active when the page last closed opens once `ready` settles, unless the
+   * host has applied a workspace by then. Without the bar the charts get their
+   * templates only. Taken as a type only.
+   */
+  workspaces?: WorkspaceStore;
+  /**
+   * What the grid bar's Layouts control drives instead of the grid's own
+   * controller: one the host built over this grid; false for no control.
+   * Without the bar (`toolbar`), a controller given here drives each chart's
+   * own Layouts button instead. A chart never saves a layout of its own inside
+   * a grid.
+   */
+  layouts?: LayoutsController | false;
   /**
    * The layouts the bar's picker offers, in its order, as `intervals` lists
    * the intervals beside `interval`. Default: every `CHART_GRID_LAYOUTS`
@@ -152,10 +191,18 @@ export interface ChartGrid {
   layout(): ChartGridLayout;
   /**
    * What restoring the persisted workspace did when the grid was built: null
-   * when nothing was stored. A refused desk stays stored, untouched, until the
-   * user changes the grid.
+   * when nothing was stored, and until `ready` settles over an asynchronous
+   * store. A refused desk stays stored, untouched, until the user changes the grid.
    */
   restored(): ChartGridApplyReport | null;
+  /**
+   * Settles once the persisted workspace has been read and applied (since
+   * 2.5.10): at once without `persist` or over a synchronous store. Over an
+   * asynchronous one (IndexedDB, the default) the grid is built from the
+   * preset, out of sight and loading nothing, until then; a workspace applied
+   * meanwhile wins over the stored one. Never rejects.
+   */
+  readonly ready: Promise<void>;
   /**
    * Reflow into a layout. The charts that fit keep their state in reading
    * order and new ones copy the active chart's instrument; in an uneven layout
@@ -259,85 +306,9 @@ const THEME_SETTING = 'widget.theme';
 // `drawingStore` too: each cell gets a store of its own from the grid.
 const GRID_ONLY_KEYS = ['preset', 'links', 'compactWidth', 'persist', 'storage', 'drawingStore', 'toolbar', 'presets'];
 
-/** Each chart's drawing documents, by pane id, then by instrument key. */
-type ChartDrawings = Map<string, Map<string, DrawingsDocument>>;
-
-/**
- * One cell's store, inside `docs`. The documents are copied on the way in,
- * so a later change on the chart never edits one the grid is about to save.
- */
-function cellDrawingStore(id: string, docs: ChartDrawings): DrawingDocumentStore {
-  return {
-    get: key => docs.get(id)?.get(key) ?? null,
-    set: (key, document) => {
-      let mine = docs.get(id);
-      if (mine === undefined) docs.set(id, mine = new Map());
-      mine.set(key, JSON.parse(JSON.stringify(document)) as DrawingsDocument);
-    },
-    remove: key => { docs.get(id)?.delete(key); },
-  };
-}
-
-/** The saved drawings entry, read defensively: anything it cannot use is left out, never thrown. */
-function readChartDrawings(value: unknown): ChartDrawings {
-  const out: ChartDrawings = new Map();
-  if (!isRecord(value) || value.version !== 1 || !isRecord(value.charts)) return out;
-  for (const [id, documents] of Object.entries(value.charts)) {
-    if (!isRecord(documents)) continue;
-    const mine = new Map<string, DrawingsDocument>();
-    for (const [key, document] of Object.entries(documents)) if (isRecord(document)) mine.set(key, document as unknown as DrawingsDocument);
-    out.set(id, mine);
-  }
-  return out;
-}
-
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
-const int = (v: unknown, lo: number, hi: number): boolean => Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi;
 const round = (v: number): number => Math.round(v * 1e4) / 1e4;
 const ones = (n: number): number[] => Array.from({ length: n }, () => 1);
 const tracks = (weights: readonly number[]): string => weights.map(w => `minmax(0,${w}fr)`).join(` ${GUTTER}px `);
-
-/** What a grid cannot honour, checked before anything is built. Empty when the payload is usable. */
-function check(p: WorkspacePayload): string {
-  if (!isRecord(p) || !isRecord(p.layout) || !Array.isArray(p.layout.slots) || !Array.isArray(p.panes) || !isRecord(p.sync)) {
-    return 'not a workspace payload';
-  }
-  const { rows, columns, slots } = p.layout;
-  if (!int(rows, 1, 8) || !int(columns, 1, 8) || !int(p.panes.length, 1, 16)) return 'unsupported grid size';
-  for (const [weights, count] of [[p.layout.rowWeights, rows], [p.layout.columnWeights, columns]] as const) {
-    if (weights !== undefined && (!Array.isArray(weights) || weights.length !== count
-      || !weights.every(w => typeof w === 'number' && w > 0 && w <= 1000))) return 'invalid track weights';
-  }
-  const studies = new Set(registeredIndicators().map(d => d.id));
-  const ids = new Set<string>();
-  for (const pane of p.panes) {
-    if (!isRecord(pane) || typeof pane.id !== 'string' || pane.id === '' || ids.has(pane.id)) return 'invalid or duplicate chart id';
-    ids.add(pane.id);
-    if (typeof pane.symbol !== 'string' || typeof pane.exchange !== 'string' || !isRecord(pane.chart)
-      || !['string', 'undefined'].includes(typeof pane.historyPeriod)) return `${pane.id}: invalid chart`;
-    if (!isKnownInterval(pane.interval)) return `${pane.id}: unknown interval ${String(pane.interval)}`;
-    if (!registeredChartTypes().includes(pane.chartType)) return `${pane.id}: unknown chart type ${String(pane.chartType)}`;
-    if (Array.isArray(pane.comparisons) && pane.comparisons.length > 0) return `${pane.id}: comparison symbols are not supported in a grid chart`;
-    for (const study of Array.isArray(pane.chart.indicators) ? pane.chart.indicators : []) {
-      if (!studies.has(study?.indicatorId)) return `${pane.id}: unavailable study ${String(study?.indicatorId)}`;
-    }
-  }
-  const placed = new Set<string>();
-  const taken = new Set<number>();
-  for (const slot of slots) {
-    const rowSpan = slot?.rowSpan ?? 1, columnSpan = slot?.columnSpan ?? 1;
-    if (!isRecord(slot) || !ids.has(slot.paneId) || placed.has(slot.paneId) || !int(slot.row, 0, rows - 1) || !int(slot.column, 0, columns - 1)
-      || !int(rowSpan, 1, rows - slot.row) || !int(columnSpan, 1, columns - slot.column)) return 'invalid layout slot';
-    placed.add(slot.paneId);
-    for (let r = slot.row; r < slot.row + rowSpan; r++) for (let c = slot.column; c < slot.column + columnSpan; c++) {
-      if (taken.has(r * columns + c)) return 'layout slots overlap';
-      taken.add(r * columns + c);
-    }
-  }
-  if (placed.size !== ids.size) return 'every chart needs one layout slot';
-  if (!ids.has(p.activePaneId)) return 'the active chart is missing';
-  return checkLinks(p);
-}
 
 /**
  * Build a chart grid inside `container`: an element, or a selector resolved
@@ -357,21 +328,52 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   // so cells keep desktop chrome unless the host asks for touch controls.
   // Each chart's capture menu offers the whole grid beside its own picture.
   Object.assign(cellOptions, { document: doc, mobile: options.mobile ?? 'never', captureRows: () => captureRows() });
-  // Bottom bar hook: a cell has no bar of its own; the grid's one bar acts on the focused cell.
+  // A chart has no bottom bar of its own; the grid's one bar, when it has
+  // one, acts on the active chart.
   cellOptions.bottombar = false;
   // Layouts: a chart never saves a layout of its own inside a grid. The
-  // `workspaces` store still gives every picker its templates, and a
-  // controller the host passes drives the menu of every chart.
-  cellOptions.layouts = options.layouts ?? false;
-  const store = options.persist ? (options.storage === undefined ? defaultStorage() : options.storage) : null;
-  const storage = new WidgetStorage(typeof options.persist === 'string' ? options.persist : 'default', store);
+  // `workspaces` store still gives every picker its templates. The desk's
+  // Layouts control is the grid bar's; without the bar, a controller the host
+  // passes drives the menu of every chart.
+  cellOptions.layouts = options.toolbar === true ? false : options.layouts ?? false;
+  const store = options.persist ? (options.storage === undefined ? defaultWidgetStore() : options.storage) : null;
+  const storage = new WidgetStorage(typeof options.persist === 'string' ? options.persist : 'default', store, {
+    // The grid has no status line of its own; the active chart's says it. A
+    // read that failed is a toast as well, as in one widget: the charts'
+    // first loads take the status line over at once.
+    onError: failure => {
+      if (destroyed || active === null) return;
+      const error = failure.error instanceof Error ? failure.error.message : String(failure.error);
+      const context = active.widget.context;
+      if (failure.operation !== 'load') {
+        context.status(widgetText(text, 'Saved chart settings could not be written: {error}', { error }), 'error');
+        return;
+      }
+      const message = widgetText(text, 'Saved chart settings could not be read, so changes are kept for this session only: {error}', { error });
+      context.status(message, 'error');
+      context.toast(message, 'error');
+    },
+  });
+  /**
+   * An asynchronous store has not answered yet: nothing is written, so the
+   * preset cannot be saved over the desk it holds, and the preset's charts
+   * are built without an instrument, so none of them asks the feed for one.
+   */
+  let restoring = !storage.loaded;
+  /**
+   * A workspace was applied through `applyWorkspace`: one applied while the
+   * store was read wins over the stored desk, and one applied before the saved
+   * layouts reopen the last layout wins over that.
+   */
+  let given = false;
   const bus = new WidgetBus<ChartGridEvents>();
   const links = new GridLinks<Cell>(options.links);
   const offs: Array<() => void> = [];
   let cells: Cell[] = [];
   // The user's chords belong to the desk, not to one chart: one record in the
-  // grid's storage, applied to every chart and passed on when a chart changes it.
-  let chords: unknown = storage.get(KEYMAP_KEY);
+  // grid's storage, applied to every chart and passed on when a chart changes
+  // it. Read when the stored desk is, since an asynchronous store has no copy before.
+  let chords: unknown = null;
   let sharing = false;
   let active: Cell | null = null;
   const splits: HTMLElement[] = [];
@@ -395,7 +397,9 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   const body = h(doc, 'div', 'oac-grid__cells');
   tabs.hidden = true;
   const barEl = options.toolbar === true ? h(doc, 'div') : null;
-  root.append(...(barEl === null ? [] : [barEl]), tabs, body);
+  // The bottom bar's rules are scoped under `.oac-widget`, like every piece of the widget's chrome.
+  const footEl = options.bottombar === true ? h(doc, 'div', 'oac-widget oac-grid__foot') : null;
+  root.append(...(barEl === null ? [] : [barEl]), tabs, body, ...(footEl === null ? [] : [footEl]));
   /**
    * The grid's own menus hang over every chart, so they live in a layer over
    * the whole grid rather than in any one widget. Made on first use: a grid
@@ -436,7 +440,7 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   };
   function saveNow(): void {
     if (saveTimer !== 0) { clearTimeout(saveTimer); saveTimer = 0; }
-    if (!storage.enabled || destroyed || held || active === null) return;
+    if (!storage.enabled || destroyed || held || restoring || active === null) return;
     storage.set(STATE_KEY, grid.getWorkspace());
     // Only the charts on the grid: a chart the grid dropped takes its drawings with it.
     const charts: Record<string, Record<string, DrawingsDocument>> = {};
@@ -449,10 +453,19 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   const paintTheme = (): void => {
     const t = resolveTheme(theme);
     root.dataset.theme = t.name;
-    if (chromeLayer !== null) chromeLayer.el.dataset.theme = t.name;
-    if (barEl !== null) barEl.dataset.theme = t.name;
+    for (const el of [chromeLayer?.el, barEl, footEl]) if (el != null) el.dataset.theme = t.name;
     applyTokens(root, widgetTokens(t.theme, t.name));
   };
+  /**
+   * A chart's context over the grid's own layer: a panel the grid's chrome
+   * opens for a chart (the Layouts menu, the go-to panel) hangs over the
+   * whole grid, next to the control that opened it, where one small chart
+   * would clip it. One opened with no anchor hangs from `anchor`.
+   */
+  const overGrid = (ctx: WidgetContext, anchor?: () => HTMLElement | null): WidgetContext => Object.create(ctx, {
+    root: { value: chrome().el },
+    openOverlay: { value: (el: HTMLElement, o: OverlayOptions = {}) => chrome().overlays.open(el, { ...o, anchor: o.anchor ?? anchor?.() ?? undefined }) },
+  }) as WidgetContext;
 
   // ── focus ──────────────────────────────────────────────────────────────
   /**
@@ -712,12 +725,15 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
     parent.appendChild(element);
     const { historyPeriod } = source, feed = options.feed;
     const cell = { id, element, row: 0, column: 0, rowSpan: 1, columnSpan: 1, offs: [], span: 0, hold: false, historyPeriod, group: null, mark: null, type: '' } as unknown as Cell;
+    const chartOptions: WidgetOptions = {
+      ...cellOptions, theme: cellTheme, symbol: restoring ? undefined : source.symbol, exchange: source.exchange, interval: source.interval,
+      variant: source.variant, chartType: source.chartType, keyboardRoute: () => route(cell),
+      feed: typeof feed === 'function' ? feed({ id, historyPeriod }) : feed, drawingStore: cellDrawingStore(id, docs),
+    };
+    // The bar under the grid carries this chart's Go to, which opens over the grid from that bar.
+    if (footEl !== null) GRID_BAR_CHARTS.set(chartOptions, ctx => overGrid(ctx, () => footEl.querySelector<HTMLElement>('.oac-bottombar__goto')));
     try {
-      cell.widget = createWidget(element, {
-        ...cellOptions, theme: cellTheme, symbol: source.symbol, exchange: source.exchange, interval: source.interval,
-        variant: source.variant, chartType: source.chartType, keyboardRoute: () => route(cell),
-        feed: typeof feed === 'function' ? feed({ id, historyPeriod }) : feed, drawingStore: cellDrawingStore(id, docs),
-      });
+      cell.widget = createWidget(element, chartOptions);
     } catch (error) {
       element.remove();
       throw error;
@@ -973,11 +989,16 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
       },
     },
     capture: { blocked: captureBlocked, download: downloadAll, copy: copyAll, canCopy },
+    get saved() { return saved ?? undefined; },
   };
   let bar: GridBarHandle | null = null;
+  let foot: BottombarHandle | null = null;
+  let saved: GridSaved | null = null;
+  let ready: Promise<void> = Promise.resolve();
 
   const grid: ChartGrid = {
     root,
+    get ready() { return ready; },
     get isDestroyed() { return destroyed; },
     restored: () => restored,
     cells: () => cells.slice() as unknown as ChartGridCell[],
@@ -1207,14 +1228,23 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
     },
 
     applyWorkspace(payload) {
-      return apply(payload, new Map());
+      const report = apply(payload, new Map());
+      // The newer desk: neither the stored one nor the last saved layout replaces it.
+      if (report.applied) given = true;
+      return report;
     },
 
     destroy() {
       if (destroyed) return;
       saveNow();
+      // Sends an asynchronous store's writes, and stops following other tabs' changes to it.
+      void storage.flush();
+      storage.close();
       destroyed = true;
       for (const off of offs.splice(0)) off();
+      saved?.destroy();
+      // Before the overlays: the bar closes its zone menu there.
+      foot?.destroy();
       chromeLayer?.overlays.destroy();
       chromeLayer?.tips.destroy();
       bar?.destroy();
@@ -1233,7 +1263,7 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
    */
   function apply(payload: WorkspacePayload, docs: ChartDrawings): ChartGridApplyReport {
     if (destroyed) return { applied: false, reason: 'the grid is destroyed' };
-    const reason = check(payload);
+    const reason = checkWorkspace(payload);
     if (reason !== '') return { applied: false, reason };
     const saved = payload.panes.find(p => p.id === payload.activePaneId)?.settings?.[THEME_SETTING];
     const nextTheme = saved === 'dark' || saved === 'light' ? saved : theme;
@@ -1297,7 +1327,6 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
 
   paintTheme();
   container.appendChild(root);
-  if (barEl !== null) bar = mountGridBar(barHost, barEl);
   const listen = (target: EventTarget, type: string, fn: (e: Event) => void, capture = false): void => {
     target.addEventListener(type, fn, capture);
     offs.push(() => target.removeEventListener(type, fn, capture));
@@ -1335,25 +1364,86 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
     observer.observe(root);
     offs.push(() => observer.disconnect());
   }
+  /**
+   * A debounced save still pending when the tab closes is the user's last
+   * change, and so is a layout's inside autosave's quiet period; an
+   * asynchronous store journals what may not land in time. Hiding writes
+   * only a save still pending, as in one widget: a tab left for another on
+   * the same desk would otherwise write its older desk over the one saved
+   * there, at every switch.
+   */
+  const leaving = (hiding: boolean): void => {
+    if (!hiding || saveTimer !== 0) saveNow();
+    void storage.flush();
+    saved?.flush();
+  };
   if (win != null && typeof win.addEventListener === 'function') {
     if (Observer === undefined) listen(win, 'resize', measure);
-    // A debounced save still pending when the tab closes is the user's last change.
-    listen(win, 'pagehide', saveNow);
+    listen(win, 'pagehide', () => leaving(false));
   }
   // Hiding is the last moment a page is sure to see; unload may never come.
-  listen(doc, 'visibilitychange', () => { if (doc.visibilityState === 'hidden') saveNow(); });
+  listen(doc, 'visibilitychange', () => { if (doc.visibilityState === 'hidden') leaving(true); });
 
-  const stored = storage.get(STATE_KEY);
-  restored = stored === null ? null : apply(stored as WorkspacePayload, readChartDrawings(storage.get(DRAWINGS_KEY)));
-  if (restored?.applied !== true) {
-    grid.setPreset(options.preset ?? '1x1');
+  /** The desk's chords on every chart built before the store answered. */
+  const shareChords = (): void => {
+    if (options.shortcutsEditor === false) return;
+    sharing = true;
+    try { for (const cell of cells) cell.widget.context.keymap.applyOverrides(chords); } finally { sharing = false; }
+  };
+  /** The stored desk, or the preset when none can be applied. `late`: the preset was built while the store was read. */
+  const restore = (late: boolean): void => {
+    chords = storage.get(KEYMAP_KEY);
+    // Written now, since nothing was while the store was read; the stored desk is older.
+    if (given) { shareChords(); saveSoon(); return; }
+    const stored = storage.get(STATE_KEY);
+    restored = stored === null ? null : apply(stored as WorkspacePayload, readChartDrawings(storage.get(DRAWINGS_KEY)));
+    if (restored?.applied === true) return;
+    if (!late) grid.setPreset(options.preset ?? '1x1');
+    else {
+      shareChords();
+      // Built with no instrument, so none asked the feed for one; they load it
+      // now. Before `held` is set: a symbol change clears it.
+      if (options.symbol !== undefined) for (const cell of cells) cell.widget.setSymbol(options.symbol, options.exchange);
+    }
     if (restored !== null) {
       // The stored desk may only be waiting for a study or chart type the page
       // registers later, so it is kept, not overwritten by this fallback.
       held = true;
       grid.active().widget.context.toast(widgetText(text, 'The saved layout could not be restored: {error}', { error: restored.reason ?? '' }), 'error');
     }
+  };
+  if (!restoring) restore(false);
+  else {
+    grid.setPreset(options.preset ?? '1x1');
+    root.style.visibility = 'hidden';
+    ready = storage.load().then(() => {
+      if (destroyed) return;
+      restoring = false;
+      // `ready` never rejects: a desk that cannot be applied is reported, as the widget reports its own.
+      try { restore(true); } catch (error) {
+        grid.active().widget.context.toast(widgetText(text, 'The saved layout could not be restored: {error}', { error: error instanceof Error ? error.message : String(error) }), 'error');
+      } finally { root.style.visibility = ''; }
+    });
   }
+
+  // ── chrome, over the charts the grid opened with ─────────────────────
+  if (footEl !== null) {
+    const { tips, overlays } = chrome();
+    const strip = footEl.appendChild(h(doc, 'div'));
+    foot = mountBottombar({
+      document: doc, locale: options.locale, translate: options.translate, tips, openOverlay: overlays.open,
+      status: (message, kind) => active?.widget.context.status(message, kind),
+    }, strip, { target: () => active?.widget ?? null, ranges: options.ranges, now: options.now, onGoTo: () => active?.widget.openDateNavigation() });
+    offs.push(bus.on('active', () => foot?.refresh()));
+  }
+  // The desk's saved layouts come with the bar that shows them.
+  if (options.toolbar === true) {
+    saved = attachGridSaved({
+      grid, ready, workspaces: options.workspaces, layouts: options.layouts,
+      context: () => overGrid((active as Cell).widget.context), opened: () => given,
+    });
+  }
+  if (barEl !== null) bar = mountGridBar(barHost, barEl);
   measure();
   return grid;
 }
