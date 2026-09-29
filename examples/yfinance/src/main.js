@@ -662,7 +662,9 @@ function initBottombar() {
       const target = capturePaneTarget(app);
       if (!target) return null;
       return {
-        chart: target.chart,
+        // Read when used: a range loads through the page, which builds the
+        // pane a new chart, and what the range did is read off that one.
+        get chart() { return target.pane === 2 ? app.chart2 : app.chart; },
         interval: () => target.request.interval,
         range: () => { const held = paneRanges.get(target.pane); return held && held.chart === target.chart ? held.id : null; },
         setRange: applyRange,

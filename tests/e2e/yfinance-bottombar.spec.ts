@@ -77,6 +77,8 @@ test('a range loads the interval and period its sessions need, then places the l
   expect(placed.first.slice(0, 10)).toBe(placed.last.slice(0, 10));
   expect(placed.first.slice(11)).toBe('09:15');
   expect(placed.right).toBe(true);
+  // Told from the chart the range loaded, not the daily one it replaced: an intraday span has times.
+  await expect(page.locator('#status')).toHaveText(/^1D: .*\d:\d\d.* to .*\d:\d\d/);
   await info.attach('one session', { body: await page.screenshot(), contentType: 'image/png' });
   // An interval picked by hand leaves the range.
   await page.locator('#shellbar .pills').getByRole('button', { name: '15M', exact: true }).click();
