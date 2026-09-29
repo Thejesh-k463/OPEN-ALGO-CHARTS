@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTheme } from 'next-themes';
+import { stockBars } from './synthetic-market';
 
 const START = Date.UTC(2026, 8, 21, 9) / 1000;
 
@@ -50,12 +51,9 @@ export default function TypedInputsDemo() {
             .map(symbol => ({ symbol, exchange: 'DEMO', name: `Sample instrument ${symbol.slice(-1)}` })),
         });
         widget = current;
-        const bars = Array.from({ length: 180 }, (_, index) => {
-          const open = 99 + index * 0.035 + Math.sin(index / 8) * 1.8;
-          const close = open + Math.cos(index / 5) * 0.7;
-          return { time: START + index * 60, open, close,
-            high: Math.max(open, close) + 0.35, low: Math.min(open, close) - 0.3, volume: 1000 + index * 17 };
-        });
+        // Simulated one-minute prices: a seeded random walk from 100 that trades
+        // through the default threshold of 104, so the level sits among the bars.
+        const bars = stockBars(START, 180, 60, 100, 9, 0.002, 1000);
         current.series.setData(bars);
         const study = current.chart.addIndicator('website-typed-inputs');
         current.chart.setVisibleLogicalRange({ from: -3, to: 185 });

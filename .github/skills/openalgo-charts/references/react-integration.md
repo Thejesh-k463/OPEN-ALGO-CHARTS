@@ -136,13 +136,15 @@ React 18 Strict Mode mounts, unmounts and remounts every effect in development. 
 
 Option 1, `useEffect` alone. Effects do not run during SSR, so the component above works unchanged in the App Router (mark the file `'use client'`).
 
-Option 2, dynamic import when you also want a separate chunk or want to silence a hydration warning:
+Option 2, dynamic import when you also want a separate chunk or want to skip the server render of the chart component:
 
 ```tsx
 const Chart = dynamic(() => import('../components/Chart'), { ssr: false });
 ```
 
-**A top-level `import { createChart } from 'openalgo-charts'` in a server component is a build-time error waiting to happen.** Keep the import inside the client-only module. Tier imports for their registration side effect (`import 'openalgo-charts/indicators'`) belong in the same client module, or in an `await import(...)` inside the effect.
+In the App Router, `ssr: false` is allowed only inside a Client Component, so this line lives in a small `'use client'` wrapper, not in a Server Component.
+
+**Importing is safe anywhere; creating is not.** Evaluating `openalgo-charts` or any of its tiers touches no DOM, so a top-level import works in a module a server also evaluates, including a Server Component. CI holds this: `npm run skills:coverage` imports every built tier in Node and fails if module evaluation touches the DOM. What must stay in the browser is the call to `createChart` or `createWidget`, which belongs in an effect. A Server Component can import the module, but it cannot hold a chart, or pass one (or a feed with functions) to a Client Component as a prop: build both in the client module. Tier imports for their registration side effect (`import 'openalgo-charts/indicators'`) are safe at the top of any module, or can wait for an `await import(...)` inside the effect when you want them out of the first chunk.
 
 `ShortcutManager` persistence is already guarded (`typeof localStorage === 'undefined'`), so `persist: true` is safe in a test or SSR environment.
 

@@ -357,7 +357,7 @@ export const RAIL_FLYOUT_CSS = `
 .fly__row { display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 8px; border-radius: 7px;
   color: var(--tx); font-size: 13px; cursor: pointer; outline: none; user-select: none; }
 .fly__row:hover, .fly__row:focus-visible { background: var(--elev-2); }
-.fly__row[aria-checked="true"] { background: rgba(34,193,164,.16); color: var(--acc-2); }
+.fly__row[aria-checked="true"] { background: var(--on-bg); color: var(--acc-2); }
 .fly__glyph { width: 24px; height: 24px; display: grid; place-items: center; flex: none; }
 .fly__glyph > svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2;
   stroke-linecap: round; stroke-linejoin: round; }
@@ -381,7 +381,7 @@ export const RAIL_FLYOUT_CSS = `
   background: transparent; border: 0; border-radius: 6px; color: var(--tx); font: inherit;
   font-size: 12.5px; text-align: left; cursor: pointer; }
 .rail-menu button:hover, .rail-menu button:focus-visible { background: var(--elev-2); outline: none; }
-.rail-menu button.danger:hover { color: #ff8b8b; }
+.rail-menu button.danger:hover { color: var(--danger-tx); }
 .rail-menu button.is-off, .rail-menu button.is-off:hover { color: var(--faint); background: transparent; cursor: default; }
 .rail-menu button > svg { width: 16px; height: 16px; flex: none; stroke: currentColor;
   stroke-linecap: round; stroke-linejoin: round; }

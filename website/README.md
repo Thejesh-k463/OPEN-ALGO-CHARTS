@@ -61,6 +61,11 @@ The 2.2.0 build retains these captures because their renderer/demo source
 fingerprints are unchanged. The gallery shows the current profile implementation;
 the 2.1.1 release notes record when its themes and footprint controls shipped.
 CI and Pages run the profile, depth and drawing checks before publishing the site.
+CI also runs the site design check, which holds the pages and the API reference to
+phone widths (320 and 390 px) without horizontal scrolling. Before it opens a page it
+reads the sources in `pages/` and `components/` and fails on example prices or study
+outputs written as a formula of the bar index (a sine, a ramp, a sawtooth): examples
+draw from the seeded random walk in `components/synthetic-market.ts`.
 
 ## Interactive and API checks
 

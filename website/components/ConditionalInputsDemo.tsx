@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTheme } from 'next-themes';
+import { stockBars } from './synthetic-market';
 
 const START = Date.UTC(2026, 8, 21, 9) / 1000;
 
@@ -83,12 +84,9 @@ export default function ConditionalInputsDemo() {
           timeNavigator: false, branding: false,
         });
         widget = current;
-        const bars = Array.from({ length: 180 }, (_, index) => {
-          const open = 100 + index * 0.03 + Math.sin(index / 9) * 2.2;
-          const close = open + Math.cos(index / 4) * 0.8;
-          return { time: START + index * 60, open, close,
-            high: Math.max(open, close) + 0.4, low: Math.min(open, close) - 0.35, volume: 900 + index * 11 };
-        });
+        // Simulated one-minute prices: a seeded random walk that moves about
+        // six points, so the default band width reads against real swings.
+        const bars = stockBars(START, 180, 60, 100, 33, 0.0022, 900);
         current.series.setData(bars);
         const study = current.chart.addIndicator('website-conditional-inputs');
         current.chart.setVisibleLogicalRange({ from: -3, to: 185 });

@@ -15,6 +15,12 @@ import { widgetText } from './localization';
  * It listens to `crosshair:move`, which the engine emits on the cursor tier;
  * the handler writes text only when a value changed, so an idle pointer
  * touches nothing.
+ *
+ * While the pointer is away the row follows the latest bar, the way the
+ * legend does: it re-reads that bar on every `data:update` (a reload, a live
+ * tick, a new bar), not only the first time it has none. Holding the bar it
+ * last read left a grid cell nobody was hovering on the previous
+ * instrument's prices after a symbol, interval or linked change.
  */
 import type { Bar, Chart, CrosshairMoveEvent } from 'openalgo-charts';
 import { formatZonedCrosshairLabel } from 'openalgo-charts';
@@ -30,9 +36,16 @@ export interface StatuslineHandle {
   readonly el: HTMLElement;
   /** Put a transient message at the right. `error` tints it. */
   setMessage(text: string, kind?: 'info' | 'error'): void;
-  /** The title: symbol, optional exchange, and the interval code. */
+  /**
+   * The title: symbol, optional exchange, and the interval code. Changing a
+   * title already set clears the readings until the chart's primary data is
+   * next replaced, since the bars still on the chart are the previous title's.
+   */
   setSymbol(symbol: string, exchange: string, interval: string): void;
-  /** Show a bar's readings; null clears them (the pointer left and there is no last bar). */
+  /**
+   * Show a bar's readings and hold them. Null lets the row follow the latest
+   * bar again, as it does while the pointer is away.
+   */
   setBar(bar: Bar | null, time: number | null): void;
   /** Re-read the chart's switches and repaint. */
   refresh(): void;
@@ -113,6 +126,14 @@ export function mountStatusline(ctx: WidgetContext, host: HTMLElement, opts: Sta
 
   let bar: Bar | null = null;
   let barTime: number | null = null;
+  // Whether the row shows the latest bar (the pointer is away, or past the
+  // data) or a bar the pointer holds. Only the latest bar follows the data.
+  let following = true;
+  // The title changed and the bars on the chart are still the previous
+  // instrument's (a feed keeps them until the new ones land). The row stays
+  // empty until the next full replace rather than label old prices new.
+  let awaiting = false;
+  let titled = false;
 
   const write = (el: HTMLElement, text: string): void => { if (el.textContent !== text) el.textContent = text; };
   const show = (el: HTMLElement, on: boolean): void => { if (el.hidden === on) el.hidden = !on; };
@@ -155,7 +176,9 @@ export function mountStatusline(ctx: WidgetContext, host: HTMLElement, opts: Sta
   };
 
   const lastBar = (): { bar: Bar | null; time: number | null } => {
-    const data = chart.primarySeries()?.getData() ?? [];
+    if (awaiting) return { bar: null, time: null };
+    // The live array, not a copy: this runs on every tick.
+    const data = chart.primaryBars();
     const last = data[data.length - 1];
     return last === undefined ? { bar: null, time: null } : { bar: last, time: last.time };
   };
@@ -167,16 +190,28 @@ export function mountStatusline(ctx: WidgetContext, host: HTMLElement, opts: Sta
     paint();
   };
 
+  const follow = (): void => { const l = lastBar(); setBar(l.bar, l.time); };
+
   const onMove = (payload: unknown): void => {
     const e = payload as CrosshairMoveEvent;
-    if (e.bar !== null && e.bar !== undefined) { setBar(e.bar, e.time); return; }
+    if (e.bar !== null && e.bar !== undefined) { following = false; setBar(e.bar, e.time); return; }
     // The pointer left: the last bar is what the row shows, as the legend does.
+    following = true;
+    follow();
+  };
+  const onData = (payload: unknown): void => {
+    const kind = (payload as { kind?: string } | undefined)?.kind;
+    if (kind === 'reset') awaiting = false;
+    if (following) { follow(); return; }
+    // A tick on the bar the pointer holds changes its readings without a
+    // pointer move; any other bar under the pointer is closed and stays put.
     const l = lastBar();
-    setBar(l.bar, l.time);
+    if (l.bar !== null && l.time === barTime) setBar(l.bar, l.time);
   };
   const off = chart.on('crosshair:move', onMove);
   const offContext = chart.on('data:context', paint);
-  const offData = chart.on('resize', () => { if (bar === null) { const l = lastBar(); setBar(l.bar, l.time); } });
+  const offData = chart.on('data:update', onData);
+  const offResize = chart.on('resize', () => { if (following) follow(); });
 
   const handle: StatuslineHandle = {
     el: host,
@@ -185,18 +220,29 @@ export function mountStatusline(ctx: WidgetContext, host: HTMLElement, opts: Sta
       msg.classList.toggle('is-error', kind === 'error');
     },
     setSymbol: (symbol, exchange, interval) => {
-      write(sym, exchange ? `${exchange}:${symbol}` : symbol);
+      const name = exchange ? `${exchange}:${symbol}` : symbol;
+      if (titled && name === sym.textContent && interval === iv.textContent) return;
+      write(sym, name);
       write(iv, interval);
+      // The first title names the bars already there. After that the readings
+      // belong to the old title: drop them now, and take the latest bar again
+      // once the new instrument's bars replace the series.
+      awaiting = titled;
+      titled = true;
+      following = true;
+      if (awaiting) setBar(null, null);
+      else follow();
     },
-    setBar,
+    setBar: (b, t) => { following = b === null; setBar(b, t); },
     refresh: () => {
-      if (bar === null) { const l = lastBar(); bar = l.bar; barTime = l.time; }
+      if (following) { const l = lastBar(); bar = l.bar; barTime = l.time; }
       paint();
     },
     destroy: () => {
       off();
       offContext();
       offData();
+      offResize();
       host.textContent = '';
     },
   };

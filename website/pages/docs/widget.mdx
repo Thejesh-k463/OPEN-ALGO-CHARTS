@@ -401,7 +401,7 @@ passes through to `createChart` unchanged.
 | `theme` | `'dark'` \| `'light'` \| `ChartTheme` | A named palette or a full theme object. Drives both the canvas and the chrome tokens (see below). Default `'dark'` (the engine's own default is light). |
 | `rail` | `boolean` \| `RailOptions` | The drawing rail. `false` hides it; `tools` restricts which registered tool ids appear (the order follows the rail's own groups); `favorites` seeds the pins when nothing is stored. |
 | `topbar` | `boolean` | The symbol, interval, chart type, indicators, capture, settings and theme controls. |
-| `statusline` | `boolean` | The status line under the chart. |
+| `statusline` | `boolean` | The status line under the chart: the readings of the bar under the pointer, and of the latest bar, updated live, while the pointer is away. |
 | `mobile` | `'auto'` \| `'always'` \| `'never'` | Responsive widget controls. Default `'auto'`, active at a container width of 640 CSS px or less or when the primary pointer is coarse. |
 | `indicators` | `boolean` | The Indicators button and picker. Turn it off for a host that manages indicators itself. |
 | `persist` | `boolean` \| `string` | `true` saves the state under the `default` namespace (`oac-widget:default:state`) and restores it on the next `createWidget`; a string names the namespace, for more than one widget per origin. |
