@@ -7,7 +7,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { Bar } from '../src/index';
 import { createWidget, type Widget, type WidgetOptions } from '../src/widget/index';
 import { valueAcross } from '../src/widget/drawing-toolbar';
-import { LINE_WIDTH_FIELD } from '../src/draw/index';
+import { chromeIconSvg, LINE_WIDTH_FIELD } from '../src/draw/index';
 import {
   ensureWindowGlobal, fakeContainer, fakeWidgetDocument, fire, fireKey,
   type FakeDocument, type FakeElement,
@@ -127,6 +127,20 @@ describe('drawing toolbar', () => {
     expect(control(root, 'width').textContent).toBe('2 px');
     expect(control(root, 'lock').getAttribute('aria-pressed')).toBe('false');
     expect(valueAcross([w.draw.get(a.id)!, w.draw.get(b.id)!], LINE_WIDTH_FIELD, '#fff')).not.toBe(2);
+  });
+
+  it('pictures the line style with the registry glyph, mixed included, and beside each style in its menu', () => {
+    const { w, root } = make();
+    const glyph = (el: FakeElement | undefined): string | undefined => el?.querySelector('.oac-glyph')?.innerHTML;
+    const a = line(w, { lineStyle: 'dashed' });
+    const b = line(w, { lineStyle: 'solid' }, 30, 60);
+    w.draw.select(a.id);
+    expect(glyph(control(root, 'style'))).toBe(chromeIconSvg('line-dashed'));
+    w.draw.select([a.id, b.id]);
+    expect(glyph(control(root, 'style'))).toBe(chromeIconSvg('line-mixed'));
+    control(root, 'style').click();
+    expect(['Solid', 'Dashed', 'Dotted'].map((label) => glyph(menuRow(root, label))))
+      .toEqual(['minus', 'line-dashed', 'line-dotted'].map((id) => chromeIconSvg(id)));
   });
 
   it('writes a width, a style, a colour and a lock to the whole selection as one step each', () => {

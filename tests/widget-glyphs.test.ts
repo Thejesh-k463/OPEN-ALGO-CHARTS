@@ -14,8 +14,8 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { registerChartType, registeredChartTypes, getChartType, type Bar } from '../src/index';
 import '../src/transform/index';
-import { chartTypeIcon, chromeIconSvg } from 'openalgo-charts/draw';
-import { createWidget, openMenu, chartTypeChoices, type Widget, type WidgetOptions } from '../src/widget/index';
+import { chartTypeIcon, chromeIconIds, chromeIconSvg } from 'openalgo-charts/draw';
+import { createWidget, openMenu, chartTypeChoices, mountContextMenu, type Widget, type WidgetOptions } from '../src/widget/index';
 import { ensureWindowGlobal, fakeContainer, fakeWidgetDocument, type FakeElement } from './helpers/fake-dom-widget';
 
 beforeAll(ensureWindowGlobal);
@@ -37,6 +37,34 @@ describe('one icon system', () => {
       if (!file.endsWith('/form.ts') && text.includes('<path')) found.push(`${file}: <path`);
     }
     expect(found).toEqual([]);
+  });
+
+  it('names only ids the registry carries', () => {
+    // An id is a plain string, so a typo compiles: a menu row then shows an
+    // empty slot and every other surface throws when it paints. Collected
+    // from glyph calls, `icon:` properties (both arms of a ternary) and the
+    // id tables, where a literal is the whole expression.
+    const known = new Set(chromeIconIds());
+    const named: string[] = [];
+    const unknown: string[] = [];
+    const arms = (file: string, expr: string): void => {
+      const m = /^\s*(?:'([a-z0-9-]+)'|[^?]*\?\s*'([a-z0-9-]+)'\s*:\s*'([a-z0-9-]+)')\s*$/.exec(expr);
+      for (const id of m?.slice(1) ?? []) {
+        if (id === undefined) continue;
+        named.push(id);
+        if (!known.has(id)) unknown.push(`${file}: ${id}`);
+      }
+    };
+    for (const [file, text] of Object.entries(WIDGET_SOURCES)) {
+      for (const m of text.matchAll(/\bchromeIcon(?:Svg)?\(([^()]*)\)/g)) arms(file, m[1]);
+      for (const m of text.matchAll(/\bchromeGlyph\([\w.]+,([^()]*)\)/g)) arms(file, m[1]);
+      for (const m of text.matchAll(/\bicon:\s*([^,{}()]*?)\s*(?=[,}])/g)) arms(file, m[1]);
+      for (const m of text.matchAll(/const [A-Z_]+_(?:ICONS|GLYPHS)\b[^=]*=\s*\{([^}]*)\}/g)) {
+        for (const v of m[1].matchAll(/:\s*('[a-z0-9-]+')/g)) arms(file, v[1]);
+      }
+    }
+    expect(named.length).toBeGreaterThan(60);
+    expect(unknown).toEqual([]);
   });
 });
 
@@ -119,6 +147,17 @@ describe('menu rows', () => {
     ]);
     const rows = root.querySelectorAll('.oac-menu .oac-menu__row');
     expect(rows.map((r) => glyphOf(r))).toEqual([chromeIconSvg('copy'), '<svg aria-hidden="true"></svg>', '<svg aria-hidden="true"></svg>']);
+  });
+
+  it('tick a switched-on context menu row with the registry check, in the marker column', () => {
+    const { w, root } = make();
+    mountContextMenu(w.context, undefined, { event: {
+      paneIndex: 0, point: { x: 790, y: 200 }, price: null, time: null, index: null, preventDefault: () => {},
+      target: { kind: 'price-scale', id: null, side: 'right', scaleId: 'right' },
+    } });
+    const fit = root.querySelector('.oac-ctx [data-act="axis-autofit"]') as FakeElement;
+    expect(fit.getAttribute('aria-checked')).toBe('true');
+    expect(fit.querySelector('.oac-ctx__mark .oac-glyph')?.innerHTML).toBe(chromeIconSvg('check'));
   });
 });
 
