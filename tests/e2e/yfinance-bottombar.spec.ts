@@ -6,7 +6,10 @@ import { test, expect, type Page } from '@playwright/test';
  * range loads the interval and the period its sessions need through the
  * page's own load path and places them; the clock's zone survives the next
  * rebuild; the scale toggles act on the chart; the session shading is on the
- * chart; and the phone shell follows the container-size rule.
+ * chart, over fixture bars laid out in each venue's own hours; and the phone
+ * shell follows the container-size rule. On a desktop the bar's Go to and
+ * clock are the page's only ones; the phone shell, which hides the bar, keeps
+ * the toolbar's Go to and the corner clock.
  */
 
 const PAGE = '/examples/yfinance/index.html?test=1';
@@ -142,6 +145,98 @@ test('a US symbol trades in New York hours: nothing to wash in regular hours, it
   await expect.poll(() => app(page, 'app.req.session === "extended" && !app.loading')).toBe(true);
   expect(Object.keys(await phases()).sort()).toEqual(['post', 'pre', 'regular']);
   await info.attach('extended hours', { body: await page.screenshot(), contentType: 'image/png' });
+  expect(errors).toEqual([]);
+});
+
+test('on a desktop the bar is the one Go to and the one clock, and the phone shell keeps its own', async ({ page }, info) => {
+  const errors = await openHost(page);
+  const toolbarGoTo = page.locator('#goto');
+  const barGoTo = page.locator('.host-bottombar .oac-bottombar__goto');
+  const cornerClock = (): Promise<unknown> => app(page, 'Boolean(app.chart.axisChromeOptions().sessionClock)');
+  await expect(barGoTo).toBeVisible();
+  await expect(toolbarGoTo).toBeHidden();
+  expect(await cornerClock()).toBe(false);
+  await info.attach('desktop', { body: await page.screenshot(), contentType: 'image/png' });
+  // A chart-type switch builds a new chart, and that one has no corner clock either.
+  await page.evaluate(() => { const select = document.getElementById('ctype') as HTMLSelectElement; select.value = 'bar'; select.dispatchEvent(new Event('change')); });
+  expect(await cornerClock()).toBe(false);
+  // A narrow window takes the phone shell, which hides the bar: the toolbar's
+  // Go to and the corner clock come back, and go again with the bar.
+  await page.setViewportSize({ width: 820, height: 900 });
+  await expect(barGoTo).toBeHidden();
+  await expect(toolbarGoTo).toBeVisible();
+  await expect.poll(cornerClock).toBe(true);
+  await info.attach('phone shell', { body: await page.screenshot(), contentType: 'image/png' });
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await expect(toolbarGoTo).toBeHidden();
+  await expect.poll(cornerClock).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+test('the corner clock switch is the user\'s choice, kept beside the bar and after a reload', async ({ page }) => {
+  const errors = await openHost(page);
+  const cornerClock = (): Promise<unknown> => app(page, 'Boolean(app.chart.axisChromeOptions().sessionClock)');
+  await page.getByRole('button', { name: 'Chart settings (or right-click the chart)', exact: true }).click();
+  await page.locator('#cset-tabs').getByRole('button', { name: 'Axes', exact: true }).click();
+  const box = page.locator('[data-key="axisChrome.sessionClock"]');
+  await expect(box).not.toBeChecked();
+  await box.check();
+  await page.locator('#cset-ok').click();
+  expect(await cornerClock()).toBe(true);
+  await page.evaluate(() => { const select = document.getElementById('ctype') as HTMLSelectElement; select.value = 'line'; select.dispatchEvent(new Event('change')); });
+  expect(await cornerClock()).toBe(true);
+  await page.reload();
+  await page.waitForFunction(() => Boolean((window as any).__oac?.app?.currentBars?.length) && !(window as any).__oac.app.loading);
+  expect(await cornerClock()).toBe(true);
+  // Switched back to what the bar shows anyway, it follows the bar again.
+  await page.getByRole('button', { name: 'Chart settings (or right-click the chart)', exact: true }).click();
+  await page.locator('#cset-tabs').getByRole('button', { name: 'Axes', exact: true }).click();
+  await page.locator('[data-key="axisChrome.sessionClock"]').uncheck();
+  await page.locator('#cset-ok').click();
+  expect(await cornerClock()).toBe(false);
+  await page.setViewportSize({ width: 820, height: 900 });
+  await expect.poll(cornerClock).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('Go to opens from the bar, waits for a load under way, and answers at the bar after loading history', async ({ page }) => {
+  const errors = await openHost(page);
+  const barGoTo = page.locator('.host-bottombar .oac-bottombar__goto');
+  // A chart about to be replaced gets no panel: the status line says why.
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/history**', async route => { await held; await route.continue(); });
+  const loading = page.evaluate(async () => {
+    (document.getElementById('interval') as HTMLSelectElement).value = '1h';
+    (document.getElementById('period') as HTMLSelectElement).value = '1mo';
+    await (window as any).__oac.app.load();
+  });
+  await expect.poll(() => app(page, 'Boolean(app.loading)')).toBe(true);
+  await barGoTo.click();
+  await expect(page.locator('#status')).toHaveText('wait for chart history before going to a date');
+  await expect(page.locator('.oac-goto')).toHaveCount(0);
+  release();
+  await loading;
+  await page.unroute('**/api/history**');
+  // Three years back is more than an hourly chart can load: the answer comes
+  // after the longest period has loaded, in a panel opened again at the bar.
+  await barGoTo.click();
+  const panel = page.locator('.oac-goto');
+  await expect(panel).toBeVisible();
+  const asked = (await panel.boundingBox())!;
+  const bar = (await barGoTo.boundingBox())!;
+  const target = await page.evaluate(() => new Intl.DateTimeFormat('en-CA', {
+    timeZone: (window as any).__oac.app.chart.timezone(), year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(Date.now() - 3 * 366 * 86400_000)));
+  await panel.locator('input[type=date]').first().fill(target);
+  await panel.locator('input[type=time]').first().fill('');
+  await panel.getByRole('button', { name: 'Go', exact: true }).click();
+  await expect(page.locator('.oac-goto .oac-goto__message')).toHaveText(/^History starts at /, { timeout: 20_000 });
+  expect(await app(page, 'app.req.period')).toBe('1y');
+  const answered = (await page.locator('.oac-goto').boundingBox())!;
+  expect(Math.abs(answered.x - asked.x)).toBeLessThanOrEqual(2);
+  expect(answered.y + answered.height).toBeLessThanOrEqual(bar.y + 1);
+  expect(answered.y + answered.height).toBeGreaterThan(bar.y - 60);
   expect(errors).toEqual([]);
 });
 

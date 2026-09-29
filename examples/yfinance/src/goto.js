@@ -67,8 +67,10 @@ export async function loadPaneHistory(pane, time) {
     }
   } finally {
     for (const off of offs) off();
-    // The load rebuilt the chart the panel belonged to; show the request on the new one.
-    if (current?.pane === pane && !panel) openGoTo(el('goto') || undefined, current);
+    // The load rebuilt the chart the panel belonged to; show the request on the
+    // new one, from the control it was asked from. The bottom bar's outlives
+    // the rebuild; the toolbar's is drawn again, so the new one stands in.
+    if (current?.pane === pane && !panel) openGoTo((current.anchor?.isConnected && current.anchor) || el('goto') || undefined, current);
   }
   if (pane === 2 ? app.loadFailed2 : app.loadFailed) throw new Error(`${request.symbol} history could not load`);
   return 'loaded';
@@ -96,12 +98,18 @@ export function openGoTo(anchor, pending) {
   const context = target && app['inspection' + target.pane]?.context;
   if (!target?.current() || !context) return false;
   const pane = target.pane;
+  // A load under way is about to replace the chart, and the panel with it.
+  // The toolbar greys its Go to meanwhile; the bottom bar's cannot know.
+  if (!pending && (pane === 2 ? app.loading2 || app.loadFailed2 : app.loading || app.loadFailed)) {
+    el('status').textContent = 'wait for chart history before going to a date';
+    return false;
+  }
   const navigator = navigatorFor(pane);
   panel?.close();
   let handle = null;
   handle = openDateNavigation({ ...context, status: text => { el('status').textContent = text; } }, anchor, {
     navigate: request => {
-      const run = { pane, target: request, result: navigator.goTo(request) };
+      const run = { pane, target: request, result: navigator.goTo(request), anchor };
       current = run;
       void run.result.finally(() => { if (current === run) current = null; });
       return run.result;

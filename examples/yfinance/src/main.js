@@ -21,7 +21,7 @@ import { isExpression, fetchExpressionBars, mountOperatorKeypad, referenceDataCo
 import { initStatus, nameOf, symbolStatus } from './status.js';
 import { requestVariant, sessionOf, sessionLabel } from './session.js';
 import { DEFAULT_TZ, initTimezone, syncTimezoneFromChart } from './timezone.js';
-import { initAxisChrome, applyAxisChrome, applyStatusLineChoice, applyTradeChoice } from './axis-chrome.js';
+import { initAxisChrome, applyAxisChrome, applyStatusLineChoice, applyTradeChoice, followBottombar } from './axis-chrome.js';
 import { initVolume, attachVolume, refreshVolume, setVolumeShown, setLegend, applyVolumeSettings } from './volume.js';
 import {
   initOrders, saveState, restoreState, cancelOrder, attachOrderLines, removeAllOrders,
@@ -668,6 +668,9 @@ function initBottombar() {
     // A zone picked on the main chart survives the next rebuild, the way one picked in the settings does.
     onTimezone: () => { if (selectedPane(app) === 1) syncTimezoneFromChart(); autosave(); },
   });
+  // The phone shell hides the bar and a wider window brings it back, and the
+  // corner clock takes whichever side the bar leaves.
+  if (typeof ResizeObserver === 'function') new ResizeObserver(() => followBottombar()).observe(strip);
 }
 
 // Module wiring, in the order the original page registered its listeners.

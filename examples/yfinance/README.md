@@ -506,15 +506,22 @@ its first session, then places it; a range wider than the plot keeps its latest 
 view. A timezone picked there survives the next rebuild. Session shading
 (`attachSessionShading`) is attached to each chart as it is built.
 
+Where the bar shows, its **Go to** and its clock are the page's only ones: the toolbar
+keeps its **Go to** and the chart its corner clock for the phone shell, which hides the
+bar, and both follow the bar as a window crosses the phone rule. The Corner clock switch
+in the chart settings overrides that, and the choice is kept in `localStorage`.
+
 ### Go to a date or range
 
-**Go to** beside the history range opens the widget tier's go-to panel for the
-selected chart. **Date** centres one date at the current zoom; **Range** fits two
-dates or date and time pairs. Times are read in the chart timezone. When the date
-is older than the loaded period, the page loads the shortest longer period that
-reaches it (the range menu shows the result), then places the date once that load
-has been accepted. That load rebuilds the chart, and the panel with it, so the page
-opens the panel again on the new chart to carry the request through: an interval
+**Go to** in the bottom bar (in the toolbar beside the history range, in the phone
+shell) opens the widget tier's go-to panel for the selected chart; while the chart's
+history is still loading it says to wait instead. **Date** centres one date at the
+current zoom; **Range** fits two dates or date and time pairs. Times are read in the
+chart timezone. When the date is older than the loaded period, the page loads the
+shortest longer period that reaches it (the range menu shows the result), then places
+the date once that load has been accepted. That load rebuilds the chart, and the panel
+with it, so the page opens the panel again on the new chart, at the control it was
+opened from, to carry the request through: an interval
 that cannot serve an older period reports there where history starts. Daily and
 longer frames take a date alone, since a time could not change the bar it names.
 Closing the panel while history loads drops the request, and the view stays where
