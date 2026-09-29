@@ -114,9 +114,10 @@ The widget decides again whenever the container is resized (a rotation, a split 
 dashboard cell changing size) and whenever the primary pointer changes, as it does when
 a convertible folds into tablet mode. Two cases keep the current layout. A container that
 measures 0 wide (hidden, or not laid out yet) starts with the desktop controls, and one
-that drops to 0 later keeps the layout it had. While a text field inside the widget has
-focus, a switch waits until focus leaves it, so an on-screen keyboard that shortens the
-container never hides the field being typed in.
+that later drops to 0 wide or 0 tall keeps the layout it had, so hiding a tab does not
+close an open sheet. While a form field inside the widget has focus (the symbol box, or
+an input in a dialog), a switch waits until focus leaves it, so an on-screen keyboard
+that shortens the container never hides the field being typed in.
 
 ```ts
 import { createWidget } from 'openalgo-charts/widget';
