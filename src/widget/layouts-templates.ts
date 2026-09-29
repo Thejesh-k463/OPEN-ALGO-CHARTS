@@ -74,17 +74,24 @@ export function applyIndicatorTemplate(ctx: Pick<WidgetContext, 'chart' | 'histo
   if (mode === 'append' && plan.indicators.length === (before.indicators ?? []).length) return false;
   // Drawings and alerts ride along: a restore that names none clears them.
   const kept = { drawings: before.drawings, alerts: before.alerts };
+  // So does a price source moved over a study the plan keeps: a restore that
+  // rebuilds the studies without naming it puts the source back at the bottom.
+  const above = before.sourceAbove !== undefined && plan.indicators.some(study => study.instanceId === before.sourceAbove)
+    ? { sourceAbove: before.sourceAbove } : {};
   let started = false;
   const off = chart.on('state:restore:start', () => { started = true; });
   try {
     const report = chart.restoreState(layoutState(plan.indicators,
-      plan.panes ?? (mode === 'append' ? before.panes : before.panes?.slice(0, 1)), plan.primaryPane, kept), plan.restoreOptions ?? {});
+      plan.panes ?? (mode === 'append' ? before.panes : before.panes?.slice(0, 1)), plan.primaryPane, { ...kept, ...above }), plan.restoreOptions ?? {});
     if (!report.applied) throw new Error(report.reason ?? 'The template could not be applied');
     if (report.indicators !== plan.indicators.length) throw new Error('The chart did not restore every study');
   } catch (error) {
     // Only a restore that began changed anything; one refused up front left the chart alone.
-    if (started) chart.restoreState(layoutState(before.indicators, before.panes, before.primaryPane,
-      { ...kept, viewport: before.viewport, barSpacing: before.barSpacing }), preserved(plan, chart.getState()));
+    if (started) {
+      chart.restoreState(layoutState(before.indicators, before.panes, before.primaryPane, {
+        ...kept, ...(before.sourceAbove === undefined ? {} : { sourceAbove: before.sourceAbove }), viewport: before.viewport, barSpacing: before.barSpacing,
+      }), preserved(plan, chart.getState()));
+    }
     throw error;
   } finally { off(); }
   const after = chart.getState();
@@ -199,7 +206,11 @@ export function openTemplatesMenu(ctx: WidgetContext, anchor: HTMLElement, store
     disable(save, listedStudies(ctx) === 0 ? text('nothing', 'Add a study to save a template') : null);
     if (keep !== null) {
       const row = Array.from(list.querySelectorAll<HTMLElement>('[data-template-id]')).find(item => item.dataset.templateId === keep.id) ?? null;
-      (row?.querySelector<HTMLElement>(`[data-action="${keep.action}"]`) ?? row?.querySelector<HTMLElement>('button') ?? list.querySelector<HTMLElement>('button'))?.focus();
+      // Keep goes back to the delete button it came from; a row that went, to
+      // the next one, or to Save when the list is empty, never to the page.
+      const action = keep.action === 'keep' ? 'delete' : keep.action;
+      (row?.querySelector<HTMLElement>(`[data-action="${action}"]`) ?? row?.querySelector<HTMLElement>('button')
+        ?? list.querySelector<HTMLElement>('button') ?? save).focus();
     }
   }
 

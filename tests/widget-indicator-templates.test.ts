@@ -187,6 +187,24 @@ describe('templates in the indicator picker', () => {
     expect(studies(widget)).toEqual(['macd']);
   });
 
+  it('keeps the price source over the study it was moved above when a template is appended', async () => {
+    const repo = repository();
+    const { widget } = await make({ workspaces: repo });
+    widget.chart.addIndicator('rsi');
+    const template = await saveIndicatorTemplate(widget.context, repo, 'Strength');
+    widget.chart.removeIndicator(widget.chart.indicators()[0].id);
+    const sma = widget.chart.addIndicator('sma');
+    expect(widget.chart.moveInSeriesStack('source:primary', `indicator:${sma.id}`, 'above')).toBe(true);
+    await settle();
+    expect(applyIndicatorTemplate(widget.context, repo, { indicators: template.indicators, layout: template.layout }, 'append')).toBe(true);
+    expect(studies(widget)).toEqual(['sma', 'rsi']);
+    expect(widget.chart.getState().sourceAbove).toBe(sma.id);
+    expect(widget.history.undo()).toBe(true);
+    expect(widget.chart.getState().sourceAbove).toBe(sma.id);
+    expect(widget.history.redo()).toBe(true);
+    expect(widget.chart.getState().sourceAbove).toBe(sma.id);
+  });
+
   it('takes a template back after later steps, keeping an alert set after it', async () => {
     const repo = repository();
     const { widget } = await make({ workspaces: repo });
@@ -228,7 +246,9 @@ describe('templates in the indicator picker', () => {
   it('puts the chart back when a template fails part way through its restore', async () => {
     const repo = repository();
     const { widget } = await make({ workspaces: repo });
-    widget.chart.addIndicator('sma');
+    const sma = widget.chart.addIndicator('sma');
+    // The source moved over the study goes back over it, too.
+    expect(widget.chart.moveInSeriesStack('source:primary', `indicator:${sma.id}`, 'above')).toBe(true);
     await settle();
     const before = widget.chart.getState();
     // A host store whose plan names a study this page cannot build: the restore
@@ -249,6 +269,7 @@ describe('templates in the indicator picker', () => {
     expect(studies(widget)).toEqual(['sma']);
     expect(widget.chart.panes().length).toBe(before.panes!.length);
     expect(widget.chart.getState().indicators).toEqual(before.indicators);
+    expect(widget.chart.getState().sourceAbove).toBe(sma.id);
   });
 
   it('leaves the undo steps alone when the chart refuses a planned template before restoring', async () => {
@@ -299,6 +320,26 @@ describe('templates in the indicator picker', () => {
     await settle();
     expect((await repo.load()).templates).toHaveLength(0);
     expect(must(menu, '.oac-templates__message').textContent).toBe('Deleted Old set');
+  });
+
+  it('keeps the focus in the list through a delete, by keyboard', async () => {
+    const repo = repository();
+    const { widget, root } = await make({ workspaces: repo });
+    await repo.createTemplate('Only set', []);
+    const menu = await openTemplates(widget, root);
+    const active = (): FakeElement => widget.context.document.activeElement as unknown as FakeElement;
+    const press = (el: FakeElement): void => { el.focus(); el.click(); };
+    press(must(templateRow(menu, 'Only set'), '[data-action="delete"]'));
+    expect(active().dataset.action).toBe('keep');
+    // Keep: back to the delete button it came from.
+    press(active());
+    expect(active()).toBe(must(templateRow(menu, 'Only set'), '[data-action="delete"]'));
+    press(active());
+    press(must(templateRow(menu, 'Delete Only set?'), '[data-action="confirm-delete"]'));
+    await settle();
+    expect((await repo.load()).templates).toHaveLength(0);
+    // The list is empty: the focus is on the one control left, not on the row that went.
+    expect(active()).toBe(must(menu, '[data-action="save-template"]'));
   });
 });
 
