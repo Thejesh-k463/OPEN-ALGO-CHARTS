@@ -309,7 +309,7 @@ Codes are matched case-insensitively (`D` and `d` are one interval), because the
 
 ## Warm-load bar cache
 
-`src/feed/cache.ts`, base bundle. `withBarCache` is a `DataFeed` to `DataFeed` wrapper, so **any** feed gets warm loading, not just `OpenAlgoDataFeed`.
+`src/feed/cache.ts`, base bundle. `withBarCache` is a `DataFeed` to `DataFeed` wrapper, so **any** feed gets warm loading, not just `OpenAlgoDataFeed`. A hit ends at the last closed bar and a live subscription supplies the forming one; a host with no subscription asks again with `noCache: true` when a hit ends before a bar it has already shown.
 
 ```ts
 import { withBarCache, OpenAlgoDataFeed } from 'openalgo-charts';

@@ -566,6 +566,10 @@ export class BarCache implements DataFeed {
  * Wrap any `DataFeed` in a warm-load bar cache.
  *
  *     const feed = withBarCache(new OpenAlgoDataFeed(cfg), { ttlMs, max, storage });
+ *
+ * A hit ends at the last closed bar; a live subscription supplies the forming
+ * one. A host with none must ask again with `noCache: true` when a hit ends
+ * before a bar it has already shown, or its chart steps back to an older close.
  */
 export function withBarCache(feed: DataFeed, options?: BarCacheOptions): BarCache {
   return new BarCache(feed, options);
