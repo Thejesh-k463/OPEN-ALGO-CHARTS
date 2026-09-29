@@ -167,6 +167,16 @@ stylesheet. The DOM-free `QuoteBoard` and `NewsReader` controllers, and
 mounts the panels in both of its pages. See
 [workspaces](./workspaces.md#named-watchlists) for the lists themselves.
 
+## Saved layouts
+
+`createLayoutsController(store, target, options?)` (since 2.5.10) holds one saved layout
+for a widget or a chart grid, DOM-free, over a `WorkspaceStore` from
+`openalgo-charts/workspace` that it takes as a type only. Its target captures and applies
+workspace payloads (`grid.getWorkspace()` and `grid.applyWorkspace(payload)` for a grid),
+and it runs save, save as, rename, delete, open and autosave one at a time with revision
+checks. See [workspaces](./workspaces.md#catalog-transactions-and-storage) and the
+website's Workspaces page for its state and conflict rules.
+
 ## Mobile controls and navigation
 
 Since 2.1.8, `mobile: 'auto'` selects compact controls when the widget container is at
