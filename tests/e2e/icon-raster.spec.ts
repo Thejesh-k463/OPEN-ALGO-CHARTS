@@ -31,6 +31,13 @@ interface Measured {
   pairs: { a: string; b: string; iou: number; diff: number }[];
   crisp: number;
   n: number;
+  /**
+   * The glyphs that inked no pixel. A blank glyph overlaps nothing, so it
+   * passes every overlap ceiling while showing an empty button; the chrome
+   * marks drawn as strokes of no length (an i's dot, a grip) are the ones
+   * an engine could drop.
+   */
+  blank: string[];
 }
 
 declare global {
@@ -142,7 +149,7 @@ function measure(page: Page, tier: Tier, rendering: Rendering = 'markup'): Promi
 function rasterise(page: Page, which: 'tools' | 'chrome' | 'toolsPath' | 'chromePath' | 'layouts'): Promise<Measured> {
   return page.evaluate(async (which) => {
     const list = window.__iconFixture.icons[which];
-    const rows: { id: string; mask: Uint8Array; crisp: number }[] = [];
+    const rows: { id: string; mask: Uint8Array; crisp: number; lit: number }[] = [];
     for (const g of list) {
       // Black on transparent, so alpha alone is the ink.
       const img = new Image();
@@ -162,7 +169,7 @@ function rasterise(page: Page, which: 'tools' | 'chrome' | 'toolsPath' | 'chrome
         mask[i] = a > 0.3 ? 1 : 0;
         if (a > 0.05) { lit++; if (a >= 0.9) solid++; }
       }
-      rows.push({ id: g.id, mask, crisp: lit === 0 ? 0 : solid / lit });
+      rows.push({ id: g.id, mask, crisp: lit === 0 ? 0 : solid / lit, lit });
     }
     const pairs: { a: string; b: string; iou: number; diff: number }[] = [];
     for (let i = 0; i < rows.length; i++) {
@@ -175,7 +182,10 @@ function rasterise(page: Page, which: 'tools' | 'chrome' | 'toolsPath' | 'chrome
         pairs.push({ a: rows[i].id, b: rows[j].id, iou: union === 0 ? 0 : inter / union, diff: union - inter });
       }
     }
-    return { pairs, crisp: rows.reduce((s, r) => s + r.crisp, 0) / rows.length, n: rows.length };
+    return {
+      pairs, crisp: rows.reduce((s, r) => s + r.crisp, 0) / rows.length, n: rows.length,
+      blank: rows.filter((r) => r.lit === 0).map((r) => r.id),
+    };
   }, which);
 }
 
@@ -186,6 +196,7 @@ for (const [tier, rendering] of [['tools', 'markup'], ['chrome', 'markup'], ['to
     const errors = await mount(page);
     const m = await measure(page, tier, rendering);
     expect(m.n).toBeGreaterThan(20);
+    expect(m.blank, 'glyphs that ink no pixel').toEqual([]);
     const close = m.pairs
       .filter((p) => p.iou >= CEILING && !STATE_PAIRS.has(key(p.a, p.b)) && !STATE_PAIRS.has(key(p.b, p.a)))
       .map((p) => `${key(p.a, p.b)} ${p.iou.toFixed(2)}`);
@@ -225,6 +236,7 @@ test('every two layout tiles differ by a divider, and every tile is crisp', asyn
   const errors = await mount(page);
   const m = await rasterise(page, 'layouts');
   expect(m.n).toBeGreaterThan(10);
+  expect(m.blank, 'tiles that ink no pixel').toEqual([]);
   const nearest = [...m.pairs].sort((p, q) => p.diff - q.diff);
   await info.attach('layouts-nearest.txt', {
     body: nearest.slice(0, 10).map((p) => `${key(p.a, p.b)} ${p.diff}px ${p.iou.toFixed(3)}`).join('\n') + `\ncrisp ${m.crisp.toFixed(3)}`,
