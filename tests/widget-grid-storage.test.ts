@@ -190,6 +190,22 @@ describe('the chart grid over an asynchronous store', () => {
     expect(store.writes().slice(hidden).some(call => call.includes('DDD'))).toBe(true);
   });
 
+  it('writes nothing when the page hides with no change pending, so a desk another tab saved stays', async () => {
+    const store = new FakeAsyncStore();
+    const { grid, doc } = buildGrid({ persist: 'desk', storage: store, feed: recordingFeed().feed, preset: '1x2' });
+    await grid.ready;
+    // The first loads' own saves, past the debounce.
+    await new Promise(resolve => setTimeout(resolve, SAVE_DEBOUNCE_MS + 20));
+    await settle();
+    // Another tab on the same desk saves a newer one, then this tab is left for it.
+    const newer = JSON.stringify({ ...grid.getWorkspace(), activePaneId: grid.cells()[1].id });
+    store.external('oac-widget:desk:grid', newer);
+    Object.assign(doc, { visibilityState: 'hidden' });
+    fire(doc, 'visibilitychange');
+    await settle();
+    expect(store.map.get('oac-widget:desk:grid')).toBe(newer);
+  });
+
   it('keeps a synchronous store the host passes: the desk is back before createChartGrid returns', async () => {
     const sync = await savedDesk();
     const grid = makeGrid({ persist: 'desk', storage: sync, feed: recordingFeed().feed });

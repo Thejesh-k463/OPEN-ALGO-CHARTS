@@ -1359,16 +1359,25 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
     observer.observe(root);
     offs.push(() => observer.disconnect());
   }
-  // A debounced save still pending when the tab closes is the user's last
-  // change, and so is a layout's inside autosave's quiet period; an
-  // asynchronous store journals what may not land in time.
-  const leaving = (): void => { saveNow(); void storage.flush(); saved?.flush(); };
+  /**
+   * A debounced save still pending when the tab closes is the user's last
+   * change, and so is a layout's inside autosave's quiet period; an
+   * asynchronous store journals what may not land in time. Hiding writes
+   * only a save still pending, as in one widget: a tab left for another on
+   * the same desk would otherwise write its older desk over the one saved
+   * there, at every switch.
+   */
+  const leaving = (hiding: boolean): void => {
+    if (!hiding || saveTimer !== 0) saveNow();
+    void storage.flush();
+    saved?.flush();
+  };
   if (win != null && typeof win.addEventListener === 'function') {
     if (Observer === undefined) listen(win, 'resize', measure);
-    listen(win, 'pagehide', leaving);
+    listen(win, 'pagehide', () => leaving(false));
   }
   // Hiding is the last moment a page is sure to see; unload may never come.
-  listen(doc, 'visibilitychange', () => { if (doc.visibilityState === 'hidden') leaving(); });
+  listen(doc, 'visibilitychange', () => { if (doc.visibilityState === 'hidden') leaving(true); });
 
   /** The desk's chords on every chart built before the store answered. */
   const shareChords = (): void => {

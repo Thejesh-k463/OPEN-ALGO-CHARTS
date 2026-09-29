@@ -307,10 +307,12 @@ from `preset` out of sight and asks the feed for nothing until the stored desk h
 read, then opens it, and `grid.ready` settles. The first visit copies a desk an earlier
 release left in `localStorage` into IndexedDB, once, and leaves it there. A workspace
 you apply before `ready` settles wins over the stored one. Pass `storage: localStorage`
-to restore synchronously, as before. A layout, link, group, theme, active chart, instrument, swap or
-keyboard splitter change is written before the current task ends, so a reload straight
-after it keeps it. Pans, zooms and drags are written once they settle, and any write
-still pending is flushed when the page hides, on `pagehide` and on `destroy()`.
+to restore synchronously, as before. A layout, link, group, theme, active chart,
+instrument, swap or keyboard splitter change is written before the current task ends, so
+a reload straight after it keeps it. Pans, zooms and drags are written once they
+settle, and any write still pending is flushed when the page hides, on `pagehide` and on
+`destroy()`. Hiding a page with nothing pending writes nothing, so a tab left for another
+on the same desk does not write its older desk over the one saved there.
 
 Each chart keeps drawings per instrument (since 2.5.9), in a store of its own keyed by its
 pane id, so two charts on one symbol never overwrite each other's lines. The payload
