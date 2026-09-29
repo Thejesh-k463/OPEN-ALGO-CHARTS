@@ -35,10 +35,11 @@ function payload(symbol: string, interval = '5m'): WorkspacePayload {
   };
 }
 
-/** A target holding one payload: `edit` is the user changing it. */
+/** A target holding one payload: `edit` is the user changing it, `suspend` a replay starting or ending. */
 function fakeTarget(initial = payload('INFY')) {
   let current = clone(initial);
   let refusal: string | null = null;
+  let suspended = false;
   const listeners = new Set<() => void>();
   const notify = (): void => { for (const listener of Array.from(listeners)) listener(); };
   const target: LayoutTarget = {
@@ -54,12 +55,14 @@ function fakeTarget(initial = payload('INFY')) {
       listeners.add(listener);
       return () => { listeners.delete(listener); };
     },
+    suspended: () => suspended,
   };
   return {
     target,
     symbol: () => current.panes[0].symbol,
     edit(symbol: string) { current.panes[0].symbol = symbol; notify(); },
     refuse(reason: string | null) { refusal = reason; },
+    suspend(on: boolean) { suspended = on; notify(); },
   };
 }
 
@@ -945,6 +948,59 @@ function walk(count: number, start: number, seed: number): Bar[] {
     return { time: 1_700_000_000 + i * 300, open, high: Math.max(open, close) + 0.35, low: Math.min(open, close) - 0.35, close, volume: 1000 + (s % 500) };
   });
 }
+
+describe('layouts controller: a suspended target', () => {
+  it('holds autosave while the target is suspended and writes the change once it resumes', async () => {
+    vi.useFakeTimers();
+    const { controller, fake, repo } = setup({ autosaveDelay: 500 });
+    await controller.saveAs('Morning');
+    await controller.setAutosave(true);
+    await vi.advanceTimersByTimeAsync(0);
+    const writes = vi.spyOn(repo, 'saveWorkspace');
+    fake.suspend(true);
+    fake.edit('TCS');
+    await vi.advanceTimersByTimeAsync(3000);
+    await controller.flush();
+    expect(writes).not.toHaveBeenCalled();
+    expect(controller.state()).toMatchObject({ suspended: true, dirty: true, autosave: 'pending' });
+    // The target says it is back through its listener, as the widget's replay events do.
+    fake.suspend(false);
+    await vi.advanceTimersByTimeAsync(500);
+    await controller.flush();
+    expect(writes).toHaveBeenCalledTimes(1);
+    expect((await repo.load()).workspaces[0].panes[0].symbol).toBe('TCS');
+    expect(controller.state()).toMatchObject({ suspended: false, dirty: false, autosave: 'saved' });
+  });
+
+  it('refuses to open a layout while suspended and changes nothing, and saves when the user asks', async () => {
+    const { controller, fake, other, repo } = setup({ autosaveDelay: 0 });
+    const held = await controller.saveAs('Morning');
+    const spare = await other.createWorkspace('Spare', payload('SBIN'));
+    fake.suspend(true);
+    await expect(controller.open(spare.id)).rejects.toThrow(/suspended/);
+    expect(fake.symbol()).toBe('INFY');
+    expect(controller.state()).toMatchObject({ layoutId: held.id, suspended: true });
+    fake.edit('TCS');
+    await controller.save();
+    expect((await repo.load()).workspaces.find(item => item.id === held.id)?.panes[0].symbol).toBe('TCS');
+    fake.suspend(false);
+    expect(await controller.open(spare.id)).toEqual({ applied: true });
+    expect(fake.symbol()).toBe('SBIN');
+  });
+
+  it('treats a target that cannot say whether it is suspended as running', async () => {
+    const { controller, repo } = setup({ autosaveDelay: 0 });
+    const target: LayoutTarget = {
+      capture: () => payload('INFY'), apply: () => ({ applied: true }),
+      suspended: () => { throw new Error('host bug'); },
+    };
+    const second = createLayoutsController(repo, target, { autosaveDelay: 0 });
+    live.push(second);
+    await second.saveAs('Other');
+    expect(second.state().suspended).toBe(false);
+    expect(controller.state().suspended).toBe(false);
+  });
+});
 
 describe('layouts controller on a chart grid', () => {
   const feed: DataFeed = { getBars: async request => walk(120, request.symbol === 'TCS' ? 3920 : 1510, request.symbol.length) };

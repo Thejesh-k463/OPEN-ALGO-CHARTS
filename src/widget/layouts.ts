@@ -31,6 +31,15 @@ export interface LayoutTarget {
   apply(payload: WorkspacePayload): LayoutApplyReport;
   /** Called on each change the user makes. Without it the host calls `changed()`. Returns the unsubscribe. */
   subscribe?(listener: () => void): () => void;
+  /**
+   * True while the target shows something other than the layout the user is
+   * building, as a chart does during a replay: its bars stop at a moment in
+   * the past and a replay may change the view on every step. Autosave waits
+   * and `open` is refused until it turns false, which the target announces
+   * through its `subscribe` listener (or the host through `changed()`). A
+   * save the user asks for still goes through. Since 2.5.10.
+   */
+  suspended?(): boolean;
 }
 
 /**
@@ -58,6 +67,8 @@ export interface LayoutsState {
   dirty: boolean;
   /** A layout operation (anything but an autosave) is queued or running. */
   busy: boolean;
+  /** The target is suspended (`LayoutTarget.suspended`): autosave waits and `open` is refused. Since 2.5.10. */
+  suspended: boolean;
   /**
    * The held layout was changed or deleted in another session, or by another
    * control on the page, since this controller last opened or saved it, and
@@ -109,7 +120,8 @@ export interface LayoutsController {
    * nothing, and opening again goes ahead without it. A refused apply
    * resolves with its report and leaves the target and the held layout as
    * they were; when the store refuses the record, the previous layout goes
-   * back on the target and this rejects.
+   * back on the target and this rejects. It rejects too while the target is
+   * suspended.
    */
   open(id: string): Promise<LayoutApplyReport>;
   /** Write the target into the held layout. Rejects when no layout is held, and while it conflicts. */
@@ -176,14 +188,18 @@ export function createLayoutsController(store: WorkspaceStore, target: LayoutTar
     if (failed || conflict) return 'failed';
     return timer !== undefined || passQueued || dirty ? 'pending' : 'saved';
   };
+  const suspended = (): boolean => {
+    // A target that cannot say is not suspended: autosave is what it risks.
+    try { return target.suspended?.() === true; } catch { return false; }
+  };
   const state = (): LayoutsState => ({
-    catalog: view, layoutId, revision: held, dirty, busy: ops > 0, conflict, autosave: status(), error,
+    catalog: view, layoutId, revision: held, dirty, busy: ops > 0, suspended: suspended(), conflict, autosave: status(), error,
   });
   const emit = (): void => {
     if (destroyed) return;
     const next = state();
     // A pan reports a change every frame; the menu hears only what it shows.
-    const key = JSON.stringify([view?.revision, held, layoutId, dirty, next.busy, conflict, next.autosave, error === null]);
+    const key = JSON.stringify([view?.revision, held, layoutId, dirty, next.busy, next.suspended, conflict, next.autosave, error === null]);
     if (key === last) return;
     last = key;
     for (const listener of Array.from(listeners)) {
@@ -362,7 +378,8 @@ export function createLayoutsController(store: WorkspaceStore, target: LayoutTar
       const key = JSON.stringify(payload);
       const at = changes;
       dirty = key !== savedKey;
-      if (!dirty || !view?.autosave || conflict || failed) return emit();
+      // Held, not dropped: the change is written once the target says it is back.
+      if (!dirty || !view?.autosave || conflict || failed || suspended()) return emit();
       saving = true;
       emit();
       const doc = await write(expectedRevision => store.saveWorkspace(id, payload, { expectedRevision }));
@@ -426,12 +443,14 @@ export function createLayoutsController(store: WorkspaceStore, target: LayoutTar
     // A detached copy: a caller sorting or trimming the list cannot reach the one held here.
     reload: () => op(async () => JSON.parse(JSON.stringify(await load())) as WorkspaceCatalog),
     open: id => op(async () => {
-      const paused = failed;
+      // A replay owns the bars on screen: a layout landing now would load its own under it.
+      if (suspended()) throw new Error('A layout cannot open while the chart is suspended, as during a replay');
+      const stopped = failed;
       await due();
       // The change could not be saved into the layout being left, so it stays on
       // the target and the user hears why, instead of losing it to the next
       // layout unseen. Opening again goes ahead: autosave is paused by then.
-      if (failed && !paused) throw error;
+      if (failed && !stopped) throw error;
       // The newest version is the one shown: a layout another tab saved opens as saved there.
       await load();
       const doc = find(view, id);
