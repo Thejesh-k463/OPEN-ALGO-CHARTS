@@ -1,10 +1,47 @@
-/** Verify the marketing chart, responsive theme and regenerated API reference. */
+/** Verify the example data, marketing chart, responsive theme and regenerated API reference. */
 import { strict as assert } from 'node:assert';
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile } from 'node:fs/promises';
+import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { chromium, expect } from '@playwright/test';
 
 const base = (process.argv[2] ?? 'http://127.0.0.1:4174/openalgo-charts').replace(/\/$/, '');
 const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+
+// Every chart a reader sees is drawn from prices that move like a traded
+// instrument: a seeded random walk with wicks and volume (stockBars in
+// website/components/synthetic-market.ts), and any study output or drawing on
+// it is computed from those bars. Sine waves, straight ramps and sawtooths in
+// the bar index made the examples look like test fixtures, so the sources are
+// read before any page is: this part needs no build.
+const SYNTHETIC = [
+  ['a sine or cosine of the index', /Math\.(?:sin|cos)\(/],
+  ['a straight ramp in the bar index', /\b(?:open|high|low|close|value)\s*:\s*[\d.]+\s*[+-]\s*(?:i|index)\s*[*/]/],
+  ['a sawtooth in the bar index', /\+\s*\(?\s*(?:i|index)\s*%\s*\d+(?!\d)\s*\)?(?!\s*[=!<>])/],
+];
+const repo = fileURLToPath(new URL('..', import.meta.url));
+async function sourceFiles(dir) {
+  const out = [];
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...await sourceFiles(path));
+    else if (/\.(?:mdx|md|tsx|ts)$/.test(entry.name)) out.push(path);
+  }
+  return out;
+}
+// The site's own pages and components; website/lib holds the synced bundles.
+const files = [...await sourceFiles(join(repo, 'website/pages')), ...await sourceFiles(join(repo, 'website/components'))];
+assert.ok(files.length > 50, `expected the website sources, found ${files.length} files`);
+const synthetic = [];
+for (const file of files) {
+  (await readFile(file, 'utf8')).split(/\r?\n/).forEach((line, i) => {
+    for (const [what, pattern] of SYNTHETIC) {
+      if (pattern.test(line)) synthetic.push(`${relative(repo, file).replaceAll('\\', '/')}:${i + 1} ${what}: ${line.trim()}`);
+    }
+  });
+}
+assert.deepEqual(synthetic, [], 'Website examples must draw prices and study outputs from stockBars, not a formula of the bar index');
+
 await mkdir('artifacts', { recursive: true });
 const browser = await chromium.launch();
 try {
