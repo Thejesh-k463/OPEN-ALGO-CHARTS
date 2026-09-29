@@ -26,6 +26,8 @@ async function initialize(page: Page) {
       timeNavigator: { fadeSeconds: 0, buttons: ['panRightBar', null, 'zoomIn', null, 'panLeftBar', 'resetScale'] },
       mobile: window.innerWidth <= 640 ? 'auto' : 'never',
     });
+    // The saved navigation lands once the widget's store (IndexedDB) has answered.
+    await widget.ready;
     const chart = widget.chart;
     widget.series.applyOptions({ upColor: '#33aaff', downColor: '#33aaff' });
     widget.series.setData(Array.from({ length: 200 }, (_, index) => {
