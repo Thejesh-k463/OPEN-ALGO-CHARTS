@@ -745,7 +745,8 @@ Rules the coordinator applies:
 rows by columns grid, with splitters, one active cell, linking through the base
 `LinkGroup`, and the portable `WorkspacePayload` of `openalgo-charts/workspace`. It is
 part of the widget tier, not a new one. Source of truth: `src/widget/grid.ts`. Its cells
-carry no bottom bar of their own (since 2.5.10).
+carry no bottom bar of their own (since 2.5.10). `bottombar: true` puts one under the grid,
+acting on the active chart.
 
 ```ts
 import { createChartGrid } from 'openalgo-charts/widget';
@@ -763,9 +764,14 @@ const report = grid.applyWorkspace(parseWorkspacePayload(fileText)); // { applie
   and every new group's), `compactWidth` (default 640 CSS px, 0 off), grid-level
   `persist`/`storage`, and (since 2.5.10) `toolbar` (the grid bar, default false) and
   `presets` (the layout ids its picker offers, in order; default every `CHART_GRID_LAYOUTS`
-  entry; an empty list leaves the Layout control out). `layouts` keeps its widget meaning:
-  a `LayoutsController` the host passes drives every chart's Layouts menu, and without one
-  no chart saves a layout of its own. `symbol`, `exchange`, `interval` and `chartType` seed
+  entry; an empty list leaves the Layout control out), `bottombar` (one bar under the grid
+  for the active chart, default false; the charts then leave Go to and the market status to
+  it) and `workspaces` and `layouts`: with the grid bar the grid keeps one layouts controller
+  over the whole desk, or drives the one `layouts` passes, from a Layouts control at the end
+  of the bar, and no chart has a Layouts button; without the bar it keeps none, `workspaces`
+  gives the charts templates only and a `layouts` controller drives each chart's own
+  button. No chart saves a layout of its own. Under the grid's bottom bar the charts also
+  leave Go to out of the phone More sheet. `symbol`, `exchange`, `interval` and `chartType` seed
   the first cell. Cells default to `mobile: 'never'`, because a cell in a split is often
   narrower than the phone threshold.
 - `feed` is one `DataFeed` for every chart, or a function
@@ -795,7 +801,7 @@ const report = grid.applyWorkspace(parseWorkspacePayload(fileText)); // { applie
   null)`, `addLinkGroup(cell, { name?, links? })`, `setGroupLinks(group, patch)`,
   `renameLinkGroup(group, name)`, `shareDrawings(cell)`, `takeScreenshot()`,
   `downloadScreenshot(filename?)`, `theme()`, `setTheme()`, `compact()`, `restored()`,
-  `destroy()`.
+  `ready` (since 2.5.10), `destroy()`.
 - Events (`ChartGridEvents`, `ChartGridEventName`): `active` (from `setActive`, and when
   a preset or an applied workspace moves the active chart), `layout` (`preset`,
   `weights`, `workspace`, `compact`, `maximize`, `swap`), `links` (the active chart's
@@ -809,7 +815,15 @@ const report = grid.applyWorkspace(parseWorkspacePayload(fileText)); // { applie
   restore (a study or chart type registered later, say) is not overwritten: the grid
   falls back to `preset`, toasts the reason on the active chart, and `restored()`
   returns `{ applied: false, reason }` (null when nothing was stored). The stored desk
-  stays until the user changes the grid; data loads and focus do not count.
+  stays until the user changes the grid; data loads and focus do not count. Since 2.5.10
+  the default store is IndexedDB, as for one widget, and `storage` takes an
+  `AsyncStorageLike`. The grid is built from `preset` out of sight and loads nothing until
+  the store answers, then applies the desk (or loads the preset's charts on `symbol`) with
+  the desk's chords. `ready` settles then and never rejects, and `restored()` is null until
+  it has. A workspace applied before `ready` wins over the stored one. A desk 2.5.9 left in
+  `localStorage` is copied in once and left there. `storage: localStorage` keeps it
+  synchronous. A hidden page writes the desk only when a change is pending; `pagehide` and
+  `destroy()` always write it.
 - Keyboard: only the active cell answers. Pointer down or focus inside a cell makes it
   active. A key pressed with the focus on the page body, while the pointer is over the
   grid, goes to the active chart; a focused splitter or tab keeps its arrow keys.
@@ -847,8 +861,10 @@ const report = grid.applyWorkspace(parseWorkspacePayload(fileText)); // { applie
   over each layout's slots, one row per chart count, arrows, Home, End, a caption naming
   the focused tile), Maximize, Link menu (groups, Not linked, New group, Rename group,
   channel toggles including Nearest bar, Share this chart's drawings) and Capture
-  (download, copy). Menus live in an overlay layer over the whole grid with the widget's
-  own controls.
+  (download, copy), and with `workspaces` a Layouts control at its end: the widget's
+  Layouts menu over the whole desk, naming the held layout, with a dot and a spoken status
+  while it is unsaved or failing. Menus live in an overlay layer over the whole grid with
+  the widget's own controls.
 - Maximize is a view, not saved: other cells stay alive, the maximized chart keeps its
   window through the resize, and a preset or applied workspace restores. `swap` trades
   places and spans and keeps the page order equal to the reading order. Drag a cell's bar
@@ -867,6 +883,17 @@ const report = grid.applyWorkspace(parseWorkspacePayload(fileText)); // { applie
   false on no image or a tainted canvas.
 - Dense cells: below 560 by 340 CSS px, in any layout, a cell hides its rail and keeps a
   one-row top bar; maximize brings the full chrome back.
+- Saved desks (since 2.5.10): a desk layout is `getWorkspace()` with each chart as
+  `widgetLayoutTarget` writes one (no view, no alert bookkeeping) and without the focus,
+  so an opened desk makes its first chart active. Changes are heard per chart and again
+  after `preset` or `workspace` layout events; a change in the quiet period is written on
+  hide and `pagehide`; the layout that was active reopens once `ready` settles, unless
+  `applyWorkspace` was called first (a hand-off, a file), whose desk stays; a stopped
+  autosave or a conflict is said once on the active chart's status line; the grid
+  destroys only its own controller.
+- Bottom bar (since 2.5.10, `bottombar: true`): `mountBottombar` in a strip under the
+  charts, its menus in the grid's overlay layer, targeting `active().widget`, read again on
+  `active`. Go to opens the go-to panel over the whole grid, above the bar.
 
 ## Layouts controller (since 2.5.10)
 
