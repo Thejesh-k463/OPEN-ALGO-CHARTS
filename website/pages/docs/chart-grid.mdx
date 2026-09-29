@@ -1,6 +1,6 @@
 ---
 title: Chart Grid
-description: Several widget charts in one layout with layouts from one to sixteen charts, a grid bar, maximize and swap, link groups, a whole-grid capture and portable workspace documents.
+description: Several widget charts in one layout with layouts from one to sixteen charts, a grid bar, one bar under the charts, maximize and swap, link groups, saved desks, a whole-grid capture and portable workspace documents.
 ---
 
 # Chart grid
@@ -11,7 +11,9 @@ them: layouts from one chart to sixteen, draggable splitters, one active chart t
 owns the keyboard, maximize and swap, link groups over the engine's `LinkGroup`, one
 picture of every chart, a compact view for narrow screens, and the same portable
 workspace payload that `openalgo-charts/workspace` validates and stores. An optional
-grid bar puts the layouts, maximize, the links and the capture on screen.
+grid bar puts the layouts, maximize, the links, the capture and the saved desks on
+screen, and an optional bar under the charts sets the active chart's range, date, zone
+and scale.
 
 It is part of the widget tier. The base engine and the other tiers still ship no DOM.
 
@@ -26,10 +28,12 @@ const grid = createChartGrid('#desk', {
   symbol: 'RELIANCE', exchange: 'NSE', interval: '5m',
   preset: '2x2',                 // the layout when nothing is restored
   links: { crosshair: true, viewport: true },
-  persist: 'desk',               // keep the workspace in localStorage
+  persist: 'desk',               // keep the workspace in IndexedDB (since 2.5.10)
   toolbar: true,                 // the grid bar: layouts, maximize, links, capture
+  bottombar: true,               // one bar under the charts, for the active one
 });
 
+await grid.ready;                // the stored desk has landed
 grid.cells()[1].widget.setSymbol('INFY');
 grid.setActive(grid.cells()[1].id, { focus: true });
 ```
@@ -112,9 +116,28 @@ widget's own buttons, menus, focus ring and themes:
 - **Maximize** shows the active chart alone, and restores the grid when pressed again.
 - **Link** opens the link menu for the active chart (see Linking and link groups).
 - **Capture** downloads or copies one picture of every chart.
+- **Layouts**, at the far end, with `workspaces`: the desk's saved layouts (see Saved
+  desks).
 
 A control that cannot act now is shown greyed with its reason, for example maximize on
 a grid of one chart, or capture while one chart is shown.
+
+## The bar under the charts
+
+With `bottombar: true` (since 2.5.10; off by default, as the grid bar is) one bar under
+the grid acts on the active chart: the preset ranges, Go to, the market status from the
+chart's calendar, a clock in its zone that opens the zone menu, and the auto, log and
+percent toggles. It is the widget's own bottom bar (see [the widget](/docs/widget#bottom-bar)),
+read again whenever another chart becomes active, so a press on a chart moves the bar
+to it. A chart never has a bar of its own inside a grid.
+
+With the bar, the charts leave Go to out of their top bars and the market status off
+their status lines, which the bar carries. Go to opens over the whole grid, above the
+bar, so a small chart in a four by four desk still gets the whole panel. Without the
+bar, each chart keeps Go to in its top bar and says its market status on its status
+line. `ranges`, `sessionCalendar` and `sessionShading` apply to every chart as they do
+to one widget, and a range is each chart's own: it holds while that chart's interval
+does.
 
 ## Maximize, move and swap charts
 
@@ -279,7 +302,12 @@ schema needs one, and reads back as unnamed, so a desk that returns to one group
 holding every chart writes the flat channels again.
 
 With `persist`, the grid saves this payload after every change and restores it on
-the next construction. A layout, link, group, theme, active chart, instrument, swap or
+the next construction. Since 2.5.10 the default store is IndexedDB: the grid is built
+from `preset` out of sight and asks the feed for nothing until the stored desk has been
+read, then opens it, and `grid.ready` settles. The first visit copies a desk an earlier
+release left in `localStorage` into IndexedDB, once, and leaves it there. A workspace
+you apply before `ready` settles wins over the stored one. Pass `storage: localStorage`
+to restore synchronously, as before. A layout, link, group, theme, active chart, instrument, swap or
 keyboard splitter change is written before the current task ends, so a reload straight
 after it keeps it. Pans, zooms and drags are written once they settle, and any write
 still pending is flushed when the page hides, on `pagehide` and on `destroy()`.
@@ -295,7 +323,40 @@ A stored payload that no longer applies, for example because it names a study th
 registers later, is not overwritten. The grid shows `preset`, puts the reason in a
 toast on the active chart, and keeps the stored payload until the user changes the
 grid; loading data and moving the focus do not count. `grid.restored()` reports what
-happened: `null` when nothing was stored, otherwise the `{ applied, reason? }` report.
+happened: `null` when nothing was stored, and until `ready` settles, otherwise the
+`{ applied, reason? }` report.
+
+## Saved desks
+
+With the grid bar and `workspaces` (since 2.5.10), usually a `WorkspaceRepository` from
+`openalgo-charts/workspace`, the grid keeps a layouts controller over the whole desk and
+the bar's Layouts control opens the widget's own Layouts menu on it: save, save as,
+rename, delete, recent layouts, autosave and the choice when another window changed the
+layout. The control names the layout held, with a mark while it has unsaved changes,
+which its accessible name says in words.
+
+```ts
+import { WorkspaceRepository, createIndexedDbWorkspaceStorage } from 'openalgo-charts/workspace';
+
+const grid = createChartGrid('#desk', {
+  feed, toolbar: true, persist: 'desk',
+  workspaces: new WorkspaceRepository(createIndexedDbWorkspaceStorage(indexedDB, 'my-desks'), 'desk'),
+});
+```
+
+A saved desk is `getWorkspace()` without the view of each chart, its alerts'
+bookkeeping or which chart had the focus, so panning, a closing bar or a click on
+another chart is no unsaved change; an opened desk makes its first chart active. A
+change still in autosave's quiet period is written when the page hides. The layout that
+was active when the page last closed opens once `ready` settles, over the desk the grid
+restored itself. No chart has a Layouts button of its own, and every chart's indicator
+picker offers the store's templates.
+
+`layouts` passes a controller the host built over the grid instead, which the bar
+drives and the grid never reopens or destroys, and `layouts: false` leaves the control
+out. Without the grid bar the grid keeps no controller: `workspaces` gives the charts
+their templates only, and a `layouts` controller drives each chart's own Layouts
+button.
 
 ## Capture every chart
 
@@ -358,8 +419,9 @@ grid restores every chart with its weights.
 ## Reference host
 
 The yfinance example has a grid view, `examples/yfinance/grid.html`, that uses the grid
-bar for every layout, maximize, link groups and capture, and keeps its own bar for
-import and export of layout files; the grid persists itself. Its status line names the
+bar for every layout, maximize, link groups, capture and saved desks, the bar under the
+charts with each chart's venue calendar, and keeps its own bar for import and export of
+layout files; the grid persists itself. Its status line names the
 layout with the library's own name and tile. Each chart loads the history period its
 layout saved, through a `feed` function. The main page hands a layout it cannot draw
 (more than two charts, or rows) to the grid view from its Layouts dialog, after
