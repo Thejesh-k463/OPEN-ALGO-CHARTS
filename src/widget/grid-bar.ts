@@ -28,6 +28,9 @@ import { layoutNeedsAttention } from './layouts-widget';
 import { widgetText, type WidgetTranslationOptions } from './localization';
 import { addWidgetStyles } from './styles';
 
+// The desk's saved layouts load with the bar that shows them (grid-saved.ts).
+export { attachGridSaved } from './grid-saved';
+
 /** What the bar and its menus read from the grid and ask it to do. */
 export interface GridBarHost {
   readonly doc: Document;

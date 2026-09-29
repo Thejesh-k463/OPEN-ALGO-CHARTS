@@ -51,7 +51,7 @@ import { widgetText } from './localization';
 import { applyTokens, widgetTokens, TOKEN_PREFIX, WIDGET_FONT, type WidgetThemeName } from './tokens';
 import { captureName, type MenuRow } from './topbar';
 import { GRID_BAR_CHARTS, createWidget, resolveTheme, SAVE_DEBOUNCE_MS, type Widget, type WidgetOptions } from './widget';
-import { attachGridSaved, type GridSaved } from './grid-saved';
+import type { GridSaved } from './grid-saved';
 import { cellDrawingStore, checkWorkspace, readChartDrawings, type ChartDrawings } from './grid-payload';
 import { CHART_GRID_LAYOUTS, focusSlot, isChartGridLayout, type ChartGridLayoutId } from './grid-layouts';
 import {
@@ -1448,16 +1448,15 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
     }, strip, { target: () => active?.widget ?? null, ranges: options.ranges, now: options.now, onGoTo: () => active?.widget.openDateNavigation() });
     offs.push(bus.on('active', () => foot?.refresh()));
   }
-  // The desk's saved layouts come with the bar that shows them.
-  if (options.toolbar === true) {
-    saved = attachGridSaved({
-      grid, ready, workspaces: options.workspaces, layouts: options.layouts,
-      context: () => overGrid((active as Cell).widget.context), opened: () => given,
-    });
-  }
+  // The desk's saved layouts come with the bar that shows them, and load with it.
   if (barEl !== null) {
-    usePart(gridBarPart, module => { bar = module.mountGridBar(barHost, barEl); },
-      error => report(partFailed(text, widgetText(text, 'Chart grid'), error), 'error'), () => !destroyed);
+    usePart(gridBarPart, module => {
+      saved = module.attachGridSaved({
+        grid, ready, workspaces: options.workspaces, layouts: options.layouts,
+        context: () => overGrid((active as Cell).widget.context), opened: () => given,
+      });
+      bar = module.mountGridBar(barHost, barEl);
+    }, error => report(partFailed(text, widgetText(text, 'Chart grid'), error), 'error'), () => !destroyed);
   }
   measure();
   return grid;
