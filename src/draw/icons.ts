@@ -377,18 +377,26 @@ export const DRAWING_TOOL_ACCENTS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * A registry's own entry. The registries are plain objects, so `toString` or
+ * `constructor` would otherwise come back as an inherited function: drawn as
+ * path data where an unknown id must give `undefined`.
+ */
+const own = (registry: Readonly<Record<string, string>>, id: string): string | undefined =>
+  Object.prototype.hasOwnProperty.call(registry, id) ? registry[id] : undefined;
+
+/**
  * The glyph for a tool, or `undefined` when it has none.
  *
  * Undefined rather than a placeholder: a host that renders an empty box has a
  * visible gap to fix, while one handed a question mark ships it.
  */
 export function drawingToolIcon(toolId: string): string | undefined {
-  return DRAWING_TOOL_ICONS[toolId];
+  return own(DRAWING_TOOL_ICONS, toolId);
 }
 
 /** The filled accent for a tool glyph, or `undefined` when it has none. */
 export function drawingToolAccent(toolId: string): string | undefined {
-  return DRAWING_TOOL_ACCENTS[toolId];
+  return own(DRAWING_TOOL_ACCENTS, toolId);
 }
 
 /** Every id this set covers, for a host building a palette from it. */
@@ -734,12 +742,12 @@ export const CHROME_ICON_FILLED: ReadonlySet<string> = new Set([
 
 /** The chrome glyph for an id, or `undefined` when there is none. */
 export function chromeIcon(id: string): string | undefined {
-  return CHROME_ICONS[id];
+  return own(CHROME_ICONS, id);
 }
 
 /** The filled accent for a chrome glyph, or `undefined` when it has none. */
 export function chromeIconAccent(id: string): string | undefined {
-  return CHROME_ICON_ACCENTS[id];
+  return own(CHROME_ICON_ACCENTS, id);
 }
 
 /** Every id the chrome tier covers. */
@@ -756,7 +764,7 @@ export function chromeIconIds(): string[] {
  * which has no glyph until the host draws one.
  */
 export function chartTypeIcon(type: string): string | undefined {
-  return CHROME_ICONS[`chart-${type}`];
+  return own(CHROME_ICONS, `chart-${type}`);
 }
 
 /** One chart's place in a layout glyph: a cell, and how many rows and columns it spans. */

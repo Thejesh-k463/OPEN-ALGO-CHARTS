@@ -17,9 +17,9 @@
  * paints the inside of those marks and leaves the outline to the frame.
  */
 import {
-  CHROME_ICON_ACCENTS, CHROME_ICON_ATTRS, CHROME_ICON_FILLED, CHROME_ICONS,
+  CHROME_ICON_ACCENTS, CHROME_ICON_ATTRS, CHROME_ICON_FILLED,
   DRAWING_TOOL_ACCENTS, DRAWING_TOOL_ICONS, ICON_ATTRS, ICON_STROKE,
-  type IconAttrs,
+  chromeIcon, drawingToolIcon, type IconAttrs,
 } from './icons';
 
 const XMLNS = 'http://www.w3.org/2000/svg';
@@ -66,8 +66,9 @@ function attr(value: string | number): string {
   ));
 }
 
-function glyph(registry: Readonly<Record<string, string>>, id: string, tier: string): string {
-  const d = registry[id];
+/** Through the lookups, so an inherited name such as `toString` throws as an unknown id does. */
+function glyph(lookup: (id: string) => string | undefined, id: string, tier: string): string {
+  const d = lookup(id);
   if (d === undefined) throw new Error(`openalgo-charts: no ${tier} icon "${id}"`);
   return d;
 }
@@ -117,7 +118,7 @@ function frame(inner: string, attrs: IconAttrs, fill: string, opts: IconSvgOptio
  * ```
  */
 export function iconSvg(id: string, opts: IconSvgOptions = {}): string {
-  const d = glyph(DRAWING_TOOL_ICONS, id, 'tool');
+  const d = glyph(drawingToolIcon, id, 'tool');
   return frame(body(d, DRAWING_TOOL_ACCENTS[id]), ICON_ATTRS, ICON_ATTRS.fill, opts);
 }
 
@@ -126,7 +127,7 @@ export function iconSvg(id: string, opts: IconSvgOptions = {}): string {
  * `CHROME_ICON_FILLED` are painted solid as well as stroked.
  */
 export function chromeIconSvg(id: string, opts: IconSvgOptions = {}): string {
-  const d = glyph(CHROME_ICONS, id, 'chrome');
+  const d = glyph(chromeIcon, id, 'chrome');
   const fill = CHROME_ICON_FILLED.has(id) ? 'currentColor' : CHROME_ICON_ATTRS.fill;
   return frame(body(d, CHROME_ICON_ACCENTS[id]), CHROME_ICON_ATTRS, fill, opts);
 }
@@ -145,7 +146,7 @@ export function chromeIconSvg(id: string, opts: IconSvgOptions = {}): string {
 export function iconSprite(ids: readonly string[] = Object.keys(DRAWING_TOOL_ICONS)): string {
   let symbols = '';
   for (const id of new Set(ids)) {
-    const d = glyph(DRAWING_TOOL_ICONS, id, 'tool');
+    const d = glyph(drawingToolIcon, id, 'tool');
     symbols += `<symbol id="${attr(ICON_SYMBOL_PREFIX + id)}" viewBox="${attr(ICON_ATTRS.viewBox)}">`
       + `${body(d, DRAWING_TOOL_ACCENTS[id])}</symbol>`;
   }
@@ -154,7 +155,7 @@ export function iconSprite(ids: readonly string[] = Object.keys(DRAWING_TOOL_ICO
 
 /** An `<svg>` that references a symbol from `iconSprite`. Same frame as `iconSvg`. */
 export function iconUse(id: string, opts: IconSvgOptions = {}): string {
-  glyph(DRAWING_TOOL_ICONS, id, 'tool');
+  glyph(drawingToolIcon, id, 'tool');
   return frame(`<use href="#${attr(ICON_SYMBOL_PREFIX + id)}"/>`, ICON_ATTRS, ICON_ATTRS.fill, opts);
 }
 
@@ -181,7 +182,7 @@ function contrastOf(color: string): string {
  * `url("data:image/svg+xml,...") x y, fallback`, ready for `canvas.style.cursor`.
  */
 export function toolCursor(id: string, opts: ToolCursorOptions = {}): string {
-  const d = glyph(DRAWING_TOOL_ICONS, id, 'tool');
+  const d = glyph(drawingToolIcon, id, 'tool');
   const size = opts.size ?? 20;
   if (!(Number.isFinite(size) && size > 0 && size <= 128)) {
     throw new RangeError(`openalgo-charts: cursor size ${size} is outside 1..128`);

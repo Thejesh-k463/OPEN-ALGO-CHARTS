@@ -144,9 +144,11 @@ describe('menu rows', () => {
       { label: 'Copy', icon: 'copy', onSelect: () => {} },
       { label: 'No icon', onSelect: () => {} },
       { label: 'Unknown', icon: 'no-such-glyph', onSelect: () => {} },
+      { label: 'Inherited', icon: 'toString', onSelect: () => {} },
     ]);
     const rows = root.querySelectorAll('.oac-menu .oac-menu__row');
-    expect(rows.map((r) => glyphOf(r))).toEqual([chromeIconSvg('copy'), '<svg aria-hidden="true"></svg>', '<svg aria-hidden="true"></svg>']);
+    const empty = '<svg aria-hidden="true"></svg>';
+    expect(rows.map((r) => glyphOf(r))).toEqual([chromeIconSvg('copy'), empty, empty, empty]);
   });
 
   it('tick a switched-on context menu row with the registry check, in the marker column', () => {

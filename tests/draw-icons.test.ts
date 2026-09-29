@@ -21,7 +21,7 @@ import {
   chartTypeIcon, layoutIconPath,
   type IconAttrs, type LayoutIconSlot,
 } from '../src/draw/icons';
-import { chromeIconSvg } from '../src/draw/icon-svg';
+import { chromeIconSvg, iconSvg } from '../src/draw/icon-svg';
 import { registeredDrawingTools, registerBuiltinDrawingTools } from '../src/draw/index';
 import { registeredChartTypes } from '../src/index';
 import { registerTransformChartTypes } from '../src/transform/index';
@@ -600,6 +600,19 @@ describe('the lookup', () => {
     // A host handed a question mark ships it; one handed nothing sees the gap.
     expect(drawingToolIcon('no-such-tool')).toBeUndefined();
     expect(chromeIcon('no-such-button')).toBeUndefined();
+  });
+
+  it('reads only its own entries, never a name every object inherits', () => {
+    // The registries are plain objects: `toString` is a function there, and
+    // was handed back as path data where an unknown id gives undefined.
+    for (const id of ['toString', 'constructor', 'hasOwnProperty', '__proto__']) {
+      expect(drawingToolIcon(id), id).toBeUndefined();
+      expect(drawingToolAccent(id), id).toBeUndefined();
+      expect(chromeIcon(id), id).toBeUndefined();
+      expect(chromeIconAccent(id), id).toBeUndefined();
+      expect(() => chromeIconSvg(id), id).toThrow(/no chrome icon/);
+      expect(() => iconSvg(id), id).toThrow(/no tool icon/);
+    }
   });
 
   it('lists every id it covers', () => {
