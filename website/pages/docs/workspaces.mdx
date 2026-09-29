@@ -9,7 +9,89 @@ The optional `openalgo-charts/workspace` entry provides validated configuration
 documents, a catalog repository and an IndexedDB adapter. It creates no chart,
 grid interface or market-data subscription. Your host prepares data, activates
 layouts and applies templates to the intended chart. For a ready-made host, the
-widget tier's [chart grid](/docs/chart-grid) writes and applies these payloads.
+widget tier's [chart grid](/docs/chart-grid) writes and applies these payloads,
+and a widget given a store carries a
+[Layouts menu and indicator templates](#layouts-and-templates-in-the-widget) of its own.
+
+## Layouts and templates in the widget
+
+Since 2.5.10 a widget takes the repository as `workspaces` and offers everything below
+itself. The widget tier imports the workspace tier as types only: the workspace bundle
+loads with the store the host passes, never on its own.
+
+```ts
+import { WorkspaceRepository, createIndexedDbWorkspaceStorage } from 'openalgo-charts/workspace';
+import { createWidget } from 'openalgo-charts/widget';
+
+const workspaces = new WorkspaceRepository(createIndexedDbWorkspaceStorage(indexedDB), 'account-7');
+const widget = createWidget('#chart', { feed, symbol: 'INFY', exchange: 'NSE', interval: '5m', workspaces });
+```
+
+- **The Layouts button** in the top bar names the layout on the chart and marks one with
+  unsaved changes, a failed autosave or a change from another window. On a phone layout
+  the More sheet has a Layouts row. `widget.openLayouts()` opens the menu, and
+  `widget.layouts` is the [layouts controller](#hold-a-layout-in-a-widget-or-a-grid)
+  behind it.
+- **The menu** saves, saves under a new name (prefilled with the symbol and interval the
+  first time), renames and deletes the layout on the chart, deleting only after asking. It
+  lists up to ten recent layouts, most recent first, then the others by name; a row opens
+  its layout, and the arrow keys walk the rows. The Autosave switch in its footer turns the
+  catalog preference on and off and says what autosave is doing: saving, saved, could not
+  save, or waiting.
+- **Nothing unsaved is dropped unasked.** Opening another layout first compares the chart
+  with its layout now, and when the held layout has changes that would be lost the menu
+  asks: save and open, open without saving, or cancel.
+- **Another window.** When another tab or another control saved or deleted the layout on
+  the chart, the menu says so (it reads the list again as it opens) and saves nothing over
+  it until the user chooses: Reload list, Save as a copy, or Overwrite.
+- **A reload continues.** A widget built with a store reopens the layout that was active
+  when the page last closed, which replaces the chart the host started with (and, with
+  `persist` on as well, the state `persist` brought back), and records nothing to do it.
+- **Autosave and the page.** A change still inside autosave's quiet period is written when
+  the page is hidden, and tried once more as it goes. A host that destroys the widget
+  first calls `await widget.layouts?.flush()`, or that last change is dropped.
+- **A layout is what is on the chart, not where it was scrolled.** The widget saves the
+  instrument, interval, chart type, theme, studies, panes, scales, drawings and alerts, and
+  leaves out the viewport, the bar spacing and pinned price ranges, so a pan never reads as
+  an unsaved change and an opened layout fits the bars it loads. It leaves out each alert's
+  bookkeeping too (the last bar judged, the last touch and trigger), so a bar closing under
+  an alert is no change either; an alert's state stays, and a spent alert is saved spent.
+- **A replay suspends it.** While a replay runs, autosave waits (and writes the change
+  once the replay ends), and no layout opens under it.
+
+The menu's words are message keys under `schema.ui.layouts.` and the templates list's under
+`schema.ui.templates.`, each with its English text as the fallback, for a host's
+`translate`.
+
+Two widgets on one page each take a repository of their own namespace
+(`new WorkspaceRepository(storage, 'left')`); given one, both reopen and hold the same
+layout, and each sees the other's saves as another window's.
+
+`layouts: false` keeps the store for templates but shows no menu. In a
+[chart grid](/docs/chart-grid) no chart saves a layout of its own; pass one
+`createLayoutsController(store, gridTarget)` as `layouts` and every chart's menu drives
+it. `widgetLayoutTarget(widget)` is the widget's own target, for a host that drives a
+controller from its own controls, and `openLayoutsMenu(widget.context, controller, anchor?)`
+opens the widget's menu over any controller, under a host's own button or centred without
+one. Its rules, `LAYOUTS_MENU_CSS`, are part of the widget's stylesheet.
+
+**Indicator templates.** With a store that has `planIndicatorTemplateState`
+(`WorkspaceRepository` has it), the indicator picker's Templates button, bottom left,
+lists the saved templates. Replace puts a template's studies in place of the user's
+(studies the host keeps stay), and Append adds them in panes of their own. Save studies
+as template names the studies on the chart, with their panes and scales when the store
+has `captureIndicatorTemplate`. A delete asks first, and a replay holds every apply back.
+`applyIndicatorTemplate(ctx, store, template, mode)` and
+`saveIndicatorTemplate(ctx, store, name)` do the same from host code, with
+`widget.context` as `ctx`.
+
+Undo: a template lands through `restoreState`, which rebuilds every study, so it starts a
+new undo timeline as opening a layout does. The apply is the one step on it: Ctrl+Z puts
+the studies and panes back as they were, keeping the drawings, alerts and view the chart
+has then, and Ctrl+Y applies it again. Steps taken before the apply are dropped, because
+the studies they name were rebuilt. A template the chart refuses before restoring changes
+nothing and leaves the timeline as it was; one that fails part way through its restore is
+put back as the chart was, and the error says why.
 
 ## Save a chart as a workspace
 
@@ -236,11 +318,16 @@ next change is checked against here, so two controls on one page (a layouts menu
 template picker) can share one repository without refusing each other's changes.
 
 `WorkspaceStore` is the contract such a control holds: `load`, `subscribe` and every change
-above except `importDocument`. `WorkspaceRepository` implements it; a host that keeps
-layouts on its own server can implement it directly, with the same revision and notice
-guarantees. `createMemoryWorkspaceStorage(seed?)` is revision-checked storage in memory,
-for tests, previews and hosts without IndexedDB: the same atomic comparison as the
-IndexedDB adapter, detached copies in and out, and nothing that outlives the page.
+above except `importDocument`, plus two optional members the widget's indicator picker
+reads (since 2.5.10): `captureIndicatorTemplate(chart)` and
+`planIndicatorTemplateState(chart, input, mode, options?)`, the workspace tier's functions
+of the same names, reached through the store so the widget tier never loads this tier on
+its own. `WorkspaceRepository` implements all of it; a host that keeps layouts on its own
+server can implement it directly, with the same revision and notice guarantees, and
+assign the two functions from this tier to offer templates.
+`createMemoryWorkspaceStorage(seed?)` is revision-checked storage in memory, for tests,
+previews and hosts without IndexedDB: the same atomic comparison as the IndexedDB
+adapter, detached copies in and out, and nothing that outlives the page.
 
 ## Hold a layout in a widget or a grid
 
@@ -270,36 +357,25 @@ grid.on('layout', () => layouts.changed());  // and any other change the host he
 const report = await layouts.open(otherId);  // { applied, reason? }
 ```
 
-One widget is a one-chart payload. A chart state carries absent optional fields, so pass
-it through JSON before `migrateWidgetWorkspace`, and restore through `restoreState`, which
-clears the widget's undo history as loading any layout does:
+One widget is a one-chart payload, and the widget tier ships its target (since 2.5.10):
+`widgetLayoutTarget(widget)` captures the widget's state in the one-chart form
+`migrateWidgetWorkspace` writes, without the view or the alerts' bookkeeping, and applies a one-chart layout
+through `restoreState` (bringing back the rail's magnet and stay), which clears the
+widget's undo history as loading any layout does. It refuses, before anything changes, a
+layout of several charts, one with comparisons, and one naming an interval, a chart type
+or a study this page cannot show. A widget given `workspaces` builds its controller over
+it:
 
 ```ts
-import { migrateWidgetWorkspace } from 'openalgo-charts/workspace';
+import { createLayoutsController, widgetLayoutTarget } from 'openalgo-charts/widget';
 
-const target = {
-  capture() {
-    const state = JSON.parse(JSON.stringify(widget.getState()));
-    const { layout, panes, activePaneId, sync } = migrateWidgetWorkspace(state, { id: 'current', name: 'current', now: Date.now() });
-    return { layout, panes, activePaneId, sync };
-  },
-  apply({ panes }) {
-    if (panes.length !== 1) return { applied: false, reason: 'one chart shows one pane' };
-    const [pane] = panes;
-    // The pane carries the drawing rail's magnet and stay; the rest of the rail stays the user's.
-    const rail = widget.getState().rail;
-    return widget.restoreState({
-      version: 1, symbol: pane.symbol, exchange: pane.exchange, interval: pane.interval, chartType: pane.chartType,
-      chart: pane.chart, theme: pane.settings['widget.theme'], ...(pane.variant ? { variant: pane.variant } : {}),
-      ...(rail === null ? {} : { rail: { ...rail, magnet: pane.magnet, stay: pane.stay } }),
-    });
-  },
-  subscribe(listener) {
-    const offs = ['symbol', 'interval', 'theme', 'layout'].map(event => widget.on(event, listener));
-    return () => offs.forEach(off => off());
-  },
-};
+const layouts = createLayoutsController(store, widgetLayoutTarget(widget));
 ```
+
+A target may also say it is `suspended()` (since 2.5.10), as the widget's is while a
+replay runs: autosave then waits, `open` is refused, `state().suspended` is true, and the
+target's `subscribe` listener announces when it turns back. A save the user asks for still
+goes through.
 
 - **State.** `state()` returns `catalog` (the newest catalog seen, to read and not
   change), `layoutId` (the held layout), `revision` (what the next write into it is
@@ -374,8 +450,9 @@ A localStorage read/write pair is not an atomic replacement.
 identity. `setAutosave(boolean)` stores a preference, not a timer. Hosts debounce
 saves, suppress them during restoration and replay, and keep completion notices
 bound to the originating account and chart. For a widget or a grid the layouts
-controller debounces and ignores its own restores; replay stays the host's to
-suppress. Use a new repository on account
+controller debounces and ignores its own restores, and a target that reports
+`suspended()` holds autosave; the widget's own target does during a replay, and a
+grid's target decides for its charts. Use a new repository on account
 change and call `storage.close()` on disposal. Storage failures reject; there is
 no silent fallback to a different store.
 
