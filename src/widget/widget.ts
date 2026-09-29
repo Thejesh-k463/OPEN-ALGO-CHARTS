@@ -40,7 +40,7 @@ import { ChartHistory } from './history';
 import { Keymap } from './keymap';
 import { mountRail, type RailHandle, type RailOptions, type RailPrefs } from './rail';
 import { mountStatusline, type StatuslineHandle } from './statusline';
-import { mountTopbar, type SymbolSearch, type TopbarHandle } from './topbar';
+import { mountTopbar, type MenuRow, type SymbolSearch, type TopbarHandle } from './topbar';
 import { mountToasts, type ToastHandle, type ToastKind, type Toaster } from './toast';
 import { applyTokens, themeMode, widgetTokens, type WidgetThemeName } from './tokens';
 import { injectWidgetStyles } from './styles';
@@ -156,6 +156,12 @@ export interface WidgetOptions extends Omit<ChartOptions, 'theme'> {
   drawingTemplates?: DrawingTemplateStore;
   /** The floating toolbar over the selected drawings on a desktop layout. Default: shown with the rail. */
   drawingToolbar?: boolean;
+  // Hook (chart grid, 2.5.10): read by topbar.ts openCapture; the grid fills it.
+  /**
+   * More rows at the end of the capture menu, read each time it opens; a
+   * string starts a group. The chart grid adds its whole-grid capture here.
+   */
+  captureRows?: () => ReadonlyArray<MenuRow | string>;
   /** BCP 47 tag for the numbers on the status line. Default: the runtime's. */
   locale?: string;
   /** Host translations for widget chrome and dialogs, with English fallback. */
@@ -305,7 +311,7 @@ const WIDGET_ONLY_KEYS: ReadonlyArray<keyof WidgetOptions> = [
   'feed', 'symbol', 'exchange', 'interval', 'variant', 'intervals', 'chartType', 'theme', 'rail', 'topbar', 'statusline',
   'mobile', 'loading', 'persist', 'storage', 'drawingScope', 'drawingStore', 'locale', 'translate', 'indicators', 'symbolSearch', 'lookbackBars', 'now', 'onOrder', 'styleNonce',
   'tradingCapabilities', 'tradingMode', 'tradingLocked', 'account',
-  'eventDetails',
+  'eventDetails', 'captureRows',
   'panels', 'typingNavigation', 'keyboardRoute', 'watchlist', 'news', 'drawingTemplates', 'drawingToolbar',
 ];
 
@@ -701,6 +707,7 @@ class WidgetImpl implements Widget {
         settingsAvailable: () => widgetDialog('settings') !== null,
         indicatorsAvailable: () => widgetDialog('indicatorPicker') !== null,
         dataAvailable: () => this.dataController === null || this._dataState?.status === 'ready' || this._dataState?.status === 'stale',
+        captureRows: options.captureRows,
       });
     }
     this._mobile = mountMobile(this.context, {
