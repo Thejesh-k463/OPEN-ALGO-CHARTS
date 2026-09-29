@@ -11,6 +11,41 @@ import { timeBuckets } from './date-navigator';
 
 export type MobileMode = 'auto' | 'always' | 'never';
 
+/** A container at most this many CSS px wide gets the compact controls, whatever the pointer. */
+export const MOBILE_MAX_WIDTH = 640;
+/**
+ * The widest container a phone on its side gives the widget (the largest
+ * phones are about 930 CSS px wide in landscape). Up to this width a coarse
+ * pointer in a short container keeps the compact controls, so turning a phone
+ * does not swap its chrome.
+ */
+export const PHONE_LANDSCAPE_MAX_WIDTH = 960;
+/**
+ * A coarse-pointer container at least this tall is a tablet, not a phone on
+ * its side. Phones in landscape leave the page about 430 px or less, and a
+ * tablet in landscape keeps about 690 px or more after the browser's bars, so
+ * the cut sits between them. Height only splits the two while the width is
+ * ambiguous: past {@link PHONE_LANDSCAPE_MAX_WIDTH} no phone is involved.
+ */
+export const TABLET_MIN_HEIGHT = 600;
+
+/**
+ * Whether the widget shows its compact controls for a container of the given
+ * size. `auto` decides by the container, never the window, so a narrow chart
+ * in a wide dashboard is compact too. A fine pointer switches at
+ * {@link MOBILE_MAX_WIDTH}. A coarse pointer alone does not make a phone: a
+ * tablet in either orientation, or a touch laptop, has room for the toolbar
+ * and the drawing rail, which put every tool one tap away, where the compact
+ * layout keeps them a sheet away. Only a phone on its side (wide but short)
+ * widens the cutoff. An unmeasured container (width 0) is not compact.
+ */
+export function resolveMobileMode(mode: MobileMode, width: number, height: number, coarsePointer: boolean): boolean {
+  if (mode !== 'auto') return mode === 'always';
+  if (!(width > 0)) return false;
+  if (width <= MOBILE_MAX_WIDTH) return true;
+  return coarsePointer && width <= PHONE_LANDSCAPE_MAX_WIDTH && height > 0 && height < TABLET_MIN_HEIGHT;
+}
+
 export interface MobileOptions {
   mode?: MobileMode;
   container: HTMLElement;
@@ -363,10 +398,27 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
   }
 
   const pointerQuery = mode === 'auto' ? doc.defaultView?.matchMedia?.('(pointer: coarse)') ?? null : null;
-  const width = (): number => opts.container.getBoundingClientRect().width || opts.container.clientWidth;
-  const applyMode = (): void => {
-    const next = mode === 'always' || (mode === 'auto' && (width() <= 640 || pointerQuery?.matches === true));
-    if (modeApplied && next === mobile) return;
+  // Any form field counts: a focused checkbox only delays a switch until blur,
+  // and naming the keyboard-raising input types costs the tier bytes.
+  const typing = (el: Element | null): boolean => el !== null && ctx.root.contains(el)
+    && (/^(INPUT|TEXTAREA)$/.test(el.tagName) || (el as HTMLElement).isContentEditable === true);
+  // Set when a switch waits for a text field to lose focus.
+  let held = false;
+  const apply = (whileTyping: boolean): void => {
+    const rect = opts.container.getBoundingClientRect();
+    const width = rect.width || opts.container.clientWidth;
+    const height = rect.height || opts.container.clientHeight;
+    // A container hidden or collapsed after it was measured reports 0 in one
+    // dimension or both. Keep what it had rather than close an open sheet
+    // over a size nobody can see.
+    if (modeApplied && !(width * height > 0)) return;
+    const next = resolveMobileMode(mode, width, height, pointerQuery?.matches === true);
+    if (modeApplied && next === mobile) { held = false; return; }
+    // An on-screen keyboard can shorten the container past the tablet
+    // height; switching then would hide the field being typed in and
+    // dismiss the keyboard. The switch waits for the field to lose focus.
+    if (modeApplied && !whileTyping && typing(doc.activeElement)) { held = true; return; }
+    held = false;
     modeApplied = true;
     mobile = next;
     ctx.root.classList.toggle('is-mobile', mobile);
@@ -374,9 +426,17 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
     root.hidden = !mobile;
     if (!mobile) { closeSheet(); clearSearch(); }
   };
+  const applyMode = (): void => apply(false);
 
   const Observer = (doc.defaultView as (Window & typeof globalThis) | null)?.ResizeObserver;
   let observer: ResizeObserver | null = null;
+  if (mode === 'auto') {
+    const onFocusOut = (event: Event): void => {
+      if (held && !typing((event as FocusEvent).relatedTarget as Element | null)) apply(true);
+    };
+    ctx.root.addEventListener('focusout', onFocusOut);
+    offs.push(() => ctx.root.removeEventListener('focusout', onFocusOut));
+  }
   if (mode === 'auto' && Observer !== undefined) {
     observer = new Observer(applyMode);
     observer.observe(opts.container);
