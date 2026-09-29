@@ -42,7 +42,7 @@ explicitly labeled estimates; use the current API types for implementation.
 | Linked views | Base appearance and drawings adapters, chart type channel and draw-tier `DrawingLinkGroup`; matching symbol and exchange, separate local history and persisted lineage; named link groups saved in workspaces | [Chart linking](https://marketcalls.github.io/openalgo-charts/docs/chart-linking/) |
 | Timeline events | Base grouping and clustering model, with host-supplied data and widget details | [Events](https://marketcalls.github.io/openalgo-charts/docs/events/) |
 | Workspaces | Optional portable documents, revisioned repository and async storage; host builds and activates charts | [Workspaces](docs/workspaces.md) |
-| Chart grids | Widget-tier `createChartGrid`: presets, splitters, one active chart, base `LinkGroup` links and workspace payloads | [Chart grid](https://marketcalls.github.io/openalgo-charts/docs/chart-grid/) |
+| Chart grids | Widget-tier `createChartGrid`: layouts from one to sixteen charts, a grid bar, splitters, maximize and swap, one active chart, named link groups over the base `LinkGroup`, a whole-grid capture and workspace payloads | [Chart grid](https://marketcalls.github.io/openalgo-charts/docs/chart-grid/) |
 | Date navigation | Widget-tier `DateNavigator` and panel; the host's loader reaches older history, the chart places the view | [Data loading](https://marketcalls.github.io/openalgo-charts/docs/data-loading/) |
 | Pane layout | Base pane weights, maximize and collapse to a strip, and an opt-in movable price pane, saved in pane state and workspaces | [Scales and panes](https://marketcalls.github.io/openalgo-charts/docs/scales-and-panes/) |
 | Drawing policies | Draw-tier `policy` on each drawing; forced host calls bypass it and record no undo step | [Drawing tools](https://marketcalls.github.io/openalgo-charts/docs/drawing-tools/) |
@@ -220,6 +220,8 @@ src/
     ├── storage.ts           # the IndexedDB store, its change announcements, the one-time copy from localStorage, the default store
     ├── keymap.ts            # one capture-phase keymap with scopes and conflict reporting
     ├── keymap-editor.ts     # the ? panel: lists every chord, records a new one, names conflicts, resets
+    ├── grid.ts              # createChartGrid: cells, focus, splitters, maximize, swap, workspace
+    ├── grid-layouts.ts / grid-links.ts / grid-bar.ts / grid-cells.ts / grid-capture.ts / grid-text.ts / grid-styles.ts
     ├── rail.ts / topbar.ts / statusline.ts / toast.ts
     ├── tokens.ts / styles.ts# --oac- tokens derived from the ChartTheme; one scoped stylesheet
     ├── form.ts              # one control renderer for every schema-generated form
