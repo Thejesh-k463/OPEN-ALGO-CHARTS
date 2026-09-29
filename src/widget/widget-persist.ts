@@ -11,6 +11,9 @@
  * as it did in widget.ts, and a member the shell renames or retypes fails to
  * compile here. The tier entry exports none of it: the names hosts import
  * (`stripView` and the storage constants) stay declared in widget.ts.
+ * `_scheduleSave` and `_saveNow` stay on the shell as one-line delegates,
+ * because every change the shell follows schedules a save and `destroy`
+ * writes the last one, and the timer's callback here calls back through them.
  */
 import {
   dataVariantKey, isKnownInterval, normalizeDataVariant, registeredChartTypes,
@@ -124,9 +127,9 @@ export function applySavedLayout(w: PersistHost, saved: WidgetState | null): voi
     let layout = same ? saved.chart : stripView(saved.chart);
     // The layout's own drawings were attached to its instrument by
     // `scopeDrawings`; the chart keeps the ones the current instrument has,
-    // already on it. A
-    // layout that names no instrument has nowhere else to keep them, so they
-    // land as they always did and go to the first instrument charted.
+    // already on it. A layout that names no instrument has nowhere else to
+    // keep them, so they land as they always did and go to the first
+    // instrument charted.
     if (w.instrumentDrawings !== null && savedKey(saved) !== null) layout = { ...layout, drawings: w.draw.toJSON() };
     const report = w.chart.restoreState(layout);
     if (report.applied) {

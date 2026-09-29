@@ -76,7 +76,7 @@ export function installKeys(w: KeysHost): void {
   // nothing right now is declined so the engine (an arrow pan) still gets it.
   const editing = (e: KeyEventLike): boolean => {
     const action = keyToDrawingAction(e, drawCtx());
-    // Alert deletion is a fallback: a drawing selection, hover or armed
+    // Alert deletion is a fallback: a drawing selection, hover or active
     // tool keeps ownership even when the pointer is over an alert line.
     if (action === null) {
       const alertId = w.alerts.hovered();
