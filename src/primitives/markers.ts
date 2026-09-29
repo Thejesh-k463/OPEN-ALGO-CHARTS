@@ -1,6 +1,12 @@
 /**
  * Series markers (ARCHITECTURE.md §8.1): buy/sell signals and shapes anchored
  * to bars. Visible-range culled, per-bar stacked, four discrete sizes.
+ *
+ * Markers that carry text and sit above or below the bar (or on a pane edge)
+ * are laid out in lanes: a label is wider than a bar, so on a whipsaw the
+ * signals on neighbouring bars landed on each other. Each one is pushed
+ * outward just past any earlier one on its side whose box it overlaps, and
+ * one that overlaps nothing stays where it always was.
  */
 import type { Bar } from '../model/bar';
 import type { SeriesId } from '../model/data-layer';
@@ -220,6 +226,76 @@ function barAtTime(bars: readonly Bar[], time: number): Bar | undefined {
   return undefined;
 }
 
+const FAMILY = 'system-ui, sans-serif';
+
+/**
+ * The side a text mark stacks away from: up for marks above the bar or on
+ * the pane's bottom edge, down for marks below it or on the top edge. A mark
+ * at a price or in the bar has one place to be and is never moved.
+ */
+const LANE: Partial<Record<MarkerPosition, -1 | 1>> = { aboveBar: -1, paneBottom: -1, belowBar: 1, paneTop: 1 };
+
+const isLabel = (m: SeriesMarker): boolean => m.shape === 'labelUp' || m.shape === 'labelDown';
+const markerFontPx = (m: SeriesMarker): number => m.fontSize ?? Math.max(9, markerSizePx(m.size));
+
+interface LaneBox { l: number; r: number; t: number; b: number }
+interface Widths { dpr: number; half: Map<SeriesMarker, number>; widest: number }
+
+/**
+ * Half the width of every text marker, measured once per marker set and
+ * device ratio, and the widest that stacks. The lane layout reads these for
+ * marks it does not draw (those left of the view), so a paint never measures
+ * the whole history.
+ */
+function measure(ctx: CanvasRenderingContext2D, markers: readonly SeriesMarker[], dpr: number): Widths {
+  const out: Widths = { dpr, half: new Map(), widest: 0 };
+  const seen = new Map<string, number>();
+  for (const m of markers) {
+    const fontPx = markerFontPx(m) * dpr;
+    if (m.text === undefined || !(fontPx > 0) || !Number.isFinite(fontPx)) continue;
+    const label = isLabel(m);
+    const font = textFont(m, fontPx, FAMILY, label);
+    const key = font + '\n' + m.text;
+    let w = seen.get(key);
+    if (w === undefined) {
+      ctx.font = font;
+      w = 0;
+      for (const line of m.text.split('\n')) w = Math.max(w, ctx.measureText(line).width);
+      seen.set(key, w);
+    }
+    // A plate is its text plus padding; a glyph with text is the wider of the two.
+    const half = (label ? w + fontPx : Math.max(w, markerSizePx(m.size) * dpr)) / 2;
+    out.half.set(m, half);
+    if (LANE[m.position] !== undefined && half > out.widest) out.widest = half;
+  }
+  return out;
+}
+
+/**
+ * Push a box outward (`dir` -1 up, 1 down) until it clears every box already
+ * in its lane, record it, and return how far it moved. A box that overlaps
+ * nothing does not move. Boxes whose right edge is left of `keepFrom` cannot
+ * reach this box or any later one, and are dropped once the lane grows.
+ */
+function placeInLane(lane: LaneBox[], dir: -1 | 1, l: number, r: number, t: number, b: number, gap: number, keepFrom: number): number {
+  if (lane.length > 32) {
+    let k = 0;
+    for (const box of lane) if (box.r > keepFrom) lane[k++] = box;
+    lane.length = k;
+  }
+  let dy = 0;
+  for (let moved = true; moved;) {
+    moved = false;
+    for (const box of lane) {
+      if (box.r <= l || box.l >= r || box.b <= t + dy || box.t >= b + dy) continue;
+      dy = dir < 0 ? box.t - gap - b : box.b + gap - t;
+      moved = true;
+    }
+  }
+  lane.push({ l, r, t: t + dy, b: b + dy });
+  return dy;
+}
+
 export class SeriesMarkers implements IPrimitive {
   private readonly _seriesId: SeriesId;
   private readonly _fallbackBars: (() => readonly Bar[]) | undefined;
@@ -227,6 +303,7 @@ export class SeriesMarkers implements IPrimitive {
   private _markers: SeriesMarker[] = [];
   private _host: PrimitiveHost | null = null;
   private _lastPositions: { id: string; x: number; y: number; clip?: { width: number; height: number } }[] = [];
+  private _widths: Widths | undefined;
 
   /**
    * @param seriesId The series whose pane and price scale the marks live on.
@@ -258,6 +335,7 @@ export class SeriesMarkers implements IPrimitive {
     }
     this._markers = markers.slice().sort((a, b) => a.time - b.time);
     this._lastPositions = [];
+    this._widths = undefined;
     this._host?.requestUpdate();
   }
 
@@ -294,12 +372,53 @@ export class SeriesMarkers implements IPrimitive {
     const priceScale = this._priceScale?.() ?? rc.priceScale;
     const range = rc.timeScale.visibleRange();
     const stackByTime = new Map<number, number>();
+    const markers = this._markers;
+    const dpr = rc.dpr;
 
     ctx.save();
-    for (const m of this._markers) {
+    if (this._widths?.dpr !== dpr) this._widths = measure(ctx, markers, dpr);
+    const { half: halfWidth, widest } = this._widths;
+    // Where the layout begins. A lane depends on every earlier text mark whose
+    // box reaches it, and that chain can start left of the view, so the layout
+    // starts at the last mark no earlier one can reach past: the same mark
+    // wherever the view is panned, which keeps labels still while it scrolls.
+    let start = 0;
+    if (widest > 0) {
+      // Past the end when nothing is paintable: the loop below has nothing to do.
+      start = markers.length;
+      let reach = -Infinity, chain = markers.length;
+      for (let i = 0; i < markers.length; i++) {
+        const m = markers[i];
+        const index = rc.dataLayer.timeToIndex(m.time);
+        if (index === undefined) continue;
+        const x = rc.timeScale.indexToX(index) * dpr;
+        const half = halfWidth.get(m) ?? 0;
+        // Every later mark sits at or right of x, so no box before this one
+        // can reach it or anything after it.
+        const breaks = x - widest >= reach;
+        // The first mark that may be painted ends the search.
+        if (hasTextStyle(m) || m.textColor !== undefined ? x + Math.max(half, 16 * dpr) >= 0 : index >= range.from - 1) {
+          start = breaks ? i : Math.min(chain, i);
+          break;
+        }
+        if (LANE[m.position] === undefined || half === 0) continue;
+        if (breaks) chain = i;
+        reach = Math.max(reach, x + half);
+      }
+    }
+    const laneGap = 2 * dpr;
+    const lanes: Record<-1 | 1, LaneBox[]> = { [-1]: [], [1]: [] };
+
+    for (let i = start; i < markers.length; i++) {
+      const m = markers[i];
       const styled = hasTextStyle(m) || m.textColor !== undefined;
       const index = rc.dataLayer.timeToIndex(m.time);
-      if (index === undefined || (!styled && (index < range.from - 1 || index > range.to + 1))) continue;
+      if (index === undefined || (!styled && index > range.to + 1)) continue;
+      const side = m.text === undefined ? undefined : LANE[m.position];
+      // Left of the view a text mark is laid out and not drawn: the marks in
+      // view make room for it all the same.
+      const hidden = !styled && index < range.from - 1;
+      if (hidden && side === undefined) continue;
       const bar = m.position === 'paneTop' || m.position === 'paneBottom' ? undefined : barAt(m.time);
       const px = effectiveMarkerPx(m.size, rc.timeScale.barSpacing) * rc.dpr;
       const x = rc.timeScale.indexToX(index) * rc.dpr;
@@ -325,30 +444,45 @@ export class SeriesMarkers implements IPrimitive {
       }
       if (!Number.isFinite(y) || !Number.isFinite(x)) continue;
       stackByTime.set(m.time, stack + 1);
-      const fontPx = (m.fontSize ?? Math.max(9, markerSizePx(m.size))) * rc.dpr;
+      const fontPx = markerFontPx(m) * rc.dpr;
       const label = m.shape === 'labelUp' || m.shape === 'labelDown';
       const validFont = Number.isFinite(fontPx) && fontPx > 0;
       if (label && !validFont) continue;
       let drawText = validFont && m.text !== undefined;
       const below = m.position === 'belowBar' || m.position === 'paneTop';
-      const ty = below ? y + px : y - px;
-      let textW = 0, layout: ReturnType<typeof labelLayout> | undefined;
-      if (styled) {
-        if (drawText) ctx.font = textFont(m, fontPx, 'system-ui, sans-serif', label);
-        let left = x - px / 2, right = x + px / 2, top = y - px / 2, bottom = y + px / 2;
-        if (drawText && m.text !== undefined) {
-          if (label) {
-            layout = labelLayout(ctx, m.shape === 'labelUp', y, m.text, fontPx);
-            left = x - layout.w / 2; right = x + layout.w / 2;
-            top = Math.min(y, layout.top); bottom = Math.max(y, layout.top + layout.h);
-          } else {
-            const lines = m.text.split('\n');
-            for (const line of lines) textW = Math.max(textW, ctx.measureText(line).width);
-            const textH = fontPx + (lines.length - 1) * fontPx * LINE_H;
-            left = Math.min(left, x - textW / 2); right = Math.max(right, x + textW / 2);
-            top = Math.min(top, below ? ty : ty - textH); bottom = Math.max(bottom, below ? ty + textH : ty);
+      let textW = 0, textH = 0, layout: ReturnType<typeof labelLayout> | undefined;
+      let left = x - px / 2, right = x + px / 2, top = y - px / 2, bottom = y + px / 2;
+      if ((styled || side !== undefined) && drawText && m.text !== undefined) {
+        ctx.font = textFont(m, fontPx, FAMILY, label);
+        if (label) {
+          layout = labelLayout(ctx, m.shape === 'labelUp', y, m.text, fontPx);
+          left = x - layout.w / 2; right = x + layout.w / 2;
+          top = Math.min(y, layout.top); bottom = Math.max(y, layout.top + layout.h);
+        } else {
+          const lines = m.text.split('\n');
+          for (const line of lines) textW = Math.max(textW, ctx.measureText(line).width);
+          textH = fontPx + (lines.length - 1) * fontPx * LINE_H;
+          const ty0 = below ? y + px : y - px;
+          left = Math.min(left, x - textW / 2); right = Math.max(right, x + textW / 2);
+          top = Math.min(top, below ? ty0 : ty0 - textH); bottom = Math.max(bottom, below ? ty0 + textH : ty0);
+        }
+        if (side !== undefined) {
+          // A bare text mark draws no glyph, so only its text takes lane room.
+          const bare = m.shape === 'text';
+          const lt = bare ? (below ? y + px : y - px - textH) : top;
+          const box = bare ? [x - textW / 2, x + textW / 2, lt, lt + textH] : [left, right, top, bottom];
+          if (box.every(Number.isFinite)) {
+            const dy = placeInLane(lanes[side], side, box[0], box[1], box[2], box[3], laneGap, x - 2 * widest);
+            if (dy !== 0) {
+              y += dy; top += dy; bottom += dy;
+              if (layout) layout.top += dy;
+            }
           }
         }
+      }
+      if (hidden) continue;
+      const ty = below ? y + px : y - px;
+      if (styled) {
         if (!label && ![left, right, top, bottom].every(Number.isFinite)) {
           // Unrenderable text cannot erase an independently sized signal glyph.
           drawText = false;
@@ -361,7 +495,7 @@ export class SeriesMarkers implements IPrimitive {
       const clip = styled ? { width: rc.plotWidth, height: rc.plotHeight } : undefined;
       if (m.shape === 'labelUp' || m.shape === 'labelDown') {
         if (m.text !== undefined) {
-          if (layout) paintLabel(ctx, m.shape === 'labelUp', x, y, m.text, m.color, fontPx, layout, m);
+          if (layout && styled) paintLabel(ctx, m.shape === 'labelUp', x, y, m.text, m.color, fontPx, layout, m);
           else drawLabel(ctx, m.shape === 'labelUp', x, y, m.text, m.color, fontPx);
         }
         if (m.id !== undefined) this._lastPositions.push({ id: m.id, x: x / rc.dpr, y: y / rc.dpr, clip });
