@@ -82,6 +82,21 @@ test('a range loads the interval and period its sessions need, then places the l
   expect(errors).toEqual([]);
 });
 
+test('a range wider than the plot keeps the latest bars in view', async ({ page }) => {
+  // All at a weekly interval is more bars than a tablet-width plot holds at its narrowest spacing.
+  const errors = await openHost(page, { width: 1024, height: 768 });
+  await page.locator('.host-bottombar .oac-bottombar__range[data-range="ALL"]').click();
+  await expect.poll(() => app(page, 'app.bottombar.controls.range()'), { timeout: 15_000 }).toBe('ALL');
+  const placed = await app(page, `(() => {
+    const bars = app.chart.primaryBars(), view = app.chart.getVisibleLogicalRange();
+    return { n: bars.length, to: view.to, from: view.from };
+  })()`) as { n: number; to: number; from: number };
+  expect(placed.from).toBeGreaterThan(0);
+  expect(placed.to).toBeCloseTo(placed.n - 0.5, 3);
+  await expect(page.locator('#status')).toContainText('The range is wider than the chart');
+  expect(errors).toEqual([]);
+});
+
 test('a zone picked on the clock moves the chart and survives the next rebuild', async ({ page }) => {
   const errors = await openHost(page);
   await page.locator('.host-bottombar .oac-bottombar__clock').click();

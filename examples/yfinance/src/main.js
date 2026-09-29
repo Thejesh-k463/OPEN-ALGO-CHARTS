@@ -615,7 +615,16 @@ async function applyRange(id) {
   if (bars.length === 0) return { status: 'no-data' };
   paneRanges.set(target.pane, { id, chart });
   const span = rangeWindow(range, { end: bars[bars.length - 1].time, zone: chart.timezone(), calendar: chart.dataLayer.sessionCalendar, bars });
-  return new DateNavigator({ chart }).goTo(span);
+  const result = await new DateNavigator({ chart }).goTo(span);
+  if (result.status !== 'partial' || !result.clipped || chart.isDestroyed) return result;
+  // A range ends at the latest bar, so one wider than the plot gives up its
+  // oldest bars rather than its newest: the last price stays on screen.
+  const lastBar = bars[bars.length - 1];
+  const last = chart.dataLayer.timeToIndex(lastBar.time) ?? bars.length - 1;
+  const view = chart.getVisibleLogicalRange();
+  const from = last + 0.5 - (view.to - view.from);
+  chart.setVisibleLogicalRange({ from, to: last + 0.5 });
+  return { ...result, from: chart.dataLayer.indexToTime(Math.ceil(from + 0.5)) ?? result.from, to: lastBar.time };
 }
 
 function initBottombar() {
