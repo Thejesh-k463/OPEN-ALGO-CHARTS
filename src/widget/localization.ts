@@ -151,7 +151,6 @@ export type WidgetBuiltinMessage =
   | "Custom"
   | "Cut drawing"
   | "Cut {count} drawings"
-  | "Dark"
   | "Dark theme"
   | "Data export failed: {error}"
   | "Default level"
@@ -184,9 +183,12 @@ export type WidgetBuiltinMessage =
   | "Enable {name}"
   | "Enabled"
   // Retained so existing host translation catalogs remain type compatible. The
-  // widget no longer shows it; a union member takes no doc tag, so
-  // COMPATIBILITY.md lists it as deprecated, and 3.0.0 drops it.
+  // widget no longer shows these (the theme button's words gave way to a sun
+  // and a moon in 2.5.10); a union member takes no doc tag, so
+  // COMPATIBILITY.md lists them as deprecated, and 3.0.0 drops them.
   | "Enter a valid expiry date and time in UTC"
+  | "Dark"
+  | "Light"
   | "Enter an expiry date and time in UTC"
   | "Enter an expiry date and time"
   | "Every match"
@@ -224,7 +226,6 @@ export type WidgetBuiltinMessage =
   | "Last fired {time} UTC"
   | "Level"
   | "Levels"
-  | "Light"
   | "Light theme"
   | "Loading"
   | "Loading older history"

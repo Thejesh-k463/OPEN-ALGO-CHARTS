@@ -13,7 +13,7 @@ import { widgetText, type WidgetTranslationOptions } from './localization';
  * they render disabled, with their state visible, rather than dead.
  */
 import { registeredChartTypes, getChartType, exportChartDataCsv } from 'openalgo-charts';
-import { chromeIconSvg } from 'openalgo-charts/draw';
+import { chartTypeIcon, chromeIcon, chromeIconSvg } from 'openalgo-charts/draw';
 import { h, glyph, type WidgetContext } from './context';
 import type { WidgetThemeName } from './tokens';
 import { mountSymbolPicker, type SymbolPickerHandle } from './symbol-picker';
@@ -78,6 +78,12 @@ export function intervalLabel(code: string): string {
 
 export interface MenuRow {
   label: string;
+  /**
+   * A chrome icon id for a glyph before the label. Once one row has a glyph,
+   * every row keeps the column, so the labels share a left edge; an id the
+   * registry does not carry leaves its slot empty. Since 2.5.10.
+   */
+  icon?: string;
   sub?: string;
   /** Shown at the right edge, for a chord. */
   key?: string;
@@ -93,6 +99,10 @@ export interface MenuOptions {
   find?: string;
   ariaLabel?: string;
 }
+
+/** A menu row's glyph: the registry's, or an empty slot the stylesheet sizes like one. */
+const rowGlyph = (id: string | undefined): string =>
+  id !== undefined && chromeIcon(id) !== undefined ? chromeIconSvg(id) : '<svg aria-hidden="true"></svg>';
 
 /**
  * A popup menu under `anchor`. Rows are buttons; a `{ head }` string starts a
@@ -113,6 +123,7 @@ export function openMenu(ctx: WidgetContext, anchor: HTMLElement, rows: Readonly
   const body = h(doc, 'div', 'oac-menu__body');
   m.appendChild(body);
   let close: () => void = () => {};
+  const glyphs = rows.some((r) => typeof r !== 'string' && r.icon !== undefined);
 
   const paint = (q: string): void => {
     const needle = q.trim().toLowerCase();
@@ -133,6 +144,7 @@ export function openMenu(ctx: WidgetContext, anchor: HTMLElement, rows: Readonly
       const b = h(doc, 'button', 'oac-menu__row' + (r.danger ? ' is-danger' : ''), {
         type: 'button', role: 'menuitemradio', 'aria-checked': String(r.on === true), 'aria-disabled': String(r.disabled === true),
       });
+      if (glyphs) b.appendChild(glyph(doc, rowGlyph(r.icon), 'chrome'));
       const label = h(doc, 'span', 'oac-menu__label');
       label.textContent = r.label;
       b.appendChild(label);
@@ -355,14 +367,16 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
 
   // ── chart type ───────────────────────────────────────────────────────
   const typeBtn = btn(widgetText(ctx, 'Chart type'), 'oac-topbar__type');
+  // The type in force as its glyph and its name; a type with no glyph shows the name alone.
+  const typeGlyph = glyph(doc, '', 'chrome');
   const typeLabel = h(doc, 'span');
-  typeBtn.appendChild(typeLabel);
+  typeBtn.append(typeGlyph, typeLabel);
   typeBtn.appendChild(chev());
   typeBtn.setAttribute('aria-haspopup', 'menu');
   typeBtn.addEventListener('click', () => {
     const cur = opts.state().chartType;
     openMenu(ctx, typeBtn, chartTypeChoices().map((id) => ({
-      label: widgetText(ctx, `schema.chartType.${id}`, {}, chartTypeLabel(id)), on: id === cur, onSelect: () => opts.onChartType(id),
+      label: widgetText(ctx, `schema.chartType.${id}`, {}, chartTypeLabel(id)), icon: `chart-${id}`, on: id === cur, onSelect: () => opts.onChartType(id),
     })), { ariaLabel: widgetText(ctx, 'Chart type') });
   });
   host.appendChild(typeBtn);
@@ -544,11 +558,11 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
   host.appendChild(setBtn);
 
   // ── theme ────────────────────────────────────────────────────────────
-  // A word rather than a glyph: the chrome set has no sun or moon, and the
-  // name of the theme the click would switch to says more than either.
-  const themeBtn = btn(widgetText(ctx, 'Theme'), 'oac-topbar__theme');
-  const themeLabel = h(doc, 'span');
-  themeBtn.appendChild(themeLabel);
+  // The theme the click switches to, as a sun or a moon; the tip and the
+  // accessible name say it in words.
+  const themeBtn = btn(widgetText(ctx, 'Theme'), 'oac-btn--icon oac-topbar__theme');
+  const themeGlyph = glyph(doc, '', 'chrome');
+  themeBtn.appendChild(themeGlyph);
   ctx.tips.attach(themeBtn, () => ({ title: opts.state().theme === 'dark' ? widgetText(ctx, 'Switch to the light theme') : widgetText(ctx, 'Switch to the dark theme'), side: 'bottom' }));
   themeBtn.addEventListener('click', () => opts.onTheme(opts.state().theme === 'dark' ? 'light' : 'dark'));
   host.appendChild(themeBtn);
@@ -571,12 +585,19 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
       b.setAttribute('aria-pressed', String(on));
       b.setAttribute('aria-checked', String(on));
     }
+    if (typeGlyph.dataset.type !== s.chartType) {
+      typeGlyph.dataset.type = s.chartType;
+      typeGlyph.hidden = chartTypeIcon(s.chartType) === undefined;
+      typeGlyph.innerHTML = typeGlyph.hidden ? '' : chromeIconSvg(`chart-${s.chartType}`);
+    }
     typeLabel.textContent = widgetText(ctx, `schema.chartType.${s.chartType}`, {}, chartTypeLabel(s.chartType));
     setOff(setBtn, !opts.settingsAvailable());
     if (indBtn !== null) setOff(indBtn, !opts.indicatorsAvailable());
     if (goTo !== null) setOff(goTo, timeBuckets(s.interval) === null);
-    themeBtn.dataset.theme = s.theme;
-    themeLabel.textContent = s.theme === 'dark' ? widgetText(ctx, 'Light') : widgetText(ctx, 'Dark');
+    if (themeBtn.dataset.theme !== s.theme) {
+      themeBtn.dataset.theme = s.theme;
+      themeGlyph.innerHTML = chromeIconSvg(s.theme === 'dark' ? 'sun' : 'moon');
+    }
     ctx.tips.refreshLabel(themeBtn);
     ctx.tips.refreshLabel(setBtn);
     if (indBtn !== null) ctx.tips.refreshLabel(indBtn);

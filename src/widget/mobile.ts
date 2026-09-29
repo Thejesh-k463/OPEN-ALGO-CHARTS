@@ -1,6 +1,6 @@
 import { widgetText } from './localization';
-import { registeredDrawingTools } from 'openalgo-charts/draw';
-import { h, editableIds, historyPress, historyReady, type WidgetContext } from './context';
+import { chartTypeIcon, chromeIconSvg, registeredDrawingTools } from 'openalgo-charts/draw';
+import { h, glyph, editableIds, historyPress, historyReady, type WidgetContext } from './context';
 import type { RailHandle } from './rail';
 import {
   chartTypeChoices, chartTypeLabel, intervalLabel,
@@ -379,6 +379,8 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
             opts.onChartType(id);
             close();
           });
+          // The same glyph as the desktop menu, beside the words a phone keeps.
+          if (chartTypeIcon(id) !== undefined) button.prepend(glyph(doc, chromeIconSvg(`chart-${id}`), 'chrome'));
           button.dataset.chartType = id;
           button.setAttribute('aria-pressed', String(opts.state().chartType === id));
           body.appendChild(button);

@@ -25,7 +25,7 @@ import { INDICATOR_SOURCES, registeredIntervals, parseSessionSpec } from 'openal
 import type { ChartSettingsInput, IndicatorInputPresentation } from 'openalgo-charts';
 import { chromeIconSvg, CHROME_ICON_STROKE } from 'openalgo-charts/draw';
 import type { SettingsField } from 'openalgo-charts/draw';
-import type { OverlayOptions } from './context';
+import { glyph, type OverlayOptions } from './context';
 import { widgetText, type WidgetTranslationOptions } from './localization';
 import { createColorPicker, type ColorPickerOptions } from './color-picker';
 import { inputStates } from './input-conditions';
@@ -323,9 +323,10 @@ export function el<K extends keyof HTMLElementTagNameMap>(
 const XMLNS = 'http://www.w3.org/2000/svg';
 
 /**
- * An inline glyph on the chrome grid for the few icons the tier does not
- * carry (a settings tab's picture). Same frame as `chromeIconSvg`, so the two
- * kinds sit side by side at one weight.
+ * Chrome-grid path data the registry derives rather than lists (a layout
+ * picker's tile), in the frame `chromeIconSvg` draws, so it sits beside the
+ * listed glyphs at one weight. Every picture the widget shows is registry
+ * data: a glyph drawn here instead would escape the registry's checks.
  */
 export function glyphSvg(path: string): string {
   return `<svg xmlns="${XMLNS}" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor"`
@@ -334,9 +335,7 @@ export function glyphSvg(path: string): string {
 
 /** A chrome glyph wrapped for the stylesheet's `.oac-glyph--chrome` sizing. */
 export function chromeGlyph(doc: Document, id: string): HTMLElement {
-  const span = el(doc, 'span', 'oac-glyph oac-glyph--chrome');
-  span.innerHTML = chromeIconSvg(id);
-  return span;
+  return glyph(doc, chromeIconSvg(id), 'chrome');
 }
 
 export type ButtonVariant = 'ghost' | 'primary' | 'danger';
@@ -345,8 +344,6 @@ export interface ButtonSpec {
   label: string;
   /** Chrome icon id. With `iconOnly` the label becomes the accessible name. */
   icon?: string;
-  /** Inline SVG markup for a glyph the chrome set does not carry; used instead of `icon`. */
-  svg?: string;
   iconOnly?: boolean;
   variant?: ButtonVariant;
   onClick?: (e: MouseEvent) => void;
@@ -364,11 +361,6 @@ export function button(doc: Document, spec: ButtonSpec): HTMLButtonElement {
   if (spec.variant === 'danger') classes.push('oac-btn--danger');
   b.className = classes.join(' ');
   if (spec.icon !== undefined) b.appendChild(chromeGlyph(doc, spec.icon));
-  else if (spec.svg !== undefined) {
-    const g = el(doc, 'span', 'oac-glyph oac-glyph--chrome');
-    g.innerHTML = spec.svg;
-    b.appendChild(g);
-  }
   if (spec.iconOnly === true) {
     b.setAttribute('aria-label', spec.label);
     b.title = spec.chord === undefined ? spec.label : `${spec.label} (${spec.chord})`;
@@ -587,7 +579,7 @@ export function selectionPoint(
 export interface TabSpec {
   id: string;
   label: string;
-  /** Inline SVG markup for the glyph beside the label. */
+  /** Chrome icon id for the glyph beside the label. */
   icon?: string;
 }
 
@@ -622,11 +614,7 @@ export function tabList(
     b.type = 'button';
     b.setAttribute('role', 'tab');
     b.dataset.tab = t.id;
-    if (t.icon !== undefined) {
-      const g = el(doc, 'span', 'oac-glyph oac-glyph--chrome');
-      g.innerHTML = t.icon;
-      b.appendChild(g);
-    }
+    if (t.icon !== undefined) b.appendChild(chromeGlyph(doc, t.icon));
     b.appendChild(el(doc, 'span', 'oac-tab__label', t.label));
     b.addEventListener('click', (e) => { e.stopPropagation(); pick(t.id); });
     b.addEventListener('keydown', (e) => {

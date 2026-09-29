@@ -1124,6 +1124,8 @@ tile.innerHTML = `<svg viewBox="${a.viewBox}" width="16" height="16" fill="none"
   + ` stroke-width="${a.strokeWidth}" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
 ```
 
+The widget draws every picture it shows from this set: the chart-type menu, the type button and the phone layout's sheet show `chart-<type>`, the theme button `sun` or `moon`, and the settings tabs, stacking rows, line styles, menu tick and remove crosses their chrome ids. No widget file draws a glyph of its own, so the checks on the registry cover the widget as well.
+
 The chrome stroke (`CHROME_ICON_STROKE`) was 1.5 through 2.5.5 and is 2 now. To keep the
 old weight, pass it explicitly: `chromeIconSvg(id, { stroke: 1.5 })`, `stroke-width="1.5"`
 on your own `<svg>`, or `stroke-width: 1.5` in your stylesheet. The glyphs are drawn for 2

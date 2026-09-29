@@ -312,14 +312,37 @@ test('the widget shows the glyphs as the tier ships them, in the rail, a flyout 
     await menu.screenshot({ path: info.outputPath(`drawing-menu-${theme}.png`) });
     await page.keyboard.press('Escape');
 
-    // The widget's own glyphs sit in the settings tab rails beside registry
-    // ones, at the same width; the price tab and the style brush were drawn
-    // for the old line and have to read at this one.
+    // The chart-type menu: a glyph beside every type, each the registry's
+    // chart-<id> at its native size and line, and none blank; the type
+    // button and the theme button carry theirs too.
+    await page.locator('.oac-topbar__type').click();
+    const typeMenu = page.getByRole('menu', { name: 'Chart type' });
+    await expect(typeMenu).toBeVisible();
+    const rows = await typeMenu.locator('.oac-menu__row').evaluateAll((els) => els.map((row) => {
+      const svg = row.querySelector('.oac-glyph--chrome > svg');
+      const box = svg?.getBoundingClientRect();
+      return { label: row.textContent, d: svg?.querySelector('path')?.getAttribute('d') ?? '',
+        size: box === undefined ? '' : `${box.width}x${box.height}`, stroke: svg === null ? '' : getComputedStyle(svg!).strokeWidth };
+    }));
+    expect(rows.length).toBeGreaterThan(8);
+    for (const row of rows) expect(row, row.label ?? '').toMatchObject({ size: '16x16', stroke: '2px', d: expect.stringMatching(/^M/) });
+    expect(new Set(rows.map((row) => row.d)).size).toBe(rows.length);
+    await typeMenu.screenshot({ path: info.outputPath(`chart-type-menu-${theme}.png`) });
+    await page.keyboard.press('Escape');
+    for (const button of ['.oac-topbar__type', '.oac-topbar__theme']) {
+      const box = await page.locator(`${button} .oac-glyph--chrome > svg`).boundingBox();
+      expect(box, button).toMatchObject({ width: 16, height: 16 });
+    }
+
+    // Every settings tab carries a registry glyph at the same width as the
+    // rest of the chrome; the price tab and the style brush moved into the
+    // registry from widget files, where no width or grid check saw them.
     const tabGlyphs = async (name: string): Promise<void> => {
       const tabs = page.locator('.oac-tabs').last();
       await expect(tabs).toBeVisible();
       const strokes = await tabs.locator('.oac-glyph--chrome > svg').evaluateAll((svgs) => svgs.map((s) => getComputedStyle(s).strokeWidth));
       expect(strokes.length).toBeGreaterThan(1);
+      expect(strokes.length, 'a glyph on every tab').toBe(await tabs.locator('[role="tab"]').count());
       expect(new Set(strokes)).toEqual(new Set(['2px']));
       await tabs.screenshot({ path: info.outputPath(`${name}-tabs-${theme}.png`) });
       await page.keyboard.press('Escape');

@@ -156,7 +156,7 @@ The sprite is injected once per document on the body (`id="oac-rail-sprite"`), s
 | Export | Kind | Purpose |
 |---|---|---|
 | `mountTopbar(ctx, host, opts)` | function | Symbol box with search, interval pills, chart type menu, Indicators, Go to (with `onGoTo`), Objects, capture, settings, theme. Returns a `TopbarHandle` (`refresh`, `destroy`). |
-| `openMenu(ctx, anchor, rows, opts?)` | function | A popover menu under `anchor`, with an optional filter box; the chart type menu and the symbol results share it. Returns the closer. |
+| `openMenu(ctx, anchor, rows, opts?)` | function | A popover menu under `anchor`, with an optional filter box; the chart type menu and the symbol results share it. A row's optional `icon` (a chrome icon id, since 2.5.10) draws that glyph before its label; once one row has one, every row keeps the column, and an id the registry does not carry leaves the slot empty. Returns the closer. |
 | `chartTypeChoices()` | function | The registered chart types a user can pick for the instrument (the registry minus histogram-family internals). |
 | `chartTypeLabel(id)` | function | A label from `CHART_TYPE_LABELS`, else the id. |
 | `CHART_TYPE_LABELS` | const | Labels for the built-in chart types. |
@@ -364,7 +364,8 @@ chrome. Size is read from the container, not the viewport.
 
 The compact header provides symbol entry and intervals. The bottom bar provides Draw,
 Studies, Objects and More according to the same `topbar`, `rail` and `indicators` options
-as desktop chrome. More contains theme, chart settings and chart type, and (since
+as desktop chrome. More contains theme, chart settings and chart type (each type beside its
+`chart-<type>` glyph since 2.5.10), and (since
 2.5.10), while the widget's bottom bar is on, the market status and clock, the ranges, the
 scale toggles and the timezone the hidden bar would show. A selected drawing
 adds Properties, Lock or Unlock, and Delete. An active drawing tool adds Finish, Cancel,
@@ -520,7 +521,7 @@ A dialog module of your own: build the panel with `createElement`, hand it to `c
 
 ## Tokens and styling
 
-One `<style>` element per document (`WIDGET_STYLE_ID`), every rule scoped under `.oac-widget`. Colours, spacing, radius and font are `--oac-` custom properties produced by `widgetTokens(theme)` and written inline on the widget root by `applyTokens`; the colours derive from the active `ChartTheme` (`background` stepped for panels, `axisLine` / `paneSeparator` for borders, `axisText` for text, `lineColor` for the accent, `upColor` / `downColor` for buy and sell), so the chrome and the canvas cannot disagree, and `setTheme` rewrites them. Names: `bg`, `panel`, `panel-2`, `elev`, `elev-2`, `elev-3`, `bd`, `bd-soft`, `bd-hover`, `tx`, `tx-strong`, `mut`, `faint`, `acc`, `acc-2`, `on-bg`, `on-bd`, `ring`, `ring-soft`, `buy`, `sell`, `amber`, `danger`, `scrim`, `shadow`, `sb-thumb`, `sb-thumb-hover`, `font`, `mono`, `fs`, `radius`, `rail-w`, `topbar-h`, `status-h`, `ctl-h`. Because the tokens are inline declarations, a host stylesheet override needs `!important` (`#terminal .oac-widget { --oac-font: ... !important; }`); override tokens, never internal class names. Icons come from the draw tier (`iconSprite`, `iconUse`, `chromeIconSvg`), so the rail, its flyouts and the armed cursor share one glyph source. The chrome meets the UI standard in [themes-and-styling](themes-and-styling.md#host-chrome-the-ui-standard) by construction.
+One `<style>` element per document (`WIDGET_STYLE_ID`), every rule scoped under `.oac-widget`. Colours, spacing, radius and font are `--oac-` custom properties produced by `widgetTokens(theme)` and written inline on the widget root by `applyTokens`; the colours derive from the active `ChartTheme` (`background` stepped for panels, `axisLine` / `paneSeparator` for borders, `axisText` for text, `lineColor` for the accent, `upColor` / `downColor` for buy and sell), so the chrome and the canvas cannot disagree, and `setTheme` rewrites them. Names: `bg`, `panel`, `panel-2`, `elev`, `elev-2`, `elev-3`, `bd`, `bd-soft`, `bd-hover`, `tx`, `tx-strong`, `mut`, `faint`, `acc`, `acc-2`, `on-bg`, `on-bd`, `ring`, `ring-soft`, `buy`, `sell`, `amber`, `danger`, `scrim`, `shadow`, `sb-thumb`, `sb-thumb-hover`, `font`, `mono`, `fs`, `radius`, `rail-w`, `topbar-h`, `status-h`, `ctl-h`. Because the tokens are inline declarations, a host stylesheet override needs `!important` (`#terminal .oac-widget { --oac-font: ... !important; }`); override tokens, never internal class names. Icons come from the draw tier (`iconSprite`, `iconUse`, `chromeIconSvg`, `chartTypeIcon`), so the rail, its flyouts, the active tool's cursor, the menus and the dialogs share one glyph source; since 2.5.10 no widget file draws a picture of its own. The chart type menu and button show each type's glyph, and the theme button is a sun (on the dark theme) or a moon, its tip and accessible name saying the theme a click switches to. The chrome meets the UI standard in [themes-and-styling](themes-and-styling.md#host-chrome-the-ui-standard) by construction.
 
 ### Content Security Policy
 

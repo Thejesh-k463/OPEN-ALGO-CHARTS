@@ -13,6 +13,7 @@ import {
   type Widget, type WidgetOptions, type WidgetContext, type StorageLike,
 } from '../src/widget/index';
 import { fakeWidgetDocument, fakeContainer, fireKey, fire, ensureWindowGlobal, type FakeDocument, type FakeElement } from './helpers/fake-dom-widget';
+import { chromeIconSvg } from 'openalgo-charts/draw';
 
 beforeAll(ensureWindowGlobal);
 
@@ -846,13 +847,15 @@ describe('toasts and the bus', () => {
     expect(JSON.parse(store.map.get(`${STORAGE_PREFIX}default:${STATE_KEY}`) as string).interval).toBe('1h');
   });
 
-  it('the theme button names the theme a click would switch to', () => {
+  it('the theme button shows the theme a click would switch to, as a sun or a moon', () => {
     const { w, root } = make();
     const btn = root.querySelector('.oac-topbar__theme') as FakeElement;
-    expect(btn.textContent).toBe('Light');
+    const glyph = (): string | undefined => btn.querySelector('.oac-glyph')?.innerHTML;
+    expect(glyph()).toBe(chromeIconSvg('sun'));
+    expect(btn.textContent).toBe('');
     btn.click();
     expect(w.theme()).toBe('light');
-    expect(btn.textContent).toBe('Dark');
+    expect(glyph()).toBe(chromeIconSvg('moon'));
     expect(btn.getAttribute('aria-label')).toBe('Switch to the dark theme');
   });
 });

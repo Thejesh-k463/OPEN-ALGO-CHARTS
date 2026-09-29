@@ -567,10 +567,13 @@ export const CHROME_ICONS: Readonly<Record<string, string>> = {
   // and a day struck off the calendar. As rings with a dot or a bar inside,
   // open and closed were the clock at 85 and 89 percent, and each other.
   // The setting sun sits lower than the rising one: with the same sun and
-  // only the arrow turned over, the two overlapped by 84 percent.
+  // only the arrow turned over, the two overlapped by 84 percent. The arrows
+  // have shafts, the rising one's head at the top of the box and the setting
+  // one's just over its sun: a bare chevron over the small setting sun read
+  // as an hourglass at 16px, and one shaft for both was 72 percent alike.
   'market-open': ring(8, 8, 2) + 'M8 2 8 3M2 8 3 8M13 8 14 8M3 3 4 4M13 3 12 4M2 13h12',
-  'market-pre': 'M2 13h12M5 13a3 3 0 0 1 6 0M5 5l3-3 3 3',
-  'market-post': 'M2 13h12M6 13a2 2 0 0 1 4 0M5 5l3 3 3-3',
+  'market-pre': 'M2 13h12M5 13a3 3 0 0 1 6 0M8 7V2M5 5l3-3 3 3',
+  'market-post': 'M2 13h12M6 13a2 2 0 0 1 4 0M8 3v5M5 5l3 3 3-3',
   'market-closed': 'M8 2A4 4 0 1 0 12 6 4 4 0 0 1 8 2zM2 13h12',
   'market-holiday': 'M2 4h12v10H2zM6 2v3M10 2v3M6 8l4 4M10 8l-4 4',
 
@@ -635,21 +638,25 @@ export const CHROME_ICONS: Readonly<Record<string, string>> = {
   // ── trading ─────────────────────────────────────────────────────────────
   // Buy and sell are one solid triangle turned over, since the direction is
   // the difference. Closing a position is leaving it: a box with a cross in
-  // it was the square frame of save and grid again.
+  // it was the square frame of save and grid again. A bracket is the entry
+  // with its target above and its stop below, the three levels on one stem,
+  // and the depth of market is the ladder traders call it. Each was drawn
+  // before as short bars off a stem, and each read as a letter at 16px.
   buy: 'M8 3l6 9H2z',
   sell: 'M8 13 2 4h12z',
   'close-position': 'M9 2H2v12h7M6 8h8M11 5l3 3-3 3',
   reverse: 'M5 13V3M2 6l3-3 3 3M11 3v10M8 10l3 3 3-3',
-  bracket: 'M2 9h12M6 9V2M4 2h4M10 9v5M8 14h4',
-  'dom-ladder': 'M8 2v12M10 3h4M10 6h2M6 10H2M6 13H4',
+  bracket: 'M2 8h12M4 3h8M4 13h8M8 3v10',
+  'dom-ladder': 'M4 2v12M12 2v12M4 5h8M4 8h8M4 11h8',
 
   // ── settings tabs and menu marks ────────────────────────────────────────
   // The pictures the widget drew for itself outside the registry, so its
   // settings tabs, stacking order and line style control can read from here
   // and be held to the same checks. The solid line style is `minus`, which
-  // is the same drawing. Dashes are three with two pixels between them:
-  // with one pixel, the round caps closed the gaps and the dashed line was
-  // `minus` at 86 percent.
+  // is the same drawing. Dashes are two, four pixels apart and set in from
+  // the ends: with one pixel between them the round caps closed the gaps (the
+  // dashed line was `minus` at 86 percent), and three short dashes with two
+  // between them were the dotted line's dots, a little longer.
   legend: 'M2 4h8M2 8h12M2 12h9',
   axes: 'M3 2v11h11M3 6h2M3 10h2M7 13v-2M11 13v-2',
   panels: 'M2 3h12v10H2zM2 8h12M7 3v10',
@@ -659,9 +666,9 @@ export const CHROME_ICONS: Readonly<Record<string, string>> = {
   'behind-series': 'M3 13h10M8 2v7M5 6l3 3 3-3',
   fit: 'M2 8h12M5 5 2 8l3 3M11 5l3 3-3 3',
   coordinates: 'M3 2v11h11' + pip(10, 6) + 'M3 6h4M10 13v-4',
-  'line-dashed': 'M2 8h1M7 8h1M12 8h1',
+  'line-dashed': 'M3 8h2M11 8h2',
   'line-dotted': pip(2, 8) + pip(6, 8) + pip(10, 8) + pip(14, 8),
-  'line-mixed': 'M2 5h12M2 11h1M7 11h1M12 11h1',
+  'line-mixed': 'M2 5h12M3 11h2M11 11h2',
 
   // ── chart types and transforms ──────────────────────────────────────────
   // One per registered chart type and per transform, read through
