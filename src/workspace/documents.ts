@@ -1,4 +1,6 @@
-import type { ChartState, ChartSettingsState, DataVariant, IndicatorPolicy, IndicatorState, PaneState, PriceScaleId, SeriesState } from 'openalgo-charts';
+import type {
+  ChartState, ChartSettingsState, DataVariant, IndicatorPolicy, IndicatorState, LinkMissingPolicy, PaneState, PriceScaleId, SeriesState,
+} from 'openalgo-charts';
 import { normalizeDataVariant, parseAlertsDocument, parseIndicatorPolicy, parsePaneState } from 'openalgo-charts';
 import { boolean, choice, list, number, readJson, record, string, WorkspaceDocumentError, type Json } from './json';
 
@@ -20,11 +22,52 @@ export interface WorkspacePane {
   chart: WorkspaceChartState; settings: WorkspaceSettings;
   volume: boolean; magnet: 'off' | 'weak' | 'strong'; stay: boolean;
   comparisons: WorkspaceComparison[]; comparisonMode: 'price' | 'percent'; historyPeriod?: string;
+  /**
+   * The id of the named link group this chart is in, one of `sync.groups`.
+   * Absent: in no group when the desk declares groups, and in the desk's one
+   * group when it declares none, which is how every earlier workspace reads.
+   */
+  linkGroup?: string;
+}
+/**
+ * The channels one link group links on, named as `LinkOptions` names them, so
+ * a group's flags open as a `LinkGroup` without translation. The first four
+ * have been written since the first release and stay required; the rest are
+ * optional, and absent reads as the engine's default (off, and 'nearest').
+ */
+export interface WorkspaceLinkChannels {
+  crosshair: boolean; viewport: boolean; symbol: boolean; interval: boolean;
+  appearance?: boolean;
+  /** The chart type (candles, bars, a line) follows. */
+  chartType?: boolean;
+  /** Drawings are shared between the group's charts on the same instrument. */
+  drawings?: boolean;
+  /** What a follower does with an instant it has no bar for. */
+  whenMissing?: LinkMissingPolicy;
+}
+/** A named link group: the charts whose `linkGroup` is its id link on its own channels. */
+export interface WorkspaceLinkGroup extends WorkspaceLinkChannels {
+  /** What each chart's `linkGroup` names: 1 to 100 characters, unique in the workspace. */
+  id: string;
+  /** What a person called the group: 1 to 120 characters. */
+  name: string;
+}
+/** How the charts of a workspace link to each other. */
+export interface WorkspaceSync extends WorkspaceLinkChannels {
+  /**
+   * Named link groups, up to 16. Absent: the whole desk is one group on the
+   * channels above, as every workspace saved before groups is. Present, even
+   * empty: each chart is in the group its `linkGroup` names or in none, and
+   * each group links on its own channels. The channels above then only tell a
+   * reader that predates groups what to apply to the whole desk, so a writer
+   * turns one on there only when every chart can follow it together.
+   */
+  groups?: WorkspaceLinkGroup[];
 }
 export interface WorkspacePayload {
   layout: { rows: number; columns: number; slots: WorkspaceSlot[]; preset?: string; rowWeights?: number[]; columnWeights?: number[] };
   panes: WorkspacePane[]; activePaneId: string;
-  sync: { crosshair: boolean; viewport: boolean; symbol: boolean; interval: boolean; appearance?: boolean };
+  sync: WorkspaceSync;
 }
 interface DocumentMetadata {
   version: 1; id: string; name: string; createdAt: number; updatedAt: number;
@@ -372,7 +415,37 @@ function paneState(input: Json): WorkspacePane {
     catch (error) { throw new WorkspaceDocumentError(error instanceof Error ? error.message : 'Invalid data variant'); }
     if (variant) out.variant = { ...variant };
   }
+  if (source.linkGroup !== undefined) out.linkGroup = string(source.linkGroup, 'linkGroup', 100);
   return out;
+}
+
+/**
+ * One group's channel flags. The four written since the first release default
+ * as the engine does; the later ones are kept only when written, so a desk
+ * that never mentioned them reads, and writes back, exactly as it was.
+ */
+function linkChannels(source: Record<string, Json>, label: string): WorkspaceLinkChannels {
+  const out: WorkspaceLinkChannels = {
+    crosshair: boolean(source.crosshair, `${label}crosshair sync`, true), viewport: boolean(source.viewport, `${label}viewport sync`, true),
+    symbol: boolean(source.symbol, `${label}symbol sync`, false), interval: boolean(source.interval, `${label}interval sync`, false),
+  };
+  for (const key of ['appearance', 'chartType', 'drawings'] as const) {
+    if (source[key] !== undefined) out[key] = boolean(source[key], `${label}${key} sync`);
+  }
+  if (source.whenMissing !== undefined) out.whenMissing = choice(source.whenMissing, `${label}whenMissing`, ['nearest', 'hide'] as const);
+  return out;
+}
+
+/** Sixteen at most: one per chart is the most a desk of sixteen charts can use. */
+function linkGroups(input: Json): WorkspaceLinkGroup[] {
+  const ids = new Set<string>();
+  return list(input, 'link groups', 16).map(item => {
+    const source = record(item, 'link group');
+    const id = string(source.id, 'link group id', 100);
+    if (ids.has(id)) throw new WorkspaceDocumentError('Duplicate link group ID');
+    ids.add(id);
+    return { id, name: string(source.name, 'link group name', 120), ...linkChannels(source, 'link group ') };
+  });
 }
 
 function payload(input: Record<string, Json>): WorkspacePayload {
@@ -406,11 +479,16 @@ function payload(input: Record<string, Json>): WorkspacePayload {
   });
   if (seen.size !== panes.length) throw new WorkspaceDocumentError('Every pane needs one layout slot');
   const sync = record(input.sync ?? {}, 'sync');
-  const out: WorkspacePayload = { layout: { rows, columns, slots }, panes, activePaneId, sync: {
-    crosshair: boolean(sync.crosshair, 'crosshair sync', true), viewport: boolean(sync.viewport, 'viewport sync', true),
-    symbol: boolean(sync.symbol, 'symbol sync', false), interval: boolean(sync.interval, 'interval sync', false),
-    ...(sync.appearance === undefined ? {} : { appearance: boolean(sync.appearance, 'appearance sync') }),
-  } };
+  const out: WorkspacePayload = { layout: { rows, columns, slots }, panes, activePaneId, sync: linkChannels(sync, '') };
+  if (sync.groups !== undefined) out.sync.groups = linkGroups(sync.groups);
+  // A chart naming a group nobody declared would silently land in none, or,
+  // with no groups at all, in the whole desk's: either links it wrongly.
+  const declared = new Set(out.sync.groups?.map(group => group.id));
+  for (const pane of panes) {
+    if (pane.linkGroup !== undefined && !declared.has(pane.linkGroup)) {
+      throw new WorkspaceDocumentError(`Link group ${pane.linkGroup} is not declared`);
+    }
+  }
   if (grid.preset !== undefined) out.layout.preset = string(grid.preset, 'layout preset', 100);
   for (const [key, count] of [['rowWeights', rows], ['columnWeights', columns]] as const) {
     if (grid[key] === undefined) continue;
