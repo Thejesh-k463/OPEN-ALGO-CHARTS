@@ -188,6 +188,7 @@ export class ShortcutManager {
   private _entries = new Map<string, KeymapEntry>();
   private _reverse = new Map<string, string>();
   private readonly _listeners = new Set<(e: ShortcutTriggerEvent) => void>();
+  private readonly _changes = new Set<() => void>();
 
   public constructor(options: ShortcutManagerOptions = {}) {
     this.scope = options.scope ?? 'hover';
@@ -277,6 +278,16 @@ export class ShortcutManager {
     return () => this._listeners.delete(cb);
   }
 
+  /**
+   * Called after every change to the keymap (a binding set, disabled or reset,
+   * a preset, a custom shortcut), so a hint drawn from it can follow. Returns
+   * the unsubscriber.
+   */
+  public onChange(fn: () => void): () => void {
+    this._changes.add(fn);
+    return () => { this._changes.delete(fn); };
+  }
+
   public setBinding(command: string, combo: string | string[]): boolean {
     const arr = toArray(combo).map(normalizeCombo).filter((c) => c !== '' && !isReservedCombo(c));
     if (arr.length === 0) return false;
@@ -331,6 +342,7 @@ export class ShortcutManager {
   private _after(): void {
     this._rebuild();
     this._save();
+    for (const fn of [...this._changes]) fn();
   }
 
   private _save(): void {

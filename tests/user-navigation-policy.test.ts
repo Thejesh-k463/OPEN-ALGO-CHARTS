@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Chart, type ChartOptions, type ChartNavigationOptions } from '../src/core/chart';
 import { applyChartSettings, readChartSettings } from '../src/model/chart-settings';
 import { TimeNavigator } from '../src/primitives/time-navigator';
+import { ShortcutManager } from '../src/input/shortcuts';
 import { contextMenuEntries, type MenuItem } from '../src/widget/dialogs/context-menu';
 import type { WidgetContext } from '../src/widget/context';
 import { fakeDocument, pointer, type FakeElement } from './helpers/fake-dom';
@@ -349,5 +350,31 @@ describe('independent user navigation', () => {
     f.chart.restoreState(saved); expect(f.chart.navigationOptions()).toMatchObject({ panEnabled: false, zoomEnabled: false });
     f.chart.restoreState({ ...saved, navigation: { mousePan: 'horizontal' } });
     expect(f.chart.navigationOptions()).toMatchObject({ panEnabled: false, zoomEnabled: false, mousePan: 'horizontal' });
+  });
+
+  it('keeps the navigator hints on the chords in force after a rebind, unless the host fixed them', () => {
+    const navOf = (chart: Chart) => chart.panes()[0].primitives().find(p => p instanceof TimeNavigator) as TimeNavigator;
+    const f = mount({ timeNavigator: true });
+    const nav = navOf(f.chart);
+    const before = nav.options().hints.zoomIn;
+    expect(before).toBeDefined();
+    expect(f.chart.shortcuts!.setBinding('zoomIn', 'Alt+KeyI')).toBe(true);
+    expect(nav.options().hints.zoomIn).not.toBe(before);
+    f.chart.shortcuts!.resetBinding('zoomIn');
+    expect(nav.options().hints.zoomIn).toBe(before);
+    // Hints the host passed are its own, and stay.
+    const fixed = mount({ timeNavigator: { hints: { zoomIn: 'Custom' } } });
+    fixed.chart.shortcuts!.setBinding('zoomIn', 'Alt+KeyI');
+    expect(navOf(fixed.chart).options().hints.zoomIn).toBe('Custom');
+    // A destroyed chart lets go of a manager it shares with another.
+    const shared = new ShortcutManager({ persist: false });
+    const a = mount({ timeNavigator: true, shortcuts: shared });
+    const b = mount({ timeNavigator: true, shortcuts: shared });
+    const navA = navOf(a.chart);
+    const gone = navA.options().hints.zoomIn;
+    a.chart.destroy();
+    shared.setBinding('zoomIn', 'Alt+KeyJ');
+    expect(navA.options().hints.zoomIn).toBe(gone);
+    expect(navOf(b.chart).options().hints.zoomIn).not.toBe(gone);
   });
 });
