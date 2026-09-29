@@ -259,6 +259,13 @@ const d = layoutIconPath(2, 2, [{ row: 0, column: 0, rowSpan: 2 }, { row: 0, col
 <svg {...CHROME_ICON_ATTRS} width={16} height={16}><path d={d} /></svg>
 ```
 
+The widget tier draws every picture it shows from this set (unreleased): the
+chart-type menu, the type button and the phone layout's sheet show
+`chart-<type>`, the theme button `sun` or `moon`, and the settings tabs, the
+stacking rows, the drawing toolbar's line styles, the menu tick and the level
+editor's remove cross the ids above. None is hand-drawn in a widget file, so
+the grid, overlap and crispness checks on this registry cover the widget too.
+
 The path data is data, not DOM: the host still builds its own rail and
 flyouts. The string builders derive from that one set, so the rail, a flyout
 and the tool cursor cannot drift apart. What the host no longer does is draw

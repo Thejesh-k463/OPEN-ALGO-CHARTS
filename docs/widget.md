@@ -341,6 +341,14 @@ Everything the UI standard in `CLAUDE.md` asks of a host is already done: styled
 scrollbars, small square swatches, up and down colours on one row, themed checkboxes and
 selects, tab lists with glyphs, dialog furniture in the standard places.
 
+Every glyph comes from the draw tier's icon registry: the rail and its flyouts, the menus
+and dialogs, the chart type menu and button (each type beside its `chart-<type>` glyph, on
+a phone too), and the theme button, a sun on the dark theme and a moon on the light one,
+whose tip and accessible name say the theme a click switches to. Since 2.5.10 no widget
+file draws a picture of its own, so the registry's grid, overlap and crispness checks cover
+all of them. A row of `openMenu` takes an optional `icon`, a chrome icon id, for a host that
+builds its own menu the same way.
+
 ## Extending the rail with your own tools
 
 The rail is a view of the draw tier's tool registry. Register a tool the way
