@@ -127,7 +127,7 @@ export interface WidgetOptions extends Omit<ChartOptions, 'theme'> {
   rail?: boolean | RailOptions;
   topbar?: boolean;
   statusline?: boolean;
-  /** Narrow controls. Auto activates at 640 CSS px or less, or for a coarse primary pointer. Default auto. */
+  /** Narrow controls. Auto activates when the container is at most 640 CSS px wide, or, with a coarse primary pointer, at most 960 px wide and under 600 px tall (a phone on its side); a tablet or a touch laptop keeps the desktop chrome. Default auto. */
   mobile?: MobileMode;
   /**
    * Keep the layout, the rail preferences, the symbol, the interval and the
