@@ -81,8 +81,13 @@ export interface ChartGridOptions extends Omit<WidgetOptions, 'persist' | 'stora
    * host with its own controls keeps its page as it was.
    */
   toolbar?: boolean;
-  /** The layouts the bar's picker offers, in its order. Default: every `CHART_GRID_LAYOUTS` entry. Empty: the bar has no Layout control. */
-  layouts?: readonly ChartGridLayoutId[];
+  /**
+   * The layouts the bar's picker offers, in its order, as `intervals` lists
+   * the intervals beside `interval`. Default: every `CHART_GRID_LAYOUTS`
+   * entry. Empty: the bar has no Layout control. (`layouts` keeps its widget
+   * meaning here: the saved-layouts controller every chart's menu drives.)
+   */
+  presets?: readonly ChartGridLayoutId[];
 }
 
 export interface ChartGridCell {
@@ -251,7 +256,7 @@ const STATE_KEY = 'grid';
 const DRAWINGS_KEY = 'grid-drawings';
 const THEME_SETTING = 'widget.theme';
 // `drawingStore` too: each cell gets a store of its own from the grid.
-const GRID_ONLY_KEYS = ['preset', 'links', 'compactWidth', 'persist', 'storage', 'drawingStore', 'toolbar', 'layouts'];
+const GRID_ONLY_KEYS = ['preset', 'links', 'compactWidth', 'persist', 'storage', 'drawingStore', 'toolbar', 'presets'];
 
 /** Each chart's drawing documents, by pane id, then by instrument key. */
 type ChartDrawings = Map<string, Map<string, DrawingsDocument>>;
@@ -925,7 +930,7 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
     doc, text,
     get overlays() { return chrome().overlays; },
     get tips() { return chrome().tips; },
-    layouts: (options.layouts ?? (Object.keys(CHART_GRID_LAYOUTS) as ChartGridLayoutId[])).filter(isChartGridLayout),
+    layouts: (options.presets ?? (Object.keys(CHART_GRID_LAYOUTS) as ChartGridLayoutId[])).filter(isChartGridLayout),
     layout: () => preset,
     setLayout: id => grid.setPreset(id),
     maximized: () => maxed,
