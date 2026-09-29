@@ -111,14 +111,18 @@ for (const theme of ['dark', 'light']) {
   });
 }
 
-test.describe('at a pixel ratio of 2', () => {
-  test.use({ deviceScaleFactor: 2 });
-  for (const theme of ['dark', 'light']) {
-    test(`shades the same columns in device pixels, ${theme} theme`, async ({ page }, info) => {
-      await shadesOnlyExtendedHours(page, info, theme, `${theme}-dpr2`);
-    });
-  }
-});
+// 1.25 puts bar midpoints between device pixels, and the wash must still stay
+// inside its columns; the unit tests hold the shared edges to one column.
+for (const ratio of [1.25, 2]) {
+  test.describe(`at a pixel ratio of ${ratio}`, () => {
+    test.use({ deviceScaleFactor: ratio });
+    for (const theme of ['dark', 'light']) {
+      test(`shades the same columns in device pixels, ${theme} theme`, async ({ page }, info) => {
+        await shadesOnlyExtendedHours(page, info, theme, `${theme}-dpr${ratio}`);
+      });
+    }
+  });
+}
 
 test('follows the chart calendar and the colours a host picks', async ({ page }, info) => {
   await ready(page, 'dark');

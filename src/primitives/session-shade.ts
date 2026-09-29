@@ -18,7 +18,8 @@
 import type { Chart } from '../core/chart';
 import type { DataLayer } from '../model/data-layer';
 import type { SessionPhase, SessionPhaseSource, SessionPhaseSpan } from '../feed/market-status';
-import { luminance, withAlpha } from '../render/pill';
+import { luminance, parseColor, withAlpha } from '../render/pill';
+import { darkTheme, lightTheme } from '../theme';
 import type { IPrimitive, PrimitiveHost, PrimitiveRenderContext, ZOrder } from './primitive';
 
 export interface SessionShadeOptions {
@@ -121,16 +122,21 @@ export class SessionShade implements IPrimitive {
     if (to - from > MAX_VISIBLE) return;
 
     const spans = this._spans(source, from, to);
-    // A light background shows a tint more strongly than a dark one does.
-    const [alpha, grey] = luminance(rc.theme.background) < 0.5 ? [0.1, 0.13] : [0.07, 0.1];
+    // A light background shows a tint more strongly than a dark one does. A
+    // theme colour the tint cannot read (a named or hsl() colour) would come
+    // back opaque and cover the whole column, so the built-in theme's own
+    // colour stands in for it.
+    const [alpha, grey, builtIn] = luminance(rc.theme.background) < 0.5 ? [0.1, 0.13, darkTheme] as const : [0.07, 0.1, lightTheme] as const;
+    const tint = (key: 'lineColor' | 'axisText', a: number): string => withAlpha(parseColor(rc.theme[key]) ? rc.theme[key] : builtIn[key], a);
     const colors: Partial<Record<SessionPhase, string | null>> = {
-      pre: o.preColor !== undefined ? o.preColor : withAlpha(rc.theme.lineColor, alpha),
+      pre: o.preColor !== undefined ? o.preColor : tint('lineColor', alpha),
       post: o.postColor !== undefined ? o.postColor : withAlpha('#f59e0b', alpha),
-      extended: o.extendedColor !== undefined ? o.extendedColor : withAlpha(rc.theme.axisText, grey),
+      extended: o.extendedColor !== undefined ? o.extendedColor : tint('axisText', grey),
     };
     const d = rc.dpr, w = rc.plotWidth * d, h = rc.plotHeight * d;
     // Edges on bar midpoints, as the indicator background has them, so two
-    // spans meet exactly; clamped because nothing clips a bottom primitive.
+    // spans meet exactly. The pane clips to the plot anyway; the clamp keeps a
+    // run reaching far off screen from asking for a rect millions of pixels wide.
     const edge = (i: number): number => Math.min(w, Math.max(0, Math.round(rc.timeScale.indexToX(i) * d)));
     ctx.save();
     for (const span of spans) {
@@ -164,7 +170,7 @@ export class SessionShade implements IPrimitive {
 }
 
 /** The shading each chart carries, so attaching twice never stacks two washes. */
-const attachedTo = new WeakMap<Chart, SessionShading>();
+const attachedTo = new WeakMap<Chart, { shading: SessionShading; shade: SessionShade }>();
 
 /**
  * Shade a chart's pre-open, post-close and extended hours. Nothing is shaded
@@ -176,8 +182,14 @@ const attachedTo = new WeakMap<Chart, SessionShading>();
 export function attachSessionShading(chart: Chart, options: SessionShadeOptions = {}): SessionShading {
   const existing = attachedTo.get(chart);
   if (existing) {
-    existing.setOptions(options);
-    return existing;
+    // A host that took the shade off with `removePrimitive` still holds this
+    // handle, and asking again means it wants the shading back, not a handle
+    // that shades nothing.
+    if (!chart.isDestroyed && !chart.panes().some(pane => pane.primitives().includes(existing.shade))) {
+      chart.addPrimitive(existing.shade, { anchor: 'primary-pane' });
+    }
+    existing.shading.setOptions(options);
+    return existing.shading;
   }
   const shade = new SessionShade(options);
   chart.addPrimitive(shade, { anchor: 'primary-pane' });
@@ -185,11 +197,11 @@ export function attachSessionShading(chart: Chart, options: SessionShadeOptions 
     setOptions: patch => shade.setOptions(patch),
     options: () => shade.options(),
     destroy: () => {
-      if (attachedTo.get(chart) !== shading) return;
+      if (attachedTo.get(chart)?.shading !== shading) return;
       attachedTo.delete(chart);
       if (!chart.isDestroyed) chart.removePrimitive(shade);
     },
   };
-  attachedTo.set(chart, shading);
+  attachedTo.set(chart, { shading, shade });
   return shading;
 }
