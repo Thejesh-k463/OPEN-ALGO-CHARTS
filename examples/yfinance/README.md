@@ -224,17 +224,23 @@ daemon threads, so a yfinance call that hangs cannot hold the process open.
 day, as long as the window is pinned with `to`. It is what the end-to-end
 suite runs against, and what a fresh clone can run before installing anything.
 
-- `session=extended` adds two hours either side of the synthetic session on the
-  same grid, so the regular bars are the same observations in both series and
-  only the pre and post market bars differ.
+- `session=extended` adds New York's pre and post market (04:00 to 09:30 and
+  16:00 to 20:00) on the same grid, so the regular bars are the same
+  observations in both series and only the pre and post market bars differ.
 - Each symbol has its own base price, drift and volatility, and a seeded random
   walk in trading time (a pure function of symbol and bar time), so two symbols
   never move together and a comparison overlay has something to show. Every bar's
   open is the previous bar's close.
-- Bars sit on a 09:15 to 15:30 IST session on weekdays, spelled in UTC. IST is
-  the library's default zone and has no daylight saving, so the grid is the
-  same number every day of the year. Daily bars land at the session open,
-  weekly bars on Mondays, monthly and quarterly bars on the first of the month.
+- Bars sit in each symbol's own venue hours, by the rule `src/status.js` reads
+  the venue by, so a chart's bars and its session calendar agree: an NSE or BSE
+  symbol (and `BANDED`) on weekdays from 09:15 to 15:30 in Kolkata, a US symbol
+  from 09:30 to 16:00 in New York, a `-USD` pair around the clock every day. An
+  index the page has no hours for keeps the Kolkata session. New York's clock
+  changes are spelled out rather than read from a zone database, which some
+  systems give Python only with the tzdata package, and the self-test holds them
+  to the zone database where one is installed. Daily bars land at the session open,
+  weekly bars on Mondays, monthly and quarterly bars on the first of the month,
+  all in the venue's own calendar.
 - Intraday ranges are clamped to the limits the real source enforces (`1m`
   seven days, `5m` to `90m` sixty days, `1h` two years), so the bar counts
   match a live run. The live source answers an over-long ask with nothing,
@@ -262,7 +268,7 @@ library as host-supplied metadata. Neither the server nor the library treats
 these rules as a default for anything else.
 
 Quotes and news are deterministic too. A quote is the fixture level at its own
-two-second step, not the close of the last bar, with the previous weekday's
+two-second step, not the close of the last bar, with the previous trading day's
 session close as its reference. News arrives on a per-symbol schedule, about three
 stories in five 90-minute slots, 60 slots deep; the cursor names a slot, so older
 pages do not move with the clock. One headline template carries `<b>` markup and a
@@ -271,7 +277,8 @@ the second. `FAIL` and `BUSY` answer news with their errors and `EMPTY` with an
 empty page; all three are left out of quote answers.
 
 `python server.py --self-test` starts a fixture server on a free port in the
-process and checks the contract above: the bar shape and grid, determinism
+process and checks the contract above: the bar shape and grid in each venue's
+hours, New York's clock changes, determinism
 across two server instances, every validation and error path, that a bug in
 the source is a 500 with no traceback in the body, the cache and gzip
 headers, static serving, the log line, and that shutdown returns promptly and
@@ -548,7 +555,7 @@ exists to show one engine surface carrying real use, not just being present.
 | `properties.js` | The floating properties bar is generated from `drawingSettingsSchema`, which declares only the fields a tool's `draw` reads: a field in the schema is a control with something behind it, a field absent from it is a control not shown. With several drawings selected it edits the fields their schemas share, as one undo entry. A read-only selection shows "Read-only" and a Duplicate button instead of controls the controller would refuse. For text, rectangle, ellipse and table the schema's `space` field becomes a pin toggle: pinned, the drawing keeps its place on screen through pan and zoom and scales with the chart, and unpinning puts it back on the bars under it. The bar and the inline text editor place themselves by `draw.screenPoints(id)`, since a pinned drawing has no time and price to map. |
 | `host-study.js` | Study policies from the host's side. **Add Protected VWAP** in the right-click menu adds a VWAP with `policy: { removable: false, configurable: false, movable: false }`. Hide it, read it and raise an alert on it as usual; its legend row has no gear and no close button, its Objects dock row has no remove, settings, move, Earlier or Later and does not drag, its chip has no remove button, and the settings dialog and menu rows say it is protected. The policy is saved with the layout, so a reload brings the study back protected, and importing or loading a layout keeps it (a layout file's own restricted studies are left out, `untrustedStudies` in `persist.js`); a saved indicator template leaves it out, so applying one never copies it. If the host locks a study while its settings are open, Apply and Reset say so instead of closing as if they had applied. The same row, now **Remove Protected VWAP**, takes it away with `removeIndicator(id, { force: true })`, the one call in the host that overrides the policy. |
 | `session-marks.js` | Drawing policies from the host's side. **Mark ... for This Session** in the right-click menu places a dashed price line with `policy: { editable: false, persistent: false, listed: false }`. Select it to read it, copy it, duplicate it into your own drawing or raise an alert from it; it cannot be dragged, nudged, restyled, cut or deleted, undo does not remove it, it is left out of saved layouts and it is absent from the Objects dock. The host keeps the marks per symbol for the life of the page and puts them back, with their ids, after every chart-type switch, reload and layout restore. **Clear Session Marks** removes them with `removeMany(ids, { force: true })`, the one call in the host that overrides the policy. |
-| `session.js` | Trading session as a data variant. The session menu beside the range offers regular hours and, for intraday bars of a US listed stock (the one place this source has them), extended hours: the source's own pre and post market bars, asked for with `session=extended` and never derived from the regular series. The feed declares what it serves through `dataVariants`, so a request for extended hours anywhere else is refused before it is sent and the chart says so, with a button back to regular hours, rather than showing regular bars under the extended label. The session is part of the bar cache key, the chart's data context, comparisons (asked for in their chart's session), replay's finer history, the saved layout and named workspaces. In fixture mode extended hours are two hours either side of the synthetic session, the same bars in between, byte for byte on every run. |
+| `session.js` | Trading session as a data variant. The session menu beside the range offers regular hours and, for intraday bars of a US listed stock (the one place this source has them), extended hours: the source's own pre and post market bars, asked for with `session=extended` and never derived from the regular series. The feed declares what it serves through `dataVariants`, so a request for extended hours anywhere else is refused before it is sent and the chart says so, with a button back to regular hours, rather than showing regular bars under the extended label. The session is part of the bar cache key, the chart's data context, comparisons (asked for in their chart's session), replay's finer history, the saved layout and named workspaces. In fixture mode extended hours are New York's pre and post market, the same regular bars in between, byte for byte on every run. |
 | `clipboard.js` | One in-memory clipboard shared by both charts' controllers, so copy here and paste there works even when the browser refuses the OS clipboard; the OS read is bounded so a paste never hangs on a permission popup. |
 | `level-editor.js` | A ladder tool's levels (retracement, extension, channel, fan, time zones, the Gann pair) edited one row each: enable, ratio, colour, label, add, remove, reset. Every edit is one undo entry through the controller. |
 | `text-editor.js` | Inline text editing over the painted text, sized by the same rules the text tool paints with, with every pointer and key event stopped at the box so the chart under it does not pan. |

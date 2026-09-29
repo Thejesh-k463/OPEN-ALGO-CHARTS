@@ -126,6 +126,25 @@ test('the scale toggles act on the chart and the shading is on it', async ({ pag
   expect(errors).toEqual([]);
 });
 
+test('a US symbol trades in New York hours: nothing to wash in regular hours, its pre and post market in extended', async ({ page }, info) => {
+  const errors = await openHost(page);
+  const phases = async (): Promise<Record<string, number>> => await app(page, `(() => {
+    const calendar = app.chart.dataLayer.sessionCalendar, count = {};
+    for (const bar of app.chart.primaryBars()) { const phase = calendar.phaseAt(bar.time); count[phase] = (count[phase] || 0) + 1; }
+    return count;
+  })()`) as Record<string, number>;
+  await page.locator('#shellbar .pills').getByRole('button', { name: '5M', exact: true }).click();
+  await expect.poll(() => app(page, 'app.req.interval + ":" + Boolean(app.loading)')).toBe('5m:false');
+  expect(Object.keys(await phases())).toEqual(['regular']);
+  await info.attach('regular hours', { body: await page.screenshot(), contentType: 'image/png' });
+  await page.locator('#session-menu').click();
+  await page.locator('.menu button', { hasText: 'Extended hours' }).click();
+  await expect.poll(() => app(page, 'app.req.session === "extended" && !app.loading')).toBe(true);
+  expect(Object.keys(await phases()).sort()).toEqual(['post', 'pre', 'regular']);
+  await info.attach('extended hours', { body: await page.screenshot(), contentType: 'image/png' });
+  expect(errors).toEqual([]);
+});
+
 test('the phone shell follows the container-size rule, not every touch screen', async ({ browser }) => {
   // Four full page loads in one test: the default budget is for one.
   test.slow();
