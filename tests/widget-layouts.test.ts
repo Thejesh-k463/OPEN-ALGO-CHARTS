@@ -1003,9 +1003,12 @@ describe('layouts controller on one widget', () => {
       apply(next) {
         if (next.panes.length !== 1) return { applied: false, reason: `one chart cannot show ${next.panes.length}` };
         const [pane] = next.panes;
+        // The pane carries the rail's magnet and stay; the rest of the rail (favourites, last tools) stays the user's.
+        const rail = widget.getState().rail;
         return widget.restoreState({
           version: 1, symbol: pane.symbol, exchange: pane.exchange, interval: pane.interval, chartType: pane.chartType,
           chart: pane.chart, theme: pane.settings['widget.theme'], ...(pane.variant ? { variant: pane.variant } : {}),
+          ...(rail === null ? {} : { rail: { ...rail, magnet: pane.magnet, stay: pane.stay } }),
         });
       },
       subscribe(listener) {
@@ -1051,6 +1054,31 @@ describe('layouts controller on one widget', () => {
       const desk = await repo.createWorkspace('Desk', { ...workspaceFixture(), panes: workspaceFixture().panes.map(pane => ({ ...pane, comparisons: [] })) });
       expect(await controller.open(desk.id)).toEqual({ applied: false, reason: 'one chart cannot show 2' });
       expect(widget.symbol()).toBe('INFY');
+    } finally { widget.destroy(); }
+  });
+
+  it('brings back the magnet and the stay-in-drawing choice a layout was saved with, as the grid does', async () => {
+    const doc = fakeWidgetDocument();
+    const widget = createWidget(fakeContainer(doc, 900, 600) as unknown as HTMLElement, {
+      document: doc as unknown as Document, pixelRatio: () => 1, panels: false,
+      raf: { schedule: (cb: () => void) => { cb(); return 1; }, cancel: () => {} },
+      symbol: 'INFY', exchange: 'NSE', interval: '5m',
+    });
+    try {
+      widget.chart.applySize(900, 600);
+      widget.series.setData(walk(200, 1510, 11));
+      const rail = widget.getState().rail;
+      expect(rail).not.toBeNull();
+      widget.restoreState({ ...widget.getState(), rail: { ...rail!, magnet: 'strong', stay: true } });
+      const repo = new WorkspaceRepository(createMemoryWorkspaceStorage(), 'desk', { id: () => 'magnet', now: () => 1 });
+      const controller = createLayoutsController(repo, widgetTarget(widget), { autosaveDelay: 0 });
+      live.push(controller);
+      const saved = await controller.saveAs('Snapping');
+      expect(saved.panes[0]).toMatchObject({ magnet: 'strong', stay: true });
+      widget.restoreState({ ...widget.getState(), rail: { ...rail!, magnet: 'off', stay: false } });
+      expect(await controller.open(saved.id)).toMatchObject({ applied: true });
+      expect(widget.getState().rail).toMatchObject({ magnet: 'strong', stay: true });
+      expect(controller.state()).toMatchObject({ dirty: false, layoutId: saved.id });
     } finally { widget.destroy(); }
   });
 });

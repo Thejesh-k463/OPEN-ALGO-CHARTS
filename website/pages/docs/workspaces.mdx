@@ -283,9 +283,12 @@ const target = {
   apply({ panes }) {
     if (panes.length !== 1) return { applied: false, reason: 'one chart shows one pane' };
     const [pane] = panes;
+    // The pane carries the drawing rail's magnet and stay; the rest of the rail stays the user's.
+    const rail = widget.getState().rail;
     return widget.restoreState({
       version: 1, symbol: pane.symbol, exchange: pane.exchange, interval: pane.interval, chartType: pane.chartType,
       chart: pane.chart, theme: pane.settings['widget.theme'], ...(pane.variant ? { variant: pane.variant } : {}),
+      ...(rail === null ? {} : { rail: { ...rail, magnet: pane.magnet, stay: pane.stay } }),
     });
   },
   subscribe(listener) {
