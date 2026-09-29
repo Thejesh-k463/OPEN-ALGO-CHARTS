@@ -12,14 +12,12 @@ import { widgetText } from '../localization';
  */
 import { getIndicator, indicatorDefaults, indicatorStyleInputs } from 'openalgo-charts';
 import type { IndicatorApi, IndicatorDescriptor, IndicatorInput, IndicatorSettings, IndicatorStudySource } from 'openalgo-charts';
-import { chromeIconSvg } from 'openalgo-charts/draw';
 import type { WidgetContext } from '../context';
 import { mountIndicatorInputControls, type IndicatorInputControlsHandle } from '../indicator-input-controls';
 import {
-  button, controlsFromInputs, dialogFrame, el, glyphSvg, openPanel, renderForm, tabList,
+  button, controlsFromInputs, dialogFrame, el, openPanel, renderForm, tabList,
   type FormHandle, type PanelHandle,
 } from '../form';
-import { STYLE_GLYPH } from '../glyphs';
 
 export type IndicatorSettingsTab = 'inputs' | 'style';
 
@@ -90,9 +88,9 @@ export function mountIndicatorSettings(
   const descriptor: IndicatorDescriptor = getIndicator(inst.indicatorId);
 
   const tabs: Array<{ id: IndicatorSettingsTab; label: string; icon: string; inputs: readonly IndicatorInput[] }> = [];
-  if (descriptor.inputs.length > 0) tabs.push({ id: 'inputs', label: widgetText(ctx, 'Inputs'), icon: chromeIconSvg('settings'), inputs: descriptor.inputs });
+  if (descriptor.inputs.length > 0) tabs.push({ id: 'inputs', label: widgetText(ctx, 'Inputs'), icon: 'settings', inputs: descriptor.inputs });
   const style = indicatorStyleInputs(descriptor);
-  if (style.length > 0) tabs.push({ id: 'style', label: widgetText(ctx, 'Style'), icon: glyphSvg(STYLE_GLYPH), inputs: style });
+  if (style.length > 0) tabs.push({ id: 'style', label: widgetText(ctx, 'Style'), icon: 'brush', inputs: style });
   if (tabs.length === 0) return declined(ctx, widgetText(ctx, '{name} has nothing to configure', { name: inst.name }));
 
   const before = detached(inst.settings());

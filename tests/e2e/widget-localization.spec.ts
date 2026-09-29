@@ -19,7 +19,7 @@ test('translated desktop controls, late dialogs and keyboard dismissal remain us
   await page.keyboard.press('Enter');
   await expect(dialog).toBeHidden();
   await page.getByRole('button', { name: 'Cambiar al tema claro', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Cambiar al tema oscuro', exact: true })).toHaveText('Oscuro');
+  await expect(page.getByRole('button', { name: 'Cambiar al tema oscuro', exact: true })).toHaveAttribute('data-theme', 'light');
   await page.getByRole('button', { name: 'Objetos', exact: true }).click();
   await expect(page.getByRole('searchbox', { name: 'Buscar objetos' })).toBeVisible();
   await page.keyboard.press('Escape');

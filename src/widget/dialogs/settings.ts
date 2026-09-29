@@ -15,10 +15,19 @@ import { applyChartSettings, chartSettingsSchema, readChartSettings } from 'open
 import type { ChartSettingsTab, ChartSettingsTabId, ChartSettingsValues } from 'openalgo-charts';
 import type { WidgetContext } from '../context';
 import {
-  button, controlsFromInputs, dialogFrame, el, glyphSvg, openPanel, renderForm, tabList,
+  button, controlsFromInputs, dialogFrame, el, openPanel, renderForm, tabList,
   type FormHandle, type PanelHandle,
 } from '../form';
-import { TAB_GLYPH } from '../glyphs';
+
+/**
+ * The chrome glyph beside each settings tab, keyed by the schema's tab id
+ * rather than by position, so a reordering in the engine cannot shuffle the
+ * pictures. Typed on the full id union: a tab the engine adds fails the build
+ * here until it has a picture.
+ */
+const SETTINGS_TAB_ICONS: Readonly<Record<ChartSettingsTabId, string>> = {
+  price: 'chart-candlestick', readout: 'legend', axes: 'axes', appearance: 'panels', trading: 'trading',
+};
 
 export interface SettingsDialogOptions {
   /** The tab to open on. Default: the first tab with a control in it. */
@@ -87,7 +96,7 @@ export function mountSettingsDialog(
   const main = el(doc, 'div', 'oac-settings__main');
   const pane = el(doc, 'div', 'oac-settings__pane');
   frame.body.appendChild(main);
-  const nav = tabList(doc, tabs.map((t) => ({ id: t.id, label: widgetText(ctx, `schema.settings.tab.${t.id}`, {}, t.label), icon: glyphSvg(TAB_GLYPH[t.id] ?? '') })),
+  const nav = tabList(doc, tabs.map((t) => ({ id: t.id, label: widgetText(ctx, `schema.settings.tab.${t.id}`, {}, t.label), icon: SETTINGS_TAB_ICONS[t.id] })),
     activeTab, 'rail', (id) => { activeTab = id; renderPane(); });
   main.appendChild(nav.el);
 

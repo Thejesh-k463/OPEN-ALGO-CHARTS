@@ -24,10 +24,9 @@ import type { Drawing, DrawingTool, SettingsSchema } from 'openalgo-charts/draw'
 import { editableIds, type WidgetContext } from '../context';
 import { commandChord } from '../keymap';
 import {
-  button, controlsFromFields, dialogFrame, el, glyphSvg, openPanel, placePanel, renderForm, selectionPoint, tabList,
+  button, controlsFromFields, dialogFrame, el, openPanel, placePanel, renderForm, selectionPoint, tabList,
   type ButtonSpec, type FormHandle, type PanelHandle,
 } from '../form';
-import { ABOVE_GLYPH, ANCHOR_GLYPH, BEHIND_GLYPH, STYLE_GLYPH } from '../glyphs';
 import { openMenu } from '../topbar';
 import { templateMenuRows } from '../drawing-templates';
 import { mountDrawingCoordinates, type DrawingCoordinatesHandle } from './drawing-coordinates';
@@ -162,8 +161,8 @@ export function mountDrawingProperties(ctx: WidgetContext, anchor?: HTMLElement,
   const anchors = el(doc, 'div', 'oac-props__pane oac-props__anchors');
   let tab: 'style' | 'coordinates' = opts.tab ?? 'style';
   const tabs = tabList(doc, [
-    { id: 'style', label: widgetText(ctx, 'Style'), icon: glyphSvg(STYLE_GLYPH) },
-    { id: 'coordinates', label: widgetText(ctx, 'Coordinates'), icon: glyphSvg(ANCHOR_GLYPH) },
+    { id: 'style', label: widgetText(ctx, 'Style'), icon: 'brush' },
+    { id: 'coordinates', label: widgetText(ctx, 'Coordinates'), icon: 'coordinates' },
   ], tab, 'row', (next) => { tab = next as 'style' | 'coordinates'; showTab(); });
   frame.body.append(tabs.el, pane, anchors);
   let coords: DrawingCoordinatesHandle | null = null;
@@ -200,9 +199,9 @@ export function mountDrawingProperties(ctx: WidgetContext, anchor?: HTMLElement,
     // of the order), so a multi-selection is several calls.
     add({ label: widgetText(ctx, 'Bring to front'), icon: 'front', onClick: () => { for (const id of ids) draw.bringToFront(id); } }, 'front');
     add({ label: widgetText(ctx, 'Send to back'), icon: 'back', onClick: () => { for (const id of ids) draw.sendToBack(id); } }, 'back');
-    add({ label: widgetText(ctx, 'In front of the series'), svg: glyphSvg(ABOVE_GLYPH),
+    add({ label: widgetText(ctx, 'In front of the series'), icon: 'above-series',
       onClick: () => { for (const id of ids) draw.bringAboveSeries(id); } }, 'above', !behind && !between);
-    add({ label: widgetText(ctx, 'Behind the series'), svg: glyphSvg(BEHIND_GLYPH),
+    add({ label: widgetText(ctx, 'Behind the series'), icon: 'behind-series',
       onClick: () => { for (const id of ids) draw.sendBehindSeries(id); } }, 'behind', behind);
     sep();
     add({ label: widgetText(ctx, 'Duplicate'), icon: 'duplicate', chord: commandChord(ctx.keymap, 'duplicate', 'Mod+D'), onClick: () => { draw.duplicate(ids); } }, 'duplicate');

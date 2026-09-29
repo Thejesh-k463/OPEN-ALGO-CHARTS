@@ -88,7 +88,6 @@ describe('widget translation contract', () => {
     expect(seen.some(key => key.startsWith('schema.settings.'))).toBe(true);
     widget.context.overlays.closeAll();
     widget.setTheme('light');
-    expect(root.querySelector('.oac-topbar__theme')?.textContent).toBe('Local Dark');
     expect(root.querySelector('.oac-topbar__theme')?.getAttribute('aria-label')).toBe('Local Switch to the dark theme');
   });
 

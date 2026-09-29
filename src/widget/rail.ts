@@ -21,6 +21,7 @@ import {
 } from 'openalgo-charts/draw';
 import { h, glyph, editableIds, historyPress, historyReady, TIP_DWELL_MS, type TipSpec, type WidgetContext } from './context';
 import { commandChord } from './keymap';
+import { chromeGlyph } from './form';
 
 export const MAGNET_MODES: readonly MagnetMode[] = ['off', 'weak', 'strong'];
 
@@ -186,8 +187,6 @@ export function toolGlyph(doc: Document, id: string): HTMLElement {
   span.textContent = String(id).charAt(0).toUpperCase();
   return span;
 }
-
-const chromeGlyph = (doc: Document, id: string): HTMLElement => glyph(doc, chromeIconSvg(id), 'chrome');
 
 /** Validate a stored preference object field by field, dropping what this build cannot honour. */
 export function sanitizeRailPrefs(raw: unknown, groups: readonly RailGroup[], toolsOf: (g: RailGroup) => string[]): RailPrefs {

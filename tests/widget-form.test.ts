@@ -16,7 +16,7 @@ import { describe, it, expect } from 'vitest';
 import { makeCtx } from './helpers/fake-ctx';
 import { INDICATOR_SOURCES } from 'openalgo-charts';
 import type { ChartSettingsInput } from 'openalgo-charts';
-import { LINE_STYLE_OPTIONS, FONT_OPTIONS, type SettingsField } from 'openalgo-charts/draw';
+import { chromeIconSvg, LINE_STYLE_OPTIONS, FONT_OPTIONS, type SettingsField } from 'openalgo-charts/draw';
 import {
   controlsFromInputs, controlsFromFields, renderForm, toHexColor, formatNumber, placePanel, openPanel,
   dialogFrame, tabList, button, selectionPoint, type FormControl,
@@ -693,13 +693,14 @@ suite('furniture', () => {
   it('draws tabs with glyphs and moves the selection with the arrow keys', () => {
     const d = doc();
     const picked: string[] = [];
-    const list = tabList(d, [{ id: 'a', label: 'A', icon: '<svg></svg>' }, { id: 'b', label: 'B' }], 'a', 'rail', (id) => picked.push(id));
+    const list = tabList(d, [{ id: 'a', label: 'A', icon: 'settings' }, { id: 'b', label: 'B' }], 'a', 'rail', (id) => picked.push(id));
     const nav = list.el as unknown as FakeElement;
     (d.body as unknown as FakeElement).appendChild(nav);
     const tabs = nav.querySelectorAll('[role="tab"]');
     expect(tabs.length).toBe(2);
     expect(tabs[0].getAttribute('aria-selected')).toBe('true');
-    expect(tabs[0].querySelector('.oac-glyph')).not.toBeNull();
+    expect(tabs[0].querySelector('.oac-glyph')?.innerHTML).toBe(chromeIconSvg('settings'));
+    expect(tabs[1].querySelector('.oac-glyph')).toBeNull();
     tabs[0].focus();
     tabs[0].fire('keydown', { key: 'ArrowDown' });
     expect(picked).toEqual(['b']);
