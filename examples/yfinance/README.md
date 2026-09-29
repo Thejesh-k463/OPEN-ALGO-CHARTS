@@ -351,7 +351,7 @@ examples/yfinance/
     workspace-host.js  reference chart ownership, pending guards and transition wiring
     workspace-catalog.js  named saves, revision conflicts, autosave ownership and storage recovery
     workspaces.js     named-layout dialog, startup selection, autosave and portable files
-    grid.js           the grid view's start-up: the library's grid bar (layouts, maximize, link groups, capture), import and export, panels
+    grid.js           the grid view's start-up: the library's grid bar (layouts, maximize, link groups, capture, saved desks), the bar under the charts, import and export, panels
     grid-view.js      the grid view's feed adapter, layout hand-off and document helpers
   tests/              vitest specs for the modules that can run without a browser
   vitest.config.ts    the config those specs run under (see Tests)
@@ -381,15 +381,24 @@ follow a rebuild.
 tier's chart grid (`createChartGrid`) over the same `/api/history` feed, so each
 chart is a complete widget with its own top bar, loading status and retry.
 
-- The bar picks a preset (one chart, two or three columns, two or three rows, two
-  by two), switches crosshair, viewport, symbol and interval links, and imports or
-  exports a layout file.
+- The grid bar over the charts picks the layout (one chart to sixteen), maximizes,
+  links charts in named groups, captures every chart and keeps saved desks. The
+  page's own bar keeps the way back, the layout file (import and export) and the
+  status line.
 - Click or focus a chart to make it active: it gets the outline and the keyboard.
   Drag a gap to resize, or focus it and use the arrow keys; double click evens it.
 - Below 640 CSS px only the active chart shows, with tabs to switch.
-- The grid keeps its layout in `localStorage` under the `yfinance-grid` namespace.
-  A first visit opens AAPL, MSFT, RELIANCE.NS and ^NSEI in a two by two grid. A
-  saved layout the page cannot restore is kept, and the status line says why.
+- The grid keeps its desk in IndexedDB (the widget's `openalgo-charts-widget`
+  database, namespace `yfinance-grid`); a desk an earlier release left in
+  `localStorage` is copied in on the first visit. A first visit opens AAPL, MSFT,
+  RELIANCE.NS and ^NSEI in a two by two grid. A saved layout the page cannot
+  restore is kept, and the status line says why.
+- One bar under the charts acts on the active chart: ranges, Go to, the market
+  status from each chart's venue calendar (`sessionCalendarFor`), the clock and the
+  scale toggles.
+- The grid bar's Layouts control saves and opens whole desks, kept in the
+  `yfinance-grid` workspace database; the layout that was active reopens after a
+  reload, unless the main page has just handed a layout over.
 - Each chart loads the history period its layout saved (`historyPeriod`, the
   main page's range) through the grid's `feed` function, when its interval can
   serve it and, for a daily chart, when it reaches five years. Otherwise, and for
