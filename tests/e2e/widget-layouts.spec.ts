@@ -104,7 +104,13 @@ test('saves, renames, reloads and reopens a layout, asking before it drops a cha
   await expect(confirm).toBeVisible();
   await expect(confirm.locator('.oac-layouts__confirm-text')).toHaveText('Opening range has unsaved changes. Open the saved version?');
   await info.attach('asking before a change is dropped', { body: await page.screenshot(), contentType: 'image/png' });
-  await confirm.locator('[data-action="stay"]').click();
+  // By keyboard: the question takes the focus, and gives it back to the row it
+  // asked about rather than to the page. (A click in WebKit does not focus a
+  // button, so the keys are the path every engine shares.)
+  await expect(confirm.locator('[data-action="stay"]')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(confirm).toBeHidden();
+  await expect(menu(page).locator('[data-list="recent"] .oac-layouts__row').first()).toBeFocused();
   expect((await chart(page)).symbol).toBe('TCS');
   await menu(page).locator('[data-list="recent"] .oac-layouts__row').first().click();
   await confirm.locator('[data-action="discard"]').click();

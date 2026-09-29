@@ -407,9 +407,13 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
       return { title: name === null ? title : `${title}: ${name}`, sub: layoutStatusText(ctx, controller.state()), side: 'bottom' };
     });
     const paintLayouts = (): void => {
+      const state = controller.state();
+      const attention = layoutNeedsAttention(state);
       label.textContent = held() ?? title;
-      layouts.dataset.attention = String(layoutNeedsAttention(controller.state()));
+      layouts.dataset.attention = String(attention);
       ctx.tips.refreshLabel(layouts);
+      // The mark is a dot: a screen reader hears what it means with the name.
+      if (attention) layouts.setAttribute('aria-label', `${layouts.getAttribute('aria-label') ?? title}, ${layoutStatusText(ctx, state)}`);
     };
     offLayouts = controller.subscribe(paintLayouts);
     paintLayouts();

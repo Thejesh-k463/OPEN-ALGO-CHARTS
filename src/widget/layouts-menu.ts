@@ -102,7 +102,7 @@ export function openLayoutsMenu(ctx: WidgetContext, controller: LayoutsControlle
   const heading = el(doc, 'div', 'oac-layouts__heading');
   const name = el(doc, 'strong', 'oac-layouts__name');
   const tools = el(doc, 'div', 'oac-layouts__tools');
-  const rename = button(doc, { label: text('rename', 'Rename'), icon: 'rename', onClick: () => showForm('rename') });
+  const rename = button(doc, { label: text('rename', 'Rename'), icon: 'rename', onClick: () => showForm('rename', rename) });
   rename.dataset.action = 'rename';
   const remove = button(doc, { label: text('delete', 'Delete'), icon: 'trash', onClick: () => askDelete() });
   remove.dataset.action = 'delete';
@@ -130,6 +130,7 @@ export function openLayoutsMenu(ctx: WidgetContext, controller: LayoutsControlle
   const formRow = el(doc, 'div', 'oac-layouts__row-controls');
   const cancelForm = button(doc, { label: widgetText(ctx, 'Cancel'), onClick: () => hideForms() });
   const submitForm = button(doc, { label: widgetText(ctx, 'Save'), variant: 'primary', onClick: () => { void submit(); } });
+  cancelForm.dataset.action = 'cancel-name';
   submitForm.dataset.action = 'submit-name';
   formRow.append(input, cancelForm, submitForm);
   form.append(formLabel, formRow, formError);
@@ -152,7 +153,7 @@ export function openLayoutsMenu(ctx: WidgetContext, controller: LayoutsControlle
   const conflictActions = el(doc, 'div', 'oac-layouts__row-controls');
   const reloadList = button(doc, { label: text('reload', 'Reload list'), icon: 'refresh', onClick: () => { void run('reload', () => controller.reload()); } });
   reloadList.dataset.action = 'reload';
-  const saveCopy = button(doc, { label: text('copy', 'Save as a copy'), onClick: () => showForm('copy') });
+  const saveCopy = button(doc, { label: text('copy', 'Save as a copy'), onClick: () => showForm('copy', saveCopy) });
   saveCopy.dataset.action = 'copy';
   const overwrite = button(doc, { label: text('overwrite', 'Overwrite'), variant: 'danger', onClick: () => { void run('overwrite', () => controller.overwrite()); } });
   overwrite.dataset.action = 'overwrite';
@@ -183,12 +184,12 @@ export function openLayoutsMenu(ctx: WidgetContext, controller: LayoutsControlle
   const autosaveState = el(doc, 'span', 'oac-layouts__autosave-state');
   autosaveState.setAttribute('aria-live', 'polite');
   frame.lead.append(autosave, autosaveState);
-  const saveAs = button(doc, { label: text('saveAs', 'Save as...'), icon: 'save-as', onClick: () => showForm('save-as') });
+  const saveAs = button(doc, { label: text('saveAs', 'Save as...'), icon: 'save-as', onClick: () => showForm('save-as', saveAs) });
   saveAs.dataset.action = 'save-as';
   const save = button(doc, { label: widgetText(ctx, 'Save'), variant: 'primary', onClick: () => {
     if (save.getAttribute('aria-disabled') === 'true') return;
     // Nothing held yet: Save names the chart first, as Save as does.
-    if (controller.state().layoutId === null) showForm('save-as');
+    if (controller.state().layoutId === null) showForm('save-as', save);
     else void run('save', () => controller.save());
   } });
   save.dataset.action = 'save';
@@ -198,12 +199,32 @@ export function openLayoutsMenu(ctx: WidgetContext, controller: LayoutsControlle
   let closed = false;
   /** The last failed operation's message, until another operation starts. */
   let failure: string | null = null;
+  /** The control a form or a question came from, read when it closes: a row is painted afresh. */
+  let back: (() => HTMLElement | null) | null = null;
 
   const setOff = (b: HTMLElement, off: boolean, why?: string): void => {
     b.setAttribute('aria-disabled', String(off));
     if (off && why !== undefined) b.title = why; else b.removeAttribute('title');
   };
   const reason = (thrown: unknown): string => thrown instanceof Error ? thrown.message : String(thrown);
+  const rowFor = (id: string): HTMLElement | null =>
+    Array.from(lists.querySelectorAll<HTMLElement>('.oac-layouts__row')).find(b => b.dataset.layoutId === id) ?? null;
+  /**
+   * Show or hide a part of the menu, and say whether the focus was in it as it
+   * hid. A hidden control keeps the focus in one engine and drops it to the
+   * page in another; either way a keyboard user is lost, so the caller moves it.
+   */
+  const reveal = (part: HTMLElement, shown: boolean): boolean => {
+    const had = !shown && !part.hidden && part.contains(doc.activeElement);
+    part.hidden = !shown;
+    return had;
+  };
+  /** Focus where the closed form or question came from, else Save. */
+  const refocus = (): void => {
+    if (closed) return;
+    const target = back?.() ?? null;
+    (target !== null && !(conflict.hidden && conflict.contains(target)) ? target : save).focus();
+  };
 
   /** Run one controller operation from a control, reporting a failure in the panel. */
   async function run(what: Action, task: () => Promise<unknown>): Promise<boolean> {
@@ -219,19 +240,21 @@ export function openLayoutsMenu(ctx: WidgetContext, controller: LayoutsControlle
 
   function hideForms(): void {
     formMode = null;
-    form.hidden = true;
-    confirm.hidden = true;
+    const lost = [reveal(form, false), reveal(confirm, false)].includes(true);
     formError.hidden = true;
     input.removeAttribute('aria-invalid');
     paint();
+    if (lost) refocus();
+    back = null;
   }
 
-  function showForm(mode: FormMode): void {
+  function showForm(mode: FormMode, from: HTMLElement): void {
     const state = controller.state();
     if (state.busy) return;
     if (mode === 'rename' && state.layoutId === null) return;
     hideForms();
     formMode = mode;
+    back = () => from;
     const held = nameOf(state);
     const where = ctx.symbol();
     formLabel.textContent = mode === 'rename' ? text('renameLabel', 'New name for {name}', { name: held ?? '' })
@@ -260,13 +283,15 @@ export function openLayoutsMenu(ctx: WidgetContext, controller: LayoutsControlle
     const done = await run(mode === 'rename' ? 'rename' : 'save', () => mode === 'rename' && id !== null
       ? controller.rename(id, value) : controller.saveAs(value));
     if (done && !closed) {
+      back = () => save;
       hideForms();
-      save.focus();
     }
   }
 
-  function ask(words: string, choices: Array<{ label: string; action: string; variant?: 'primary' | 'danger'; run: () => void }>): void {
+  function ask(words: string, choices: Array<{ label: string; action: string; variant?: 'primary' | 'danger'; run: () => void }>,
+    from: () => HTMLElement | null): void {
     hideForms();
+    back = from;
     confirmText.textContent = words;
     confirmActions.textContent = '';
     for (const choice of choices) {
@@ -283,12 +308,13 @@ export function openLayoutsMenu(ctx: WidgetContext, controller: LayoutsControlle
     const id = state.layoutId;
     if (id === null || state.busy) return;
     ask(text('deleteQuestion', 'Delete {name}? The chart stays as it is.', { name: nameOf(state) ?? '' }), [
-      { label: widgetText(ctx, 'Cancel'), action: 'keep', run: () => { hideForms(); remove.focus(); } },
+      { label: widgetText(ctx, 'Cancel'), action: 'keep', run: () => hideForms() },
       { label: text('delete', 'Delete'), action: 'confirm-delete', variant: 'danger', run: () => {
+        back = () => save;
         hideForms();
         void run('delete', () => controller.remove(id)).then(() => { if (!closed) save.focus(); });
       } },
-    ]);
+    ], () => remove);
   }
 
   /**
@@ -317,14 +343,14 @@ export function openLayoutsMenu(ctx: WidgetContext, controller: LayoutsControlle
       ask(id === state.layoutId
         ? text('revertQuestion', '{name} has unsaved changes. Open the saved version?', { name: held })
         : text('discardQuestion', '{name} has unsaved changes. Save them before opening {target}?',
-          { name: held, target: state.catalog?.workspaces.find(item => item.id === id)?.name ?? '' }), choices);
+          { name: held, target: state.catalog?.workspaces.find(item => item.id === id)?.name ?? '' }), choices, () => rowFor(id));
       return;
     }
     await go(id);
   }
 
   async function go(id: string): Promise<void> {
-    confirm.hidden = true;
+    if (reveal(confirm, false)) refocus();
     let applied = false;
     const done = await run('open', async () => {
       const report = await controller.open(id);
@@ -385,7 +411,8 @@ export function openLayoutsMenu(ctx: WidgetContext, controller: LayoutsControlle
     setOff(autosave, state.busy || state.catalog === null);
     autosaveState.textContent = on && state.layoutId !== null && !state.conflict ? layoutStatusText(ctx, state) : '';
     autosaveState.dataset.state = state.autosave;
-    conflict.hidden = !state.conflict;
+    // Settled (an overwrite, a copy, a reload that found the layout as it was): the focus stays in the menu.
+    if (reveal(conflict, state.conflict)) save.focus();
     conflictText.textContent = text('conflictText', '{name} was changed in another window. This chart is not saved over it.', { name: held ?? '' });
     for (const b of [reloadList, saveCopy, overwrite]) setOff(b, state.busy);
     // An operation's own failure first; else why autosave stopped, which no control reported.
@@ -395,7 +422,8 @@ export function openLayoutsMenu(ctx: WidgetContext, controller: LayoutsControlle
     error.textContent = shown ?? '';
     lists.textContent = '';
     const all = state.catalog?.workspaces ?? [];
-    if (state.catalog === null) lists.appendChild(el(doc, 'p', 'oac-empty', text('loading', 'Loading layouts')));
+    // A read that failed says so on the error line; the list does not go on saying it is loading.
+    if (state.catalog === null) { if (state.busy) lists.appendChild(el(doc, 'p', 'oac-empty', text('loading', 'Loading layouts'))); }
     else if (all.length === 0) lists.appendChild(el(doc, 'p', 'oac-empty', text('empty', 'No saved layouts yet. Save this chart to start one.')));
     const recent = (state.catalog?.recentWorkspaceIds ?? []).slice(0, RECENT_LAYOUTS)
       .map(id => all.find(item => item.id === id)).filter((item): item is WorkspaceDocument => item !== undefined);

@@ -116,10 +116,13 @@ describe('the Layouts button', () => {
     await saveAs(widget, menu, 'Morning');
     expect(must(button, '.oac-topbar__layouts-name').textContent).toBe('Morning');
     expect(button.dataset.attention).toBe('false');
+    expect(button.getAttribute('aria-label')).toBe('Layouts: Morning');
     widget.setInterval('15m');
     await widget.layouts!.flush();
     await settle();
     expect(button.dataset.attention).toBe('true');
+    // The mark is a dot; the name says it too.
+    expect(button.getAttribute('aria-label')).toBe('Layouts: Morning, Unsaved changes');
     expect(widget.openLayouts()).toBe(true);
   });
 });
@@ -329,6 +332,75 @@ describe('the Layouts menu', () => {
     await settle();
     expect([widget.symbol(), widget.interval()]).toEqual(['TCS', '15m']);
     expect((await repo!.load()).workspaces.find(doc => doc.name === 'Evening')!.panes[0].interval).toBe('5m');
+  });
+
+  it('gives the focus back to where a form or a question came from as it closes', async () => {
+    const { widget, root } = await make();
+    const menu = await openMenu(widget, root);
+    const active = (): FakeElement => widget.context.document.activeElement as unknown as FakeElement;
+    // A press focuses its button first, as a browser does.
+    const tap = async (selector: string): Promise<void> => { must(menu, selector).focus(); await press(widget, menu, selector); };
+    await tap('[data-action="save-as"]');
+    expect(active()).toBe(must(menu, '.oac-layouts__input'));
+    await tap('[data-action="cancel-name"]');
+    expect(active()).toBe(must(menu, '[data-action="save-as"]'));
+    await tap('[data-action="save-as"]');
+    must(menu, '.oac-layouts__input').value = 'Evening';
+    await tap('[data-action="submit-name"]');
+    expect(active()).toBe(must(menu, '[data-action="save"]'));
+    widget.setSymbol('TCS', 'NSE');
+    await saveAs(widget, menu, 'Morning');
+    const evening = widget.layouts!.state().catalog!.workspaces.find(doc => doc.name === 'Evening')!;
+    widget.setInterval('15m');
+    const row = (): FakeElement => (menu.querySelectorAll('.oac-layouts__row') as unknown as FakeElement[]).find(item => item.dataset.layoutId === evening.id)!;
+    row().focus();
+    row().click();
+    await settle();
+    expect(active().dataset.action).toBe('stay');
+    await tap('[data-action="stay"]');
+    // The rows were painted afresh meanwhile: the focus is on the one asked about.
+    expect(active()).toBe(row());
+    await tap('[data-action="delete"]');
+    expect(active().dataset.action).toBe('keep');
+    await tap('[data-action="keep"]');
+    expect(active()).toBe(must(menu, '[data-action="delete"]'));
+  });
+
+  it('keeps the focus in the menu when a conflict is settled from its own buttons', async () => {
+    const shared = account();
+    const { widget, root } = await make({}, shared.repo());
+    const elsewhere = shared.repo();
+    const menu = await openMenu(widget, root);
+    await saveAs(widget, menu, 'Morning');
+    const id = widget.layouts!.state().layoutId!;
+    const theirs = (await elsewhere.load()).workspaces[0];
+    await elsewhere.saveWorkspace(id, { layout: theirs.layout, panes: [{ ...theirs.panes[0], interval: '1h' }], activePaneId: theirs.activePaneId, sync: theirs.sync });
+    widget.setChartType('line');
+    await widget.layouts!.flush();
+    await press(widget, menu, '[data-action="save"]');
+    expect(must(menu, '.oac-layouts__conflict').hidden).toBe(false);
+    must(menu, '[data-action="overwrite"]').focus();
+    await press(widget, menu, '[data-action="overwrite"]');
+    expect(must(menu, '.oac-layouts__conflict').hidden).toBe(true);
+    expect(widget.context.document.activeElement).toBe(must(menu, '[data-action="save"]'));
+  });
+
+  it('says the list could not be read, and does not go on saying it is loading', async () => {
+    const repo = account().repo();
+    let fail = false;
+    const load = repo.load.bind(repo);
+    repo.load = () => fail ? Promise.reject(new Error('storage is locked')) : load();
+    fail = true;
+    const { widget, root } = await make({}, repo);
+    const menu = await openMenu(widget, root);
+    expect(widget.layouts!.state().catalog).toBeNull();
+    expect(must(menu, '.oac-layouts__error').textContent).toBe('The saved layouts could not be read: storage is locked');
+    expect(q(menu, '.oac-layouts__lists .oac-empty')).toBeNull();
+    fail = false;
+    await press(widget, menu, '[data-action="save"]');
+    must(menu, '.oac-layouts__input').value = 'Morning';
+    await press(widget, menu, '[data-action="submit-name"]');
+    expect(rows(menu)).toEqual(['Morning']);
   });
 
   it('offers the three ways out when another window changed the held layout', async () => {
