@@ -136,11 +136,27 @@ async function mountRandomWalk(page: Page, theme: 'dark' | 'light'): Promise<voi
         price = close;
       }
     }
+    // A 15m request gets 15m bars built from the same session, so a shot
+    // after the interval changes still shows a true chart of that interval.
+    const barsFor = (interval: string): typeof bars => {
+      const step = interval === '15m' ? 900 : 300;
+      const out: typeof bars = [];
+      for (const bar of bars) {
+        const start = bar.time - ((bar.time - 13_500) % 86_400) % step;
+        const last = out[out.length - 1];
+        if (last === undefined || last.time !== start) { out.push({ ...bar, time: start }); continue; }
+        last.high = Math.max(last.high, bar.high);
+        last.low = Math.min(last.low, bar.low);
+        last.close = bar.close;
+        last.volume += bar.volume;
+      }
+      return out;
+    };
     (window as any).__widget.destroy();
     (window as any).__loaded = 0;
     const widget = (window as any).__createWidget(document.getElementById('t')!, {
       mobile: 'auto', symbol: 'INFY', exchange: 'NSE', interval: '5m', theme: themeName, rail: { favorites: ['trend-line'] },
-      feed: { getBars: async () => bars, subscribeBars: () => () => {} },
+      feed: { getBars: async (request: { interval: string }) => barsFor(request.interval), subscribeBars: () => () => {} },
     });
     widget.on('data', (event: { bars: number }) => { (window as any).__loaded = event.bars; });
     (window as any).__widget = widget;
@@ -176,15 +192,40 @@ test('a tablet keeps the toolbar and drawing rail in both orientations, and they
 
   await page.locator('.oac-pills [data-interval="15m"]').tap();
   await expect.poll(() => page.evaluate(() => (window as any).__widget.interval())).toBe('15m');
+  // Six sessions of 25 fifteen-minute bars.
+  await expect.poll(() => page.evaluate(() => (window as any).__widget.dataController.bars().length)).toBe(150);
   // The pinned button, not the group face: Chromium moves a tap on a group
   // face onto its list chevron, which opens the list instead of the tool.
   await page.locator('.oac-rail__fav[data-tools="trend-line"]').tap();
   await expect.poll(() => page.evaluate(() => (window as any).__widget.draw.activeTool())).toBe('trend-line');
-  const stage = (await page.locator('.oac-stage').boundingBox())!;
-  await page.touchscreen.tap(stage.x + stage.width * 0.25, stage.y + stage.height * 0.6);
-  await page.touchscreen.tap(stage.x + stage.width * 0.7, stage.y + stage.height * 0.35);
+  // A support line through the lowest low of each half of the visible bars,
+  // tapped where those two bars sit on screen.
+  const anchors = await page.evaluate(() => {
+    const widget = (window as any).__widget;
+    const bars = widget.dataController.bars() as Array<{ time: number; low: number }>;
+    const range = widget.chart.getVisibleLogicalRange() as { from: number; to: number };
+    const from = Math.max(0, Math.ceil(range.from) + 2);
+    const to = Math.min(bars.length - 1, Math.floor(range.to) - 2);
+    const middle = Math.floor((from + to) / 2);
+    const lowest = (a: number, b: number): number => {
+      let best = a;
+      for (let i = a + 1; i <= b; i++) if (bars[i].low < bars[best].low) best = i;
+      return best;
+    };
+    const rect = document.querySelector('.oac-chart')!.getBoundingClientRect();
+    return [lowest(from, middle), lowest(middle + 1, to)].map(i => ({
+      time: bars[i].time, price: bars[i].low,
+      x: rect.left + widget.chart.timeToCoordinate(bars[i].time), y: rect.top + widget.chart.priceToCoordinate(bars[i].low),
+    }));
+  });
+  for (const anchor of anchors) await page.touchscreen.tap(anchor.x, anchor.y);
   await page.waitForFunction(() => (window as any).__widget.draw.drawings().length === 1);
-  expect(await page.evaluate(() => (window as any).__widget.draw.drawings()[0].points.length)).toBe(2);
+  const points = await page.evaluate(() => (window as any).__widget.draw.drawings()[0].points as Array<{ time: number; price: number }>);
+  expect(points.length).toBe(2);
+  for (const [index, point] of points.entries()) {
+    expect(Math.abs(point.time - anchors[index].time)).toBeLessThan(450);
+    expect(Math.abs(point.price - anchors[index].price)).toBeLessThan(0.5);
+  }
   for (const theme of ['dark', 'light'] as const) {
     await setTheme(page, theme);
     await shoot(page, info, `tablet 820x1180 ${theme}`);
@@ -241,6 +282,27 @@ test('auto mode follows the widget container while the window stays put', async 
   await size('position:absolute;inset:0');
   await expect.poll(() => layout(page)).toBe('false');
   expect(page.viewportSize()).toEqual({ width: 1180, height: 820 });
+});
+
+test('the symbol field keeps its layout while an on-screen keyboard shortens the container', async ({ page }) => {
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await mountRandomWalk(page, 'dark');
+  expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+  const field = page.locator('.oac-topbar .oac-sym__input');
+  await field.tap();
+  await expect(field).toBeFocused();
+  // A keyboard that resizes the page leaves a short, wide container: a phone
+  // on its side by size alone. The layout must hold, or the field vanishes.
+  await page.setViewportSize({ width: 820, height: 480 });
+  await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+  expect(await layout(page)).toBe('false');
+  await expect(field).toBeVisible();
+  await expect(field).toBeFocused();
+  // Once the field is left, the size the container has now decides.
+  await field.evaluate((element) => (element as HTMLInputElement).blur());
+  await expect.poll(() => layout(page)).toBe('true');
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await expect.poll(() => layout(page)).toBe('false');
 });
 
 test.describe('with a fine pointer', () => {

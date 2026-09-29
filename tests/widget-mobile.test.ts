@@ -482,10 +482,23 @@ describe('auto mobile mode decision', () => {
     expect(root.classList.contains('is-mobile')).toBe(false);
     resize(container, 600, 1180);
     expect(root.classList.contains('is-mobile')).toBe(true);
+    // Hiding the container (a background tab) leaves the open sheet alone.
+    action(root, 'draw').click();
     resize(container, 0, 0);
     expect(root.classList.contains('is-mobile')).toBe(true);
+    expect(root.querySelector('.oac-mobile-sheet')).not.toBeNull();
     resize(container, 820, 1180);
     expect(root.classList.contains('is-mobile')).toBe(false);
+    expect(root.querySelector('.oac-mobile-sheet')).toBeNull();
+    resize(container, 0, 0);
+    expect(root.classList.contains('is-mobile')).toBe(false);
+  });
+
+  it('starts an unmeasured container on the desktop controls and decides once it has a size', () => {
+    const { container, root } = make({}, 0, true, 0);
+    expect(root.classList.contains('is-mobile')).toBe(false);
+    resize(container, 390, 740);
+    expect(root.classList.contains('is-mobile')).toBe(true);
   });
 
   it('holds the layout while a text field in the widget has focus', () => {
@@ -505,6 +518,20 @@ describe('auto mobile mode decision', () => {
     const button = root.querySelector('.oac-rail__btn') as FakeElement;
     button.focus();
     resize(container, 820, 520);
+    expect(root.classList.contains('is-mobile')).toBe(true);
+  });
+
+  it('keeps holding while focus moves on to another text field in the widget', () => {
+    const { container, doc, root } = make({}, 820, true, 1180);
+    const field = root.querySelector('.oac-sym__input') as FakeElement;
+    const next = doc.createElement('input');
+    root.appendChild(next);
+    field.focus();
+    resize(container, 820, 520);
+    // Tabbing from one field to the next keeps the keyboard up, so the switch still waits.
+    next.focus();
+    expect(root.classList.contains('is-mobile')).toBe(false);
+    next.blur();
     expect(root.classList.contains('is-mobile')).toBe(true);
   });
 });
