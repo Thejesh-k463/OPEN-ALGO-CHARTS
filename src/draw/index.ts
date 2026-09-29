@@ -109,7 +109,8 @@ export {
   CHROME_ICONS, CHROME_ICON_FILLED, chromeIcon, chromeIconIds,
   CHROME_ICON_ACCENTS, chromeIconAccent,
   CHROME_ICON_VIEWBOX, CHROME_ICON_STROKE, CHROME_ICON_ATTRS,
-  type IconAttrs,
+  chartTypeIcon, layoutIconPath,
+  type IconAttrs, type LayoutIconSlot,
 } from './icons';
 export {
   iconSvg, chromeIconSvg, iconSprite, iconUse, toolCursor, ICON_SYMBOL_PREFIX,
