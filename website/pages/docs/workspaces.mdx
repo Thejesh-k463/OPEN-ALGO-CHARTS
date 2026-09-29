@@ -79,7 +79,7 @@ provider series it showed (extended hours, raw prices, a currency or a unit; see
 all and refuses a variant it cannot name, since it would reopen as another series, and
 `createChartGrid` saves and reopens each cell's variant. Primary and comparison history
 are loaded separately. Credentials, account balances, orders, positions and
-armed execution state do not belong in portable workspaces.
+whether live order entry is on do not belong in portable workspaces.
 
 `parseWorkspacePayload`, `parseWorkspaceDocument`, `parseIndicatorTemplate`,
 `parseIndicatorTemplatePayload` and
@@ -295,26 +295,32 @@ const target = {
 };
 ```
 
-- **State.** `state()` returns `catalog` (the newest catalog seen), `layoutId` (the held
-  layout), `revision` (what the next write into it is checked against), `dirty`, `busy`,
-  `conflict`, `autosave` (`off`, `pending`, `saving`, `saved`, `failed`) and `error`.
-  `subscribe(listener)` hears each change of it.
+- **State.** `state()` returns `catalog` (the newest catalog seen, to read and not
+  change), `layoutId` (the held layout), `revision` (what the next write into it is
+  checked against), `dirty`, `busy`, `conflict`, `autosave` (`off`, `pending`, `saving`,
+  `saved`, `failed`) and `error`. `subscribe(listener)` hears each change of it.
+  `reload()` resolves with a copy of the catalog, free to sort or trim.
 - **Operations** run one at a time in call order, each against the revision the last one
   left: `reload`, `open`, `save`, `saveAs`, `overwrite`, `rename`, `duplicate`, `remove`,
   `setAutosave`. `open` first autosaves a change still waiting into the layout being left,
   then applies the new one and records it as active and recent; reopening the layout that
-  is already active and first in the recent list, as after a page load, writes nothing. A
-  refused apply resolves with the target's report and changes nothing, and when the store
-  refuses the record the previous layout goes back on the target.
+  is already active and first in the recent list, as after a page load, writes nothing.
+  When that autosave fails (the store refuses it, or another tab saved that layout), `open`
+  rejects and changes nothing, so the change stays on the chart and the menu can say why;
+  opening again goes ahead without it. A refused apply resolves with the target's report
+  and changes nothing, and when the store refuses the record the previous layout goes back
+  on the target.
 - **Dirty and autosave.** Changes come from the target's optional `subscribe` or from
   `changed()`, which only schedules a comparison: call it on any event that might change
   the desk (the grid's `layout` and `links`, a cell's `symbol` or `interval`, a drawing
   added), since a call that changed nothing writes nothing. When changes have been quiet
-  for `autosaveDelay` ms (default 1000) the controller compares the target with its
-  layout, and with autosave on writes it once. Change events raised while it applies a
-  layout are not counted. A failed autosave stops until a save succeeds or the list is
-  reloaded, so a failing store is not written on every pan. `flush()` does the comparison
-  and write at once; `destroy()` drops a pending one.
+  for `autosaveDelay` ms (default 1000; a value that is not a finite number takes the
+  default) the controller compares the target with its layout, and with autosave on
+  writes it once. Change events raised while it applies a layout are not counted. A
+  failed autosave stops until a write goes through again (a save, or any other operation
+  that writes) or the list is reloaded, so a failing store is not written on every pan;
+  then the unsaved change is written without waiting for another. `flush()` does the
+  comparison and write at once; `destroy()` drops a pending one.
 - **Conflicts.** A write refused because the catalog moved reads it again, and goes ahead
   at the newer revision when what it acts on is unchanged there: the charts of the held
   layout for a save or an autosave, the named layout for `open`, `rename`, `duplicate` and
