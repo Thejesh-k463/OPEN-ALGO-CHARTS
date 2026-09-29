@@ -62,8 +62,11 @@ change the active chart layout.
 ## What a document owns
 
 A `WorkspacePayload` contains a grid, independent chart entries, `activePaneId`
-and four synchronization preferences. Here, a workspace pane means one chart;
-that chart can contain its own price and study panes.
+and its link settings: four synchronization preferences, with optional chart type,
+drawings and missing-bar flags and named link groups (see
+[Saving links in a workspace](/docs/chart-linking#saving-links-in-a-workspace)).
+Here, a workspace pane means one chart; that chart can contain its own price and
+study panes.
 
 Slots use zero-based rows and columns with positive spans. Optional `rowWeights`
 and `columnWeights` preserve unequal tracks; each list matches its track count
