@@ -866,6 +866,25 @@ describe('the widget over an asynchronous store', () => {
     expect(JSON.parse(store.map.get('oac-widget:desk:rail')!)).toMatchObject({ magnet: 'strong' });
   });
 
+  it('brings back the chords the user moved in the shortcuts editor once the store has answered', async () => {
+    // The editor saves its record under its own key, beside no layout at all.
+    const sync = new MemoryStorage();
+    const before = make({ feed: recordingFeed().feed, persist: 'desk', storage: sync, symbol: 'ONE' });
+    expect(before.context.keymap.rebind('tool:trend-line', 'Alt+Y').ok).toBe(true);
+    const record = sync.map.get('oac-widget:desk:keymap');
+    expect(record).toBeDefined();
+    const store = new FakeAsyncStore();
+    store.map.set('oac-widget:desk:keymap', record!);
+    const w = make({ feed: recordingFeed().feed, persist: 'desk', storage: store, symbol: 'ONE' });
+    const chordAtMount = w.context.keymap.chord('tool:trend-line');
+    await w.ready;
+    await settle();
+    expect(chordAtMount).not.toBe(before.context.keymap.chord('tool:trend-line'));
+    expect(w.context.keymap.chord('tool:trend-line')).toBe(before.context.keymap.chord('tool:trend-line'));
+    await w.context.storage.flush();
+    expect(store.map.get('oac-widget:desk:keymap')).toBe(record);
+  });
+
   it('keeps restoring, and starts the load, when a host listener throws on what the restore announces', async () => {
     const { store, state, lineId } = await savedVisit();
     const { feed, requests } = recordingFeed();

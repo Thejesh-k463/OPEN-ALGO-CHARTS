@@ -38,6 +38,7 @@ import { widgetText } from './localization';
 import { sanitizePanelDockState } from './panel-dock';
 import { RAIL_PREFS_KEY, type RailPrefs } from './rail';
 import type { WidgetThemeName } from './tokens';
+import { restoreKeymap, type KeysHost } from './widget-keys';
 import type {
   WidgetChartState, WidgetImpl, WidgetRestoreReport, WidgetState,
   DRAWINGS_KEY_PREFIX as DrawingsKeyPrefix, SAVE_DEBOUNCE_MS as SaveDebounceMs, STATE_KEY as StateKey, WIDGET_STATE_VERSION as StateVersion,
@@ -488,6 +489,9 @@ function applyLoaded(this: PersistHost, start: StartFacts): void {
     // next, wins over it there too.
     const rail = this._storage.get(RAIL_PREFS_KEY);
     if (rail !== null && this._rail !== null) this._rail.restorePrefs(rail);
+    // The user's chords are their own key too, and the keymap read an empty
+    // copy at mount, as the rail did.
+    restoreKeymap.call(this as unknown as KeysHost);
     if (saved === null) return;
     const type = saved.chartType;
     if (o.chartType === undefined && this.chartType() === start.chartType && type !== start.chartType && registeredChartTypes().includes(type)) this.setChartType(type);
