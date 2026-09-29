@@ -219,6 +219,7 @@ src/
     ├── context.ts           # WidgetContext, bus, storage, overlay stack, tips, the dialog registry
     ├── storage.ts           # the IndexedDB store, its change announcements, the one-time copy from localStorage, the default store
     ├── keymap.ts            # one capture-phase keymap with scopes and conflict reporting
+    ├── keymap-editor.ts     # the ? panel: lists every chord, records a new one, names conflicts, resets
     ├── rail.ts / topbar.ts / statusline.ts / toast.ts
     ├── tokens.ts / styles.ts# --oac- tokens derived from the ChartTheme; one scoped stylesheet
     ├── form.ts              # one control renderer for every schema-generated form
