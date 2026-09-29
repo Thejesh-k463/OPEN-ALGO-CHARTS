@@ -219,7 +219,8 @@ src/
     ├── context.ts           # WidgetContext, bus, storage, overlay stack, tips, the dialog registry
     ├── storage.ts           # the IndexedDB store, its change announcements, the one-time copy from localStorage, the default store
     ├── keymap.ts            # one capture-phase keymap with scopes and conflict reporting
-    ├── keymap-editor.ts     # the ? panel: lists every chord, records a new one, names conflicts, resets
+    ├── keymap-editor.ts     # the ? panel: lists every chord, records a new one, names conflicts, resets (loads on first use)
+    ├── lazy.ts              # the parts that load on first use: one shared load, a failure reported and forgotten
     ├── grid.ts              # createChartGrid: cells, focus, splitters, maximize, swap, workspace
     ├── grid-layouts.ts / grid-links.ts / grid-bar.ts / grid-cells.ts / grid-capture.ts / grid-text.ts / grid-styles.ts
     ├── grid-saved.ts        # the desk's saved layouts

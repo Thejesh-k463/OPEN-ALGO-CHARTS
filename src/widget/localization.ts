@@ -136,6 +136,7 @@ export type WidgetBuiltinMessage =
   | "Could not change visibility for {name}"
   | "Could not focus {name}"
   | "Could not load"
+  | "{name} could not load: {error}"
   | "Could not load older history"
   | "Could not load {symbol} {interval}"
   | "Could not load {symbol} {interval}: {error}"

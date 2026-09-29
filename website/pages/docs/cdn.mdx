@@ -166,6 +166,9 @@ steps that do not apply here:
 - **There is no separate stylesheet to load.** The engine draws on canvas. The
   optional widget tier supplies interface controls and injects its scoped styles;
   custom hosts supply their own interface. There is no `openalgo-charts.css` file.
+- **There is nothing else to list for the widget.** A few of its panels load from
+  files beside `openalgo-charts.widget.mjs` the first time a user opens them. They
+  resolve against the tier's own URL, so the CDN path you import from serves them.
 - **There is no separate CDN deployment.** unpkg and jsDelivr mirror npm. A
   release is on both the moment it is published; there is no account to create
   and no upload step.

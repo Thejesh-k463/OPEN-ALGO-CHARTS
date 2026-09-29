@@ -28,7 +28,9 @@
  * with the key fields, so every rule is testable without a browser.
  */
 import { isReservedCombo, normalizeCombo, type ShortcutListItem } from 'openalgo-charts';
-import { inTextField } from './context';
+import { inTextField, type WidgetContext } from './context';
+import { lazyPart, partFailed, usePart } from './lazy';
+import { widgetText } from './localization';
 
 /**
  * Where a binding applies. `global` always; `widget` while the pointer or the
@@ -985,4 +987,42 @@ export function commandChord(km: Keymap, command: string, fallback?: string): st
   const c = (typeof own?.chord === 'function' ? own.chord(command) : null) ?? fallback;
   if (c === undefined || c === '') return undefined;
   return typeof own?.format === 'function' ? own.format(c) : formatKeyCombo(c);
+}
+
+export interface ShortcutsPanelOptions {
+  /**
+   * Rows a user may change carry Change and Reset, and the panel a Reset all.
+   * Default true, unless the widget was built with `shortcutsEditor: false`;
+   * false lists the chords only.
+   */
+  edit?: boolean;
+}
+
+/**
+ * Keymaps whose widget turned the editor off. A host that opens the panel
+ * from a control of its own gets the same panel `?` opens, never controls
+ * whose changes that widget would neither keep nor let the user reset.
+ */
+const LIST_ONLY = new WeakSet<object>();
+
+/** Mark a keymap as list-only for the panel's default. Internal: the tier entry does not export it. */
+export function markListOnly(keymap: object): void { LIST_ONLY.add(keymap); }
+
+/** The panel and its editing controls, fetched when it first opens. Internal. */
+export const shortcutsPart = lazyPart(() => import('./keymap-editor'));
+
+/**
+ * The shortcuts panel: every group from `keymap.describe()`, two columns,
+ * closed by Escape or its button, with the editing controls unless `edit` is
+ * false. Returns the closer. The panel loads on first use (since 2.5.10), so
+ * the first one opens once it has arrived, and closing before then cancels
+ * it; a panel that cannot load says so in a toast.
+ */
+export function openShortcutsPanel(ctx: WidgetContext, opts: ShortcutsPanelOptions = {}): () => void {
+  let close: (() => void) | null = null;
+  let wanted = true;
+  usePart(shortcutsPart, module => { close = module.mountShortcutsPanel(ctx, opts.edit ?? !LIST_ONLY.has(ctx.keymap)); },
+    error => ctx.toast(partFailed(ctx, widgetText(ctx, 'Keyboard shortcuts'), error), 'error'),
+    () => wanted && ctx.root.isConnected);
+  return () => { wanted = false; close?.(); };
 }

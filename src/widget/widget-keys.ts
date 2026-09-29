@@ -16,8 +16,7 @@
  */
 import { drawingShortcuts, keyToDrawingAction, type DrawingKeyContext } from 'openalgo-charts/draw';
 import { historyPress } from './context';
-import { KEYMAP_KEY, type KeyEventLike, type KeyScope } from './keymap';
-import { markListOnly, openShortcutsPanel } from './keymap-editor';
+import { KEYMAP_KEY, markListOnly, openShortcutsPanel, type KeyEventLike, type KeyScope } from './keymap';
 import { toolName } from './rail';
 import type { WidgetImpl } from './widget';
 

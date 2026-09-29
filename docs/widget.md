@@ -411,6 +411,14 @@ needed:
 The standalone script (`openalgo-charts.standalone.js`) is base-only and cannot host the
 widget: a tier loaded beside it would import its own second engine.
 
+Some of the widget loads on first use. The shortcuts panel is not in
+`openalgo-charts.widget.mjs` but in a file beside it (`openalgo-charts.widget.keymap-editor.mjs`),
+fetched with `import()` the first time a user opens it. It resolves against the tier's own
+URL, so `dist/` or a CDN path needs nothing more, and a bundler splits it the same way.
+Under a Content Security Policy, `script-src` must allow the tier's origin, as it already
+must for the tier itself; the part's rules join the widget's stylesheet and keep its nonce.
+A part that cannot load says so in a toast and is fetched again the next time.
+
 ## Size
 
 Budgets from `.size-limit.json`, Brotli, enforced by `npm run size`:
