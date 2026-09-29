@@ -111,7 +111,9 @@ export function venueCalendar(venue) {
     calendar = new SessionCalendar({
       timezone: hours.zone,
       sessions: [`${hhmm(hours.open)}-${hhmm(hours.close)}:23456`],
-      ...(hours.pre === undefined ? {} : { preMarketMinutes: hours.open - hours.pre, postMarketMinutes: hours.post - hours.close }),
+      // Each side on its own: a venue may serve a pre-open and no post-close.
+      ...(hours.pre === undefined ? {} : { preMarketMinutes: hours.open - hours.pre }),
+      ...(hours.post === undefined ? {} : { postMarketMinutes: hours.post - hours.close }),
       ...(hours.exceptions ? { exceptions: hours.exceptions } : {}),
     });
     venueCalendars.set(hours, calendar);
@@ -120,13 +122,30 @@ export function venueCalendar(venue) {
 }
 
 /**
+ * The phase last read from each calendar and the time it holds for. The
+ * symbol legend asks on every frame it draws, and laying a calendar's dates
+ * out costs several times the clock read it replaced, so it is asked once
+ * per phase and again when the status says the phase changes (or a day on,
+ * for one that holds longer).
+ */
+const heldPhases = new WeakMap();
+
+/**
  * The part of the trading day it is at a venue: 'regular', 'pre', 'post',
  * 'holiday' or 'closed', from the library calendar. A dist/ from before
  * session phases reads the same windows by the clock, with no dates closed.
  */
 function venuePhase(venue, ms = Date.now()) {
-  const calendar = venueCalendar(venue);
-  if (typeof calendar?.phaseAt === 'function') return calendar.phaseAt(ms / 1000);
+  const calendar = venueCalendar(venue), sec = ms / 1000;
+  if (typeof calendar?.marketStatusAt === 'function') {
+    let held = heldPhases.get(calendar);
+    if (!held || sec < held.from || sec >= held.until) {
+      const status = calendar.marketStatusAt(sec);
+      held = { phase: status.phase, from: sec, until: status.changesAt ?? sec + 86400 };
+      heldPhases.set(calendar, held);
+    }
+    return held.phase;
+  }
   const hours = SESSIONS[venue];
   const { day, minutes } = zoneParts(ms, hours.zone);
   if (day < 1 || day > 5) return 'closed';
