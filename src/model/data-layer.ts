@@ -6,6 +6,7 @@
  */
 import type { Bar } from './bar';
 import type { InstrumentSession } from '../feed/instrument';
+import type { SessionPhaseSpan } from '../feed/market-status';
 
 export type SeriesId = number;
 
@@ -16,6 +17,12 @@ export type SeriesId = number;
 export interface SessionCalendarSource {
   /** The window active at `utcSeconds`, or else the next one to open; null when none opens. */
   sessionFrom(utcSeconds: number): InstrumentSession | null;
+  /**
+   * Optional: the phases of the trading day over a range, which session
+   * shading and `marketStatusAt` read from the chart's calendar. The axis
+   * never calls it. `Instrument` and `SessionCalendar` provide it.
+   */
+  phaseSpans?(fromUtcSeconds: number, toUtcSeconds: number): readonly SessionPhaseSpan[];
 }
 
 const DAY = 86400;

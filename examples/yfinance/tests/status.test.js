@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   initStatus, exchangeOf, nameOf, descriptionOf, venueLive, marketStatusReading,
-  previousSessionClose, dayChangeReading,
+  previousSessionClose, dayChangeReading, venueCalendar, SESSIONS,
 } from '../src/status.js';
 import { UP, DOWN } from '../src/ui.js';
 import { flatBar } from './helpers.js';
@@ -51,6 +51,64 @@ describe('session hours', () => {
     expect(venueLive('RELIANCE.NS')).toBe(false);
     expect(venueLive('AAPL')).toBe(false);
     expect(venueLive('BTC-USD')).toBe(true);
+  });
+
+  it('hands the table to the library as a calendar with the extended hours the source serves', () => {
+    const us = venueCalendar('US');
+    expect(us.timezone).toBe('America/New_York');
+    expect(us.calendar).toMatchObject({ sessions: ['0930-1600:23456'], preMarketMinutes: 330, postMarketMinutes: 240 });
+    expect(venueCalendar('US')).toBe(us);
+    expect(venueCalendar('NSE').calendar).not.toHaveProperty('preMarketMinutes');
+    expect(venueCalendar('CRYPTO')).toBeNull();
+    expect(venueCalendar('INDEX')).toBeNull();
+  });
+
+  it('reads a closed date the table lists as a holiday, which is not live either', () => {
+    vi.useFakeTimers({ now: KOLKATA_MORNING });
+    const regular = SESSIONS.NSE;
+    initStatus({ req: { symbol: 'RELIANCE.NS' }, currentBars: [], chartTimezone: 'Asia/Kolkata' });
+    try {
+      SESSIONS.NSE = { ...regular, exceptions: { '2024-01-03': [] } };
+      expect(marketStatusReading('RELIANCE.NS')).toEqual({ text: 'Market holiday' });
+      expect(venueLive('RELIANCE.NS')).toBe(false);
+    } finally { SESSIONS.NSE = regular; }
+    expect(marketStatusReading('RELIANCE.NS')).toEqual({ text: 'Market open', color: UP });
+  });
+
+  it('asks the calendar once per phase, however often the legend draws, and again when it changes', () => {
+    // Wednesday 3 January 2024, 15:29:50 in Kolkata: ten seconds before the close.
+    vi.useFakeTimers({ now: Date.UTC(2024, 0, 3, 9, 59, 50) });
+    const regular = SESSIONS.NSE;
+    initStatus({ req: { symbol: 'RELIANCE.NS' }, currentBars: [], chartTimezone: 'Asia/Kolkata' });
+    try {
+      // A table entry of its own, so no other test's reading is held for it.
+      SESSIONS.NSE = { ...regular };
+      const asked = vi.spyOn(venueCalendar('NSE'), 'marketStatusAt');
+      for (let frame = 0; frame < 120; frame++) {
+        expect(marketStatusReading('RELIANCE.NS')).toEqual({ text: 'Market open', color: UP });
+        vi.advanceTimersByTime(50);
+      }
+      expect(asked).toHaveBeenCalledTimes(1);
+      // Past 15:30 the held reading has run out, and the close shows at once.
+      vi.advanceTimersByTime(4000);
+      expect(marketStatusReading('RELIANCE.NS')).toEqual({ text: 'Market closed' });
+      expect(venueLive('RELIANCE.NS')).toBe(false);
+      expect(asked).toHaveBeenCalledTimes(2);
+    } finally { SESSIONS.NSE = regular; }
+  });
+
+  it('takes a venue that serves a pre-open and no post-close', () => {
+    // 09:00 in New York on Wednesday 3 January 2024: in the pre-open.
+    vi.useFakeTimers({ now: Date.UTC(2024, 0, 3, 14) });
+    const us = SESSIONS.US;
+    initStatus({ req: { symbol: 'AAPL', variant: { session: 'extended' } }, currentBars: [], chartTimezone: 'America/New_York' });
+    try {
+      SESSIONS.US = { zone: us.zone, open: us.open, close: us.close, pre: us.pre };
+      expect(venueCalendar('US').calendar).toMatchObject({ preMarketMinutes: 330 });
+      expect(venueCalendar('US').calendar).not.toHaveProperty('postMarketMinutes');
+      expect(marketStatusReading('AAPL', 'extended')).toEqual({ text: 'Pre-market' });
+      expect(venueLive('AAPL', 'extended')).toBe(true);
+    } finally { SESSIONS.US = us; }
   });
 });
 
