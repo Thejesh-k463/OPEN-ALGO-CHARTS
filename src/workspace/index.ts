@@ -31,6 +31,7 @@ export { captureIndicatorTemplate, planIndicatorTemplateState } from './template
 export type { IndicatorTemplateApplyOptions, IndicatorTemplatePlan } from './template-layout';
 export type {
   WorkspaceKind, WorkspaceSettings, WorkspaceChartState, WorkspaceComparison, WorkspaceSlot, WorkspacePane,
-  WorkspacePayload, WorkspaceDocument, IndicatorTemplateDocument, IndicatorTemplateInput,
+  WorkspacePayload, WorkspaceSync, WorkspaceLinkChannels, WorkspaceLinkGroup, WorkspaceDocument,
+  IndicatorTemplateDocument, IndicatorTemplateInput,
   IndicatorTemplatePayload, IndicatorTemplateLayout, IndicatorTemplatePlotBinding,
 } from './documents';
