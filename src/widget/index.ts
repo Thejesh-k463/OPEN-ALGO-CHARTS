@@ -103,6 +103,13 @@ export type { WidgetThemeName, WidgetTokens, Rgba } from './tokens';
 export { WIDGET_CSS, WIDGET_STYLE_ID, injectWidgetStyles } from './styles';
 export { WIDGET_COMPONENT_CSS } from './component-styles';
 export { mountMobile } from './mobile';
+// Bottom bar hook: the strip under the chart, its preset ranges and the widget options it reads.
+export { mountBottombar, BOTTOMBAR_CSS, BOTTOMBAR_HEIGHT } from './bottombar';
+export type { BottombarContext, BottombarTarget, BottombarOptions, BottombarControls, BottombarHandle, BottombarScaleToggle, BottombarScaleState } from './bottombar';
+export type { MarketStatusReading } from './bottombar-status';
+export { DEFAULT_RANGES, rangeWindow, rangeInterval } from './ranges';
+export type { WidgetRange, WidgetRangeUnit, WidgetRangeWindow, RangeWindowOptions } from './ranges';
+export type { WidgetBottombarOptions, WidgetSessionCalendar } from './bottombar-shell';
 export type { MobileMode, MobileOptions, MobileHandle } from './mobile';
 export { mountDrawingToolbar, TOOLBAR_LINE_WIDTHS, DRAWING_TOOLBAR_CSS } from './drawing-toolbar';
 export type { DrawingToolbarOptions, DrawingToolbarHandle } from './drawing-toolbar';
