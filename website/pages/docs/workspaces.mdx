@@ -79,7 +79,7 @@ provider series it showed (extended hours, raw prices, a currency or a unit; see
 all and refuses a variant it cannot name, since it would reopen as another series, and
 `createChartGrid` saves and reopens each cell's variant. Primary and comparison history
 are loaded separately. Credentials, account balances, orders, positions and
-armed execution state do not belong in portable workspaces.
+whether live order entry is on do not belong in portable workspaces.
 
 `parseWorkspacePayload`, `parseWorkspaceDocument`, `parseIndicatorTemplate`,
 `parseIndicatorTemplatePayload` and
@@ -110,7 +110,8 @@ charts. A host activation should:
 Abort superseded preparations. Cancellation is effective until the storage
 transaction commits; it cannot undo an already committed write. A catalog
 revision change rejects with `WorkspaceConflictError`. Reload rather than
-silently overwriting a newer layout.
+silently overwriting a newer layout. For a widget or a chart grid, the
+[layouts controller](#hold-a-layout-in-a-widget-or-a-grid) does these steps.
 
 Create primary series and load the correct source before restoring each chart's
 configuration. `chart.restoreState` does not recreate host-owned source series or fetch data.
@@ -200,6 +201,140 @@ application fails while the operation still owns the chart. A nested newer resto
 invalidates that recovery, even on the same chart object. Template application does
 not require reloading market data. See the [interactive template example](/examples#copy-study-layouts-with-templates).
 
+## Revisions, conflicts and change notices
+
+Since 2.5.10 every change takes `WorkspaceOperationOptions`: `signal`, and
+`expectedRevision`, the catalog revision the change was prepared from.
+`createWorkspace`, `saveWorkspace`, `openWorkspace`, `rename`, `duplicate`, `remove`,
+`setAutosave`, `createTemplate`, `saveTemplate` and `importDocument` all take it as
+their last argument. When the stored catalog has moved past that revision the change is
+refused with `WorkspaceConflictError`, after the read and before any write, so a layout
+another tab saved in the meantime is never overwritten unseen. A malformed revision is
+refused before storage is touched. Without `expectedRevision` a change is applied to the
+catalog as stored when it runs, as before.
+
+```ts
+const catalog = await repository.load();
+// The user edits the chart; another tab may save the same layout meanwhile.
+try {
+  await repository.saveWorkspace(id, payload, { expectedRevision: catalog.revision });
+} catch (error) {
+  if (error instanceof WorkspaceConflictError) {
+    // Reload the list, then save as a copy or overwrite: the user chooses.
+  } else throw error;
+}
+```
+
+`repository.subscribe(listener)` is called with a detached copy of the catalog after each
+change the repository commits, before that change's promise resolves, in commit order. A
+refused, invalid or failed change calls nothing, and a listener that throws is reported
+without undoing the commit. It returns the unsubscribe. A control learns the revision its
+next change is checked against here, so two controls on one page (a layouts menu and a
+template picker) can share one repository without refusing each other's changes.
+
+`WorkspaceStore` is the contract such a control holds: `load`, `subscribe` and every change
+above except `importDocument`. `WorkspaceRepository` implements it; a host that keeps
+layouts on its own server can implement it directly, with the same revision and notice
+guarantees. `createMemoryWorkspaceStorage(seed?)` is revision-checked storage in memory,
+for tests, previews and hosts without IndexedDB: the same atomic comparison as the
+IndexedDB adapter, detached copies in and out, and nothing that outlives the page.
+
+## Hold a layout in a widget or a grid
+
+`createLayoutsController(store, target, options?)` in the widget tier (since 2.5.10) holds
+one saved layout for one widget or one chart grid. It builds no interface: a menu drives
+it and renders its state. It imports the workspace tier as types only, so a widget host
+loads that tier only when it passes a store. The target adapter captures and applies
+workspace payloads:
+
+```ts
+import { WorkspaceRepository, createIndexedDbWorkspaceStorage } from 'openalgo-charts/workspace';
+import { createChartGrid, createLayoutsController } from 'openalgo-charts/widget';
+
+const grid = createChartGrid('#desk', { feed, symbol: 'INFY', exchange: 'NSE', interval: '5m' });
+const store = new WorkspaceRepository(createIndexedDbWorkspaceStorage(indexedDB), 'account-7');
+const layouts = createLayoutsController(store, {
+  capture: () => grid.getWorkspace(),
+  apply: payload => grid.applyWorkspace(payload),
+});
+layouts.subscribe(state => renderLayoutsMenu(state));
+
+const catalog = await layouts.reload();
+if (catalog.activeWorkspaceId) await layouts.open(catalog.activeWorkspaceId); // after a page load
+await layouts.saveAs('Opening range');       // new layout, now held, active and recent
+await layouts.setAutosave(true);             // the catalog preference
+grid.on('layout', () => layouts.changed());  // and any other change the host hears of
+const report = await layouts.open(otherId);  // { applied, reason? }
+```
+
+One widget is a one-chart payload. A chart state carries absent optional fields, so pass
+it through JSON before `migrateWidgetWorkspace`, and restore through `restoreState`, which
+clears the widget's undo history as loading any layout does:
+
+```ts
+import { migrateWidgetWorkspace } from 'openalgo-charts/workspace';
+
+const target = {
+  capture() {
+    const state = JSON.parse(JSON.stringify(widget.getState()));
+    const { layout, panes, activePaneId, sync } = migrateWidgetWorkspace(state, { id: 'current', name: 'current', now: Date.now() });
+    return { layout, panes, activePaneId, sync };
+  },
+  apply({ panes }) {
+    if (panes.length !== 1) return { applied: false, reason: 'one chart shows one pane' };
+    const [pane] = panes;
+    // The pane carries the drawing rail's magnet and stay; the rest of the rail stays the user's.
+    const rail = widget.getState().rail;
+    return widget.restoreState({
+      version: 1, symbol: pane.symbol, exchange: pane.exchange, interval: pane.interval, chartType: pane.chartType,
+      chart: pane.chart, theme: pane.settings['widget.theme'], ...(pane.variant ? { variant: pane.variant } : {}),
+      ...(rail === null ? {} : { rail: { ...rail, magnet: pane.magnet, stay: pane.stay } }),
+    });
+  },
+  subscribe(listener) {
+    const offs = ['symbol', 'interval', 'theme', 'layout'].map(event => widget.on(event, listener));
+    return () => offs.forEach(off => off());
+  },
+};
+```
+
+- **State.** `state()` returns `catalog` (the newest catalog seen, to read and not
+  change), `layoutId` (the held layout), `revision` (what the next write into it is
+  checked against), `dirty`, `busy`, `conflict`, `autosave` (`off`, `pending`, `saving`,
+  `saved`, `failed`) and `error`. `subscribe(listener)` hears each change of it.
+  `reload()` resolves with a copy of the catalog, free to sort or trim.
+- **Operations** run one at a time in call order, each against the revision the last one
+  left: `reload`, `open`, `save`, `saveAs`, `overwrite`, `rename`, `duplicate`, `remove`,
+  `setAutosave`. `open` first autosaves a change still waiting into the layout being left,
+  then applies the new one and records it as active and recent; reopening the layout that
+  is already active and first in the recent list, as after a page load, writes nothing.
+  When that autosave fails (the store refuses it, or another tab saved that layout), `open`
+  rejects and changes nothing, so the change stays on the chart and the menu can say why;
+  opening again goes ahead without it. A refused apply resolves with the target's report
+  and changes nothing, and when the store refuses the record the previous layout goes back
+  on the target.
+- **Dirty and autosave.** Changes come from the target's optional `subscribe` or from
+  `changed()`, which only schedules a comparison: call it on any event that might change
+  the desk (the grid's `layout` and `links`, a cell's `symbol` or `interval`, a drawing
+  added), since a call that changed nothing writes nothing. When changes have been quiet
+  for `autosaveDelay` ms (default 1000; a value that is not a finite number takes the
+  default) the controller compares the target with its layout, and with autosave on
+  writes it once. Change events raised while it applies a layout are not counted. A
+  failed autosave stops until a write goes through again (a save, or any other operation
+  that writes) or the list is reloaded, so a failing store is not written on every pan;
+  then the unsaved change is written without waiting for another. `flush()` does the
+  comparison and write at once; `destroy()` drops a pending one.
+- **Conflicts.** A write refused because the catalog moved reads it again, and goes ahead
+  at the newer revision when what it acts on is unchanged there: the charts of the held
+  layout for a save or an autosave, the named layout for `open`, `rename`, `duplicate` and
+  `remove`. Another tab renaming the held layout, saving another one, opening one or
+  switching autosave is therefore not a conflict. Another tab (or another control on the
+  page) saving or deleting the held layout is: the write is refused, `conflict` and
+  `dirty` are set, and `save()` and autosave stay refused. `reload()` shows the newer list
+  and keeps the conflict unless it finds the layout as this controller left it. The way
+  out is the user's: `saveAs(name)` keeps both, `overwrite()` writes this chart over the
+  other version, and `open(id)` takes the other version.
+
 ## Drawing style templates
 
 The look of a drawing tool can be saved too (since 2.5.9): as the tool's default, which new
@@ -235,7 +370,9 @@ A localStorage read/write pair is not an atomic replacement.
 `exportDocument(kind, id)` returns JSON; `importDocument(input)` creates a fresh
 identity. `setAutosave(boolean)` stores a preference, not a timer. Hosts debounce
 saves, suppress them during restoration and replay, and keep completion notices
-bound to the originating account and chart. Use a new repository on account
+bound to the originating account and chart. For a widget or a grid the layouts
+controller debounces and ignores its own restores; replay stays the host's to
+suppress. Use a new repository on account
 change and call `storage.close()` on disposal. Storage failures reject; there is
 no silent fallback to a different store.
 
