@@ -21,10 +21,13 @@ import { timeBuckets } from './date-navigator';
 export { SEARCH_DEBOUNCE_MS } from './symbol-picker';
 export type { SymbolMatch, SymbolSearch } from './symbol-picker';
 import type { SymbolSearch } from './symbol-picker';
-import { openChartDataExportDialog } from './chart-data-export-dialog';
 import type { PanelHandle } from './form';
 import type { LayoutsController } from './layouts';
 import { layoutNeedsAttention, layoutStatusText } from './layouts-widget';
+import { lazyPart, partFailed, usePart } from './lazy';
+
+/** The chart data dialog, fetched when it first opens. Internal. */
+export const dataExportPart = lazyPart(() => import('./chart-data-export-dialog'));
 
 /** Labels for the built-in chart types; anything else is read from its id. */
 export const CHART_TYPE_LABELS: Readonly<Record<string, string>> = {
@@ -526,19 +529,23 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
         }, 'image/png');
       } },
       { label: widgetText(ctx, 'Download chart data (CSV)'), disabled: !dataAvailable(), onSelect: () => {
-        try {
-          checkSource();
-          dataDialog?.close();
-          dataDialog = openChartDataExportDialog(ctx, anchor, options => {
+        const failed = (error: unknown): void => ctx.status(widgetText(ctx, 'Data export failed: {error}', { error: String((error as Error)?.message ?? error) }), 'error');
+        // The dialog loads on first use (lazy.ts), and the chart it captures is checked again when it arrives.
+        usePart(dataExportPart, module => {
+          try {
             checkSource();
-            const csv = exportChartDataCsv(capturedChart, options);
-            checkSource();
-            if (!downloadText(doc, captureName(s.symbol, s.interval) + '.csv', csv, 'text/csv;charset=utf-8')) {
-              throw new Error(widgetText(ctx, 'This runtime cannot save files'));
-            }
-            ctx.status(widgetText(ctx, 'Chart data download started'));
-          });
-        } catch (error) { ctx.status(widgetText(ctx, 'Data export failed: {error}', { error: String((error as Error)?.message ?? error) }), 'error'); }
+            dataDialog?.close();
+            dataDialog = module.openChartDataExportDialog(ctx, anchor, options => {
+              checkSource();
+              const csv = exportChartDataCsv(capturedChart, options);
+              checkSource();
+              if (!downloadText(doc, captureName(s.symbol, s.interval) + '.csv', csv, 'text/csv;charset=utf-8')) {
+                throw new Error(widgetText(ctx, 'This runtime cannot save files'));
+              }
+              ctx.status(widgetText(ctx, 'Chart data download started'));
+            });
+          } catch (error) { failed(error); }
+        }, error => ctx.status(partFailed(ctx, widgetText(ctx, 'Download chart data (CSV)'), error), 'error'), () => host.isConnected);
       } },
       ...(opts.captureRows?.() ?? []),
     ], { ariaLabel: widgetText(ctx, 'Capture') });
