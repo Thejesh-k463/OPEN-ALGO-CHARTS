@@ -31,17 +31,14 @@ import {
   type Chart, type ChartOptions, type ChartTheme, type DataFeed, type Bar, type SeriesApi, type SeriesType, type DataVariant,
   type RestoreReport, type BarsRequest, type DataLoadingOptions, type DataLoadingSnapshot, type AlertTriggeredPayload, type TradingCapabilityRequest, type TradingCapabilitySource,
 } from 'openalgo-charts';
+import { DrawingController, type DrawingDocumentStore, type InstrumentDrawings } from 'openalgo-charts/draw';
 import {
-  DrawingController, InstrumentDrawings, drawingShortcuts, instrumentDrawingsKey, keyToDrawingAction, memoryDrawingStore, migrateUnscopedDrawings,
-  type DrawingDocumentStore, type DrawingKeyContext,
-} from 'openalgo-charts/draw';
-import {
-  WidgetBus, WidgetStorage, createOverlayStack, createTipController, defaultStorage, h, historyPress, widgetDialog,
+  WidgetBus, WidgetStorage, createOverlayStack, createTipController, defaultStorage, h, widgetDialog,
   type OverlayOptions, type StorageLike, type WidgetBusEvents, type WidgetContext, type WidgetDialogName,
 } from './context';
 import { ChartHistory } from './history';
-import { Keymap, openShortcutsPanel, type KeyEventLike, type KeyScope } from './keymap';
-import { mountRail, toolName, type RailHandle, type RailOptions, type RailPrefs } from './rail';
+import { Keymap } from './keymap';
+import { mountRail, type RailHandle, type RailOptions, type RailPrefs } from './rail';
 import { mountStatusline, type StatuslineHandle } from './statusline';
 import { mountTopbar, type SymbolSearch, type TopbarHandle } from './topbar';
 import { mountToasts, type ToastHandle, type ToastKind, type Toaster } from './toast';
@@ -58,7 +55,7 @@ import { widgetText, type WidgetTranslator } from './localization';
 import { EventDetailsPopup, type EventDetailsPopupOptions } from './event-details';
 import type { ChartEventClick } from 'openalgo-charts';
 import { mountDataWindow } from './data-window';
-import { mountPanelDock, sanitizePanelDockState, type PanelDockHandle, type PanelDockState } from './panel-dock';
+import { mountPanelDock, type PanelDockHandle, type PanelDockState } from './panel-dock';
 import { mountQuickEntry, type QuickEntryHandle } from './quick-entry';
 import { WIDGET_COMPONENT_CSS } from './component-styles';
 import { DateNavigator, timeBuckets, type DateNavigationResult, type DateNavigationTarget, type HistoryReach } from './date-navigator';
@@ -68,6 +65,8 @@ import { mountNewsPanel, type NewsPanelOptions } from './news-panel';
 import { mountAccountSummary } from './account-summary';
 import type { AccountStateSource } from 'openalgo-charts/trade';
 import { dataVariantLabel } from './data-status';
+import { installKeys, keyScopes, trackPointer, type KeysHost } from './widget-keys';
+import { applySavedLayout, flushOnPageHide, readSaved, restoreWidgetState, saveNow, scheduleSave, scopeDrawings, stripView as stripSavedView, type PersistHost } from './widget-persist';
 
 /** The intervals offered when the host names none: the registry's codes are appended. */
 export const DEFAULT_INTERVALS: readonly string[] = ['1m', '5m', '15m', '1h', '1d', '1w'];
@@ -301,17 +300,6 @@ export interface Widget {
   readonly isDestroyed: boolean;
 }
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
-
-/**
- * A stored variant: undefined for the default series, null for one this build
- * cannot read. That one falls back to the default series rather than failing
- * the widget, and its saved view is dropped, since it was taken on other bars.
- */
-function savedVariant(value: unknown): Readonly<DataVariant> | undefined | null {
-  try { return normalizeDataVariant(value); } catch { return null; }
-}
-
 /** The options the shell consumes; the rest of `WidgetOptions` is the chart's. */
 const WIDGET_ONLY_KEYS: ReadonlyArray<keyof WidgetOptions> = [
   'feed', 'symbol', 'exchange', 'interval', 'variant', 'intervals', 'chartType', 'theme', 'rail', 'topbar', 'statusline',
@@ -326,30 +314,7 @@ const WIDGET_ONLY_KEYS: ReadonlyArray<keyof WidgetOptions> = [
  * and every pinned price range go, the indicators, drawings and pane weights
  * stay. For a layout about to land on a different dataset.
  */
-export function stripView(state: WidgetChartState): WidgetChartState {
-  const out = { ...state } as Record<string, unknown>;
-  delete out.viewport;
-  delete out.barSpacing;
-  const clearScaleView = (value: unknown): unknown => {
-    if (!isRecord(value)) return value;
-    const scale = { ...value, autoScale: true } as Record<string, unknown>;
-    delete scale.range;
-    delete scale.ratioLock;
-    return scale;
-  };
-  if (Array.isArray(out.panes)) {
-    out.panes = (out.panes as unknown[]).map((pane) => {
-      if (!isRecord(pane)) return pane;
-      const next = { ...pane };
-      if (isRecord(pane.priceScale)) next.priceScale = clearScaleView(pane.priceScale);
-      if (isRecord(pane.scales)) next.scales = Object.fromEntries(
-        Object.entries(pane.scales).map(([id, scale]) => [id, clearScaleView(scale)]),
-      );
-      return next;
-    });
-  }
-  return out as unknown as WidgetChartState;
-}
+export function stripView(state: WidgetChartState): WidgetChartState { return stripSavedView(state); }
 
 /** Resolve a theme option to the engine palette and the chrome mode. */
 export function resolveTheme(t: WidgetThemeName | ChartTheme | undefined): { theme: ChartTheme; name: WidgetThemeName } {
@@ -478,7 +443,8 @@ class WidgetImpl implements Widget {
   private _themeName: WidgetThemeName;
   private _chartTheme: ChartTheme;
 
-  private _pointerInside = false;
+  /** Not private: only the keyboard code in widget-keys.ts writes and reads it. */
+  public _pointerInside = false;
   private _pointerInChart = false;
   private readonly _dataStatus: DataStatusHandle;
   private _displayedBars: readonly Bar[] | null = null;
@@ -505,7 +471,7 @@ class WidgetImpl implements Widget {
     const ns = typeof options.persist === 'string' ? options.persist : 'default';
     const store = options.persist ? (options.storage === undefined ? defaultStorage() : options.storage) : null;
     this._storage = new WidgetStorage(ns, store);
-    const saved = this._readSaved();
+    const saved = readSaved.call(this as unknown as PersistHost);
 
     this._symbol = (options.symbol ?? saved?.symbol ?? '').toUpperCase();
     this._exchange = options.exchange ?? saved?.exchange ?? '';
@@ -517,7 +483,7 @@ class WidgetImpl implements Widget {
     const savedInterval = saved !== null && isKnownInterval(saved.interval) ? saved.interval : '1d';
     this._interval = options.interval ?? savedInterval;
     // Like the interval: a malformed variant is an error at the call site, and
-    // `_readSaved` has already dropped one the stored record could not name.
+    // `readSaved` has already dropped one the stored record could not name.
     this._variant = options.variant !== undefined ? normalizeDataVariant(options.variant) : saved?.variant;
     const wantType = options.chartType ?? saved?.chartType ?? 'candlestick';
     if (options.chartType !== undefined && !registeredChartTypes().includes(options.chartType)) {
@@ -595,7 +561,7 @@ class WidgetImpl implements Widget {
     this.draw = new DrawingController(this.chart, {});
     // Before the alerts and before the saved layout lands: the drawings on the
     // chart are the current instrument's from the first moment anything reads them.
-    this.instrumentDrawings = options.drawingScope === 'chart' ? null : this._scopeDrawings(saved);
+    this.instrumentDrawings = options.drawingScope === 'chart' ? null : scopeDrawings.call(this as unknown as PersistHost, saved);
     this.alerts = new AlertController(this.chart, { drawings: this.draw });
     this.objects = new ChartObjects(this.chart, {
       drawings: this.draw,
@@ -624,7 +590,7 @@ class WidgetImpl implements Widget {
     const tips = createTipController(root, overlays.layer, doc);
     this._toasts = mountToasts(toastEl, doc, options);
     const sc = this.chart.shortcuts;
-    this._keymap = new Keymap({ chart: sc === null ? null : { list: () => sc.list() }, scopes: () => this._scopes() });
+    this._keymap = new Keymap({ chart: sc === null ? null : { list: () => sc.list() }, scopes: () => keyScopes.call(this as unknown as KeysHost) });
     this._keymap.onConflict((c) => this._bus.emit('keymap:conflict', { combo: c.combo, kept: c.kept, shadowed: c.shadowed }));
 
     this.context = new WidgetContextImpl(this, {
@@ -765,7 +731,7 @@ class WidgetImpl implements Widget {
       indicatorsAvailable: () => widgetDialog('indicatorPicker') !== null,
     });
 
-    this._installKeys();
+    installKeys.call(this as unknown as KeysHost);
     this._keymap.attach(doc);
     if (options.typingNavigation !== false) {
       this._quickEntry = mountQuickEntry(this.context, {
@@ -775,29 +741,11 @@ class WidgetImpl implements Widget {
         onInterval: code => this.setInterval(code), search: options.symbolSearch,
       });
     }
-    this._trackPointer();
+    trackPointer.call(this as unknown as KeysHost);
     this._followChart();
 
     // ── the saved layout, onto the dataset it belongs to ───────────────
-    if (saved?.chart !== undefined) {
-      const same = saved.symbol === this._symbol && saved.exchange === this._exchange && saved.interval === this._interval
-        && dataVariantKey(saved.variant) === dataVariantKey(this._variant);
-      let layout = same ? saved.chart : stripView(saved.chart);
-      // The layout's own drawings were attached to its instrument above; the
-      // chart keeps the ones the current instrument has, already on it. A
-      // layout that names no instrument has nowhere else to keep them, so they
-      // land as they always did and go to the first instrument charted.
-      if (this.instrumentDrawings !== null && this._savedKey(saved) !== null) layout = { ...layout, drawings: this.draw.toJSON() };
-      const report = this.chart.restoreState(layout);
-      if (report.applied) {
-        this._keepView = same;
-        this._pendingView = same ? saved.chart.viewport ?? null : null;
-      } else {
-        this._toasts.toast(widgetText(this.context, 'The saved layout could not be restored: {error}', { error: report.reason ?? 'unknown reason' }), 'error');
-      }
-    }
-    if (saved?.rail && this._rail !== null) this._rail.restorePrefs(saved.rail);
-    if (saved?.panels) this._dock?.restore(saved.panels);
+    applySavedLayout.call(this as unknown as PersistHost, saved);
 
     if (this.dataController !== null) {
       this._cleanups.push(this.dataController.subscribe(state => this._applyData(state)));
@@ -810,41 +758,6 @@ class WidgetImpl implements Widget {
       if (doc.hidden) visibility();
       if (this._symbol !== '') void this.reload();
     }
-  }
-
-  /**
-   * Drawings per instrument, from the store the host named or the one the
-   * persisted layout sits in. A layout saved before drawings were per
-   * instrument holds the drawings of the instrument it was saved on, which
-   * are attached to that instrument here, so opening on another symbol
-   * neither shows them there nor loses them.
-   */
-  private _scopeDrawings(saved: WidgetState | null): InstrumentDrawings {
-    const storage = this._storage;
-    const store: DrawingDocumentStore = this._opts.drawingStore ?? (storage.enabled ? {
-      get: key => storage.get(DRAWINGS_KEY_PREFIX + key),
-      set: (key, document) => storage.set(DRAWINGS_KEY_PREFIX + key, document),
-      remove: key => storage.remove(DRAWINGS_KEY_PREFIX + key),
-    } : memoryDrawingStore());
-    if (saved?.chart?.drawings !== undefined) migrateUnscopedDrawings(store, this._savedKey(saved), saved.chart.drawings);
-    return new InstrumentDrawings(this.chart, this.draw, {
-      store,
-      // Reported on the status line, as a failed layout write is: the drawings
-      // stay in memory for the session and the next change tries again. The
-      // shell may still be under construction, so this does what the
-      // context's own status call does rather than going through it.
-      onError: ({ operation, key }) => {
-        if (operation === 'read' || this._destroyed) return;
-        const text = widgetText(this._opts, 'The drawings for {instrument} could not be saved', { instrument: decodeURIComponent(key) });
-        this._statusline?.setMessage(text, 'error');
-        this._bus.emit('status', { text, kind: 'error' });
-      },
-    });
-  }
-
-  /** The key the drawings of a persisted layout belong under, or null when it names no instrument. */
-  private _savedKey(saved: WidgetState): string | null {
-    return instrumentDrawingsKey({ symbol: saved.symbol.toUpperCase(), exchange: saved.exchange });
   }
 
   // ── facts ────────────────────────────────────────────────────────────
@@ -1163,245 +1076,20 @@ class WidgetImpl implements Widget {
   public restoreState(state: unknown): WidgetRestoreReport {
     // A loaded layout is a new document, not a step: nothing recorded before
     // it describes the chart it builds, and nothing it sets is the user's edit.
-    const report = this.history.ignore(() => this._restoreState(state));
+    const report = this.history.ignore(() => restoreWidgetState.call(this as unknown as PersistHost, state));
     if (report.applied) this.history.clear();
     return report;
   }
 
-  private _restoreState(state: unknown): WidgetRestoreReport {
-    if (!isRecord(state)) return { applied: false, reason: 'not a widget state object' };
-    if (state.version !== undefined && state.version !== WIDGET_STATE_VERSION) {
-      return { applied: false, reason: `widget state version ${String(state.version)} is not ${WIDGET_STATE_VERSION}` };
-    }
-    // Read before anything is applied: a variant this build cannot name would
-    // be served as some other series, so the whole state is refused. A state
-    // that names none was saved on the feed's default series (getState leaves
-    // the default out, and nothing saved before variants could name another),
-    // so it restores onto the default whatever this widget shows now. Keeping
-    // the current variant instead would land its view on bars it never saw.
-    let variant: Readonly<DataVariant> | undefined;
-    try { variant = normalizeDataVariant(state.variant); }
-    catch (error) { return { applied: false, reason: error instanceof Error ? error.message : 'invalid data variant' }; }
-    if (state.theme === 'dark' || state.theme === 'light') this.setTheme(state.theme);
-    if (typeof state.chartType === 'string' && registeredChartTypes().includes(state.chartType)) this.setChartType(state.chartType);
-    if (state.rail !== undefined && this._rail !== null) this._rail.restorePrefs(state.rail);
-    if (state.panels !== undefined) this._dock?.restore(state.panels);
-    const symbol = typeof state.symbol === 'string' ? state.symbol.toUpperCase() : this._symbol;
-    const exchange = typeof state.exchange === 'string' ? state.exchange : this._exchange;
-    const interval = typeof state.interval === 'string' && isKnownInterval(state.interval) ? state.interval : this._interval;
-    const sameVariant = dataVariantKey(variant) === dataVariantKey(this._variant);
-    const same = symbol === this._symbol && exchange === this._exchange && interval === this._interval && sameVariant;
-    let chart: RestoreReport | undefined;
-    if (isRecord(state.chart)) {
-      let doc = state.chart as unknown as WidgetChartState;
-      const scoped = this.instrumentDrawings;
-      // A layout for another instrument brings that instrument's drawings.
-      // They wait in its store while the chart restore keeps the ones on
-      // screen, which are this instrument's until the switch below, so the
-      // alerts the layout restores are judged against their own drawings.
-      const moving = scoped !== null && (symbol !== this._symbol || exchange !== this._exchange)
-        && instrumentDrawingsKey({ symbol, exchange }) !== null;
-      const incoming = doc.drawings;
-      if (moving) doc = { ...doc, drawings: this.draw.toJSON() };
-      chart = this.chart.restoreState(same ? doc : stripView(doc));
-      if (!chart.applied) return { applied: false, reason: chart.reason, chart };
-      if (moving && scoped !== null) scoped.setDocument({ symbol, exchange }, incoming ?? []);
-      this._keepView = same;
-      this._pendingView = same ? doc.viewport ?? null : null;
-    }
-    if (!same) {
-      this._cancelNavigation();
-      if (interval !== this._interval) {
-        this._interval = interval;
-        this._bus.emit('interval', { interval });
-      }
-      if (symbol !== this._symbol || exchange !== this._exchange) {
-        this._symbol = symbol;
-        this._exchange = exchange;
-        this._bus.emit('symbol', { symbol, exchange });
-      }
-      if (!sameVariant) {
-        this._variant = variant;
-        this._bus.emit('variant', { variant });
-      }
-      this._statusline?.setSymbol(this._symbol, this._exchange, this._interval);
-      this._topbar?.refresh();
-      this._mobile?.refresh();
-      if (this._opts.feed) void this.reload();
-      else {
-        this._series.setData([]);
-        this._publishDataContext();
-      }
-    }
-    this._rail?.refresh();
-    this._statusline?.refresh();
-    this._bus.emit('layout', { reason: 'restore', chartType: this.chartType() });
-    this._scheduleSave();
-    return chart === undefined ? { applied: true } : { applied: true, chart };
-  }
+  private _scheduleSave(): void { scheduleSave.call(this as unknown as PersistHost); }
 
-  private _readSaved(): WidgetState | null {
-    const raw = this._storage.get(STATE_KEY);
-    if (!isRecord(raw) || raw.version !== WIDGET_STATE_VERSION) return null;
-    const variant = savedVariant(raw.variant);
-    const chart = isRecord(raw.chart) ? (raw.chart as unknown as WidgetChartState) : undefined;
-    const out: WidgetState = {
-      version: WIDGET_STATE_VERSION,
-      symbol: typeof raw.symbol === 'string' ? raw.symbol : '',
-      exchange: typeof raw.exchange === 'string' ? raw.exchange : '',
-      interval: typeof raw.interval === 'string' && raw.interval !== '' ? raw.interval : '1d',
-      chartType: typeof raw.chartType === 'string' ? raw.chartType : 'candlestick',
-      theme: raw.theme === 'light' ? 'light' : 'dark',
-      ...(variant ? { variant } : {}),
-      chart: (chart && variant === null ? stripView(chart) : chart) as WidgetChartState,
-      rail: isRecord(raw.rail) ? (raw.rail as unknown as RailPrefs) : null,
-      panels: sanitizePanelDockState(raw.panels),
-    };
-    return out;
-  }
-
-  private _scheduleSave(): void {
-    if (!this._storage.enabled || this._destroyed) return;
-    if (this._saveTimer !== 0) clearTimeout(this._saveTimer);
-    this._saveTimer = setTimeout(() => { this._saveTimer = 0; this._saveNow(); }, SAVE_DEBOUNCE_MS);
-  }
-
-  private _saveNow(): void {
-    if (!this._storage.enabled || this._destroyed) return;
-    if (this._saveTimer !== 0) { clearTimeout(this._saveTimer); this._saveTimer = 0; }
-    try {
-      if (!this._storage.set(STATE_KEY, this.getState())) this.context.status(widgetText(this.context, 'The chart layout could not be saved'), 'error');
-    } catch (error) {
-      this.context.status(widgetText(this.context, 'The chart layout could not be saved: {error}', { error: error instanceof Error ? error.message : 'invalid state' }), 'error');
-    }
-  }
+  private _saveNow(): void { saveNow.call(this as unknown as PersistHost); }
 
   // ── keyboard ─────────────────────────────────────────────────────────
-  private _scopes(): KeyScope[] {
-    if (this.context.overlays.size() > 0) return ['overlay'];
-    const out: KeyScope[] = [];
-    const active = this._doc.activeElement;
-    const routed = this._opts.keyboardRoute?.();
-    if (routed === false || (active !== null && this._dataStatus.el.contains(active))) return [];
-    // A control that walks itself with the arrows (the drawing toolbar) names its own scope.
-    const own = active !== null && this.root.contains(active) ? active.closest('[data-key-scope]')?.getAttribute('data-key-scope') : null;
-    if (own) out.push(own);
-    if (this._rail !== null && active !== null && this._rail.el.contains(active)) out.push('rail');
-    if (routed || this._inChart()) out.push('chart');
-    if (routed || this._pointerInside || (active !== null && this.root.contains(active))) out.push('widget');
-    out.push('global');
-    return out;
-  }
-
   /** The engine's own test for its shortcuts: the pointer over the chart, or the focus in it. */
   private _inChart(): boolean {
     const active = this._doc.activeElement;
     return this._pointerInChart || (active !== null && this._chartEl.contains(active));
-  }
-
-  private _installKeys(): void {
-    const km = this._keymap;
-    const draw = this.draw;
-    const drawCtx = (): DrawingKeyContext => ({
-      hasSelection: draw.selected() !== null,
-      hasTarget: draw.hovered() !== null,
-      editingText: false,
-      placing: draw.activeTool() !== null,
-    });
-    const targets = (): string[] => {
-      const sel = draw.selection();
-      if (sel.length > 0) return sel.slice();
-      const hov = draw.hovered();
-      return hov === null ? [] : [hov];
-    };
-    // One handler for every editing key: the tier says what the key means
-    // for the selection or the placement in hand, and a key that means
-    // nothing right now is declined so the engine (an arrow pan) still gets it.
-    const editing = (e: KeyEventLike): boolean => {
-      const action = keyToDrawingAction(e, drawCtx());
-      // Alert deletion is a fallback: a drawing selection, hover or armed
-      // tool keeps ownership even when the pointer is over an alert line.
-      if (action === null) {
-        const alertId = this.alerts.hovered();
-        if (alertId !== undefined && draw.activeTool() === null && (e.key === 'Delete' || e.key === 'Backspace')) {
-          this.alerts.remove(alertId);
-          this._rail?.refresh();
-          return true;
-        }
-        return false;
-      }
-      switch (action.type) {
-        // The chart-wide timeline: a drawing, a study and a pane in the order they were made.
-        case 'undo': historyPress(this.context, 'undo'); break;
-        case 'redo': historyPress(this.context, 'redo'); break;
-        case 'delete': draw.removeMany(targets()); break;
-        case 'duplicate': draw.duplicate(targets()); break;
-        case 'nudge': draw.nudge(targets(), action.dx, action.dy); break;
-        case 'cancel': draw.cancel(); if (draw.activeTool() === null) this._rail?.setDrawLock(false); break;
-        case 'finish': draw.finish(); break;
-        case 'popAnchor': draw.popAnchor(); break;
-        case 'copy': void draw.copy(targets()); break;
-        case 'cut': void draw.cut(targets()); break;
-        case 'paste': void draw.paste(); break;
-      }
-      this._rail?.refresh();
-      return true;
-    };
-    const G = 'Drawing';
-    // The arrows are layered: with nothing selected they decline and the
-    // engine's pan runs, so they are not a conflict with it.
-    const edit = (combo: string, label: string, hidden = false, layered = false, group = G): void => {
-      km.register(combo, editing, 'widget', { label, group, hidden, layered });
-    };
-    // Undo and redo reach every step on the chart, not only drawings.
-    edit('Mod+Z', 'Undo', false, false, 'Widget');
-    edit('Mod+Shift+Z', 'Redo', false, false, 'Widget');
-    edit('Mod+Y', 'Redo', true, false, 'Widget');
-    edit('Mod+C', 'Copy the selected drawing');
-    edit('Mod+X', 'Cut the selected drawing');
-    edit('Mod+V', 'Paste drawings');
-    edit('Mod+D', 'Duplicate the selected drawing');
-    edit('Delete', 'Delete the selected drawing');
-    edit('Backspace', 'Delete, or drop the last anchor while placing');
-    edit('Enter', 'Finish the drawing being placed');
-    edit('ArrowLeft', 'Nudge the selection left (Shift: ten pixels)', false, true);
-    edit('ArrowRight', 'Nudge the selection right (Shift: ten pixels)', false, true);
-    edit('ArrowUp', 'Nudge the selection up (Shift: ten pixels)', false, true);
-    edit('ArrowDown', 'Nudge the selection down (Shift: ten pixels)', false, true);
-    for (const k of ['Shift+ArrowLeft', 'Shift+ArrowRight', 'Shift+ArrowUp', 'Shift+ArrowDown']) edit(k, 'Nudge ten pixels', true, true);
-    km.register('Escape', (e) => {
-      if (draw.activeTool() !== null) {
-        if (editing(e)) return true;
-        draw.setTool(null);
-        this._rail?.setDrawLock(false);
-        return true;
-      }
-      if (draw.selection().length > 0) { draw.select(null); this._rail?.refresh(); return true; }
-      return false;
-    }, 'widget', { label: 'Leave the tool, then clear the selection', group: G });
-    for (const [id, chord] of Object.entries(drawingShortcuts())) {
-      km.register(chord, () => { this._rail?.setDrawLock(false); draw.setTool(id); }, 'widget', { label: toolName(id), group: 'Drawing tools' });
-    }
-    km.register('?', () => { openShortcutsPanel(this.context); }, 'widget', { label: 'Keyboard shortcuts', group: 'Widget' });
-  }
-
-  private _trackPointer(): void {
-    const root = this.root;
-    const chartEl = this._chartEl;
-    const onRootEnter = (): void => { this._pointerInside = true; };
-    const onRootLeave = (): void => { this._pointerInside = false; this._pointerInChart = false; };
-    const onChartEnter = (): void => { this._pointerInChart = true; };
-    const onChartLeave = (): void => { this._pointerInChart = false; };
-    root.addEventListener('pointerenter', onRootEnter);
-    root.addEventListener('pointerleave', onRootLeave);
-    chartEl.addEventListener('pointerenter', onChartEnter);
-    chartEl.addEventListener('pointerleave', onChartLeave);
-    this._cleanups.push(() => {
-      root.removeEventListener('pointerenter', onRootEnter);
-      root.removeEventListener('pointerleave', onRootLeave);
-      chartEl.removeEventListener('pointerenter', onChartEnter);
-      chartEl.removeEventListener('pointerleave', onChartLeave);
-    });
   }
 
   /** Every change that lands in `getState` schedules a save and a layout notice. */
@@ -1430,14 +1118,7 @@ class WidgetImpl implements Widget {
       const event = payload as AlertTriggeredPayload;
       this.context.toast(event.message ?? event.title, 'success');
     }));
-    const win = this._doc.defaultView;
-    if (win !== null && win !== undefined && typeof win.addEventListener === 'function') {
-      // A debounced save still pending when the tab closes is the last quarter
-      // second of the user's work; pagehide is the last synchronous moment.
-      const flush = (): void => this._saveNow();
-      win.addEventListener('pagehide', flush);
-      this._cleanups.push(() => win.removeEventListener('pagehide', flush));
-    }
+    flushOnPageHide.call(this as unknown as PersistHost);
   }
 
   public destroy(): void {
@@ -1472,6 +1153,9 @@ class WidgetImpl implements Widget {
     this._bus.clear();
   }
 }
+
+/** For the host types of widget-keys.ts and widget-persist.ts; the tier entry does not export it. */
+export type { WidgetImpl };
 
 /**
  * Build a widget inside `container`: an element, or a selector (or id)
