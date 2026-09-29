@@ -118,5 +118,5 @@ return {
 
 export default function NavigationMobileDemo() {
   return <RunnableExample height={560} tiers={['widget']} code={code}
-    caption="Synthetic hourly bars. Start at 360 px to use the mobile header and Draw sheet. On a fine-pointer device, change width to compare the packaged layouts. A coarse pointer keeps mobile controls at either width. Show extrema sends a real wheel zoom through the chart, so Animation changes both the time zoom and price autoscale transition. The switch restores the widget layout and drawings; Reset view returns to the latest 80 bars." />;
+    caption="Synthetic hourly bars. Start at 360 px to use the mobile header and Draw sheet. On a fine-pointer device, change width to compare the packaged layouts. A coarse pointer keeps mobile controls at either width here, because this demo is under 600 px tall, the shape a phone on its side gives; a taller container on a tablet shows the desktop chrome above 640 px. Show extrema sends a real wheel zoom through the chart, so Animation changes both the time zoom and price autoscale transition. The switch restores the widget layout and drawings; Reset view returns to the latest 80 bars." />;
 }
