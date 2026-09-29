@@ -67,12 +67,18 @@ export async function loadPaneHistory(pane, time) {
     }
   } finally {
     for (const off of offs) off();
-    // The load rebuilt the chart the panel belonged to; show the request on the new one.
-    if (current?.pane === pane && !panel) openGoTo(el('goto') || undefined, current);
+    // The load rebuilt the chart the panel belonged to; show the request on the
+    // new one, from the control it was asked from. The bottom bar's outlives
+    // the rebuild; the toolbar's is drawn again, so the new one stands in, and
+    // it is the one on screen when a narrower window has hidden the bar meanwhile.
+    if (current?.pane === pane && !panel) openGoTo(shown(current.anchor) || shown(el('goto')) || undefined, current);
   }
   if (pane === 2 ? app.loadFailed2 : app.loadFailed) throw new Error(`${request.symbol} history could not load`);
   return 'loaded';
 }
+
+/** `node` while it is laid out on the page, else null: a panel anchored to a hidden control opens in the corner. */
+const shown = (node) => (node && node.getClientRects().length > 0 ? node : null);
 
 function navigatorFor(pane) {
   let navigator = navigators.get(pane);
@@ -96,12 +102,20 @@ export function openGoTo(anchor, pending) {
   const context = target && app['inspection' + target.pane]?.context;
   if (!target?.current() || !context) return false;
   const pane = target.pane;
+  // A load under way is about to replace the chart, and the panel with it;
+  // a failed one left no history to go into. The toolbar greys its Go to
+  // for both; the bottom bar's cannot know, so the status line says which.
+  const failed = pane === 2 ? app.loadFailed2 : app.loadFailed;
+  if (!pending && (failed || (pane === 2 ? app.loading2 : app.loading))) {
+    el('status').textContent = failed ? 'chart history did not load, so there is no date to go to' : 'wait for chart history before going to a date';
+    return false;
+  }
   const navigator = navigatorFor(pane);
   panel?.close();
   let handle = null;
   handle = openDateNavigation({ ...context, status: text => { el('status').textContent = text; } }, anchor, {
     navigate: request => {
-      const run = { pane, target: request, result: navigator.goTo(request) };
+      const run = { pane, target: request, result: navigator.goTo(request), anchor };
       current = run;
       void run.result.finally(() => { if (current === run) current = null; });
       return run.result;

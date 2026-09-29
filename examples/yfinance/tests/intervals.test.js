@@ -3,8 +3,9 @@ import * as engine from '/dist/openalgo-charts.mjs';
 import {
   CUSTOM_INTERVALS, customInterval, foldedInterval, intervalSeconds, foldToBuckets,
   INTERVALS, intervalLabel, intervalName, periodsFor, clampPeriod, PERIODS, PERIOD_DAYS, fillIntervalSelect,
-  resolvePickerInterval, UnknownIntervalError,
+  resolvePickerInterval, UnknownIntervalError, rangeLoad,
 } from '../src/intervals.js';
+import { DEFAULT_RANGES, rangeInterval } from '/dist/openalgo-charts.widget.mjs';
 import { fakeDom, flatBar } from './helpers.js';
 
 const { bucketStartOf } = engine;
@@ -96,6 +97,21 @@ describe('ranges an interval can serve', () => {
     for (const short of ['1mo', '6mo', '1y']) expect(clampPeriod('1d', short)).toBe('5y');
     expect(clampPeriod('1d', '5y')).toBe('5y');
     expect(clampPeriod('1d', 'max')).toBe('max');
+  });
+
+  it('loads a preset range at an interval whose history reaches all of it', () => {
+    const range = id => DEFAULT_RANGES.find(r => r.id === id);
+    const load = (id, days) => rangeLoad(range(id), days * 86400, rangeInterval);
+    expect(load('1D', 3)).toEqual({ interval: '5m', period: '1mo' });
+    expect(load('5D', 7)).toEqual({ interval: '5m', period: '1mo' });
+    // A month back to midnight inside the 31 days of the page's month keeps
+    // the month's 30-minute bars; a longer one would stop a few hours short.
+    expect(load('1M', 30.5)).toEqual({ interval: '30m', period: '1mo' });
+    expect(load('1M', 31.2)).toEqual({ interval: '1h', period: '6mo' });
+    expect(load('3M', 92)).toEqual({ interval: '1h', period: '6mo' });
+    expect(load('1Y', 366)).toEqual({ interval: '1d', period: '5y' });
+    expect(load('5Y', 1827)).toEqual({ interval: '1wk', period: '5y' });
+    expect(load('ALL', 30 * 366)).toEqual({ interval: '1wk', period: 'max' });
   });
 });
 

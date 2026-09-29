@@ -802,6 +802,8 @@ body[data-fullscreen-pane="2"] #chart2 { left: 42px; }
 .stage.has-rail .host-bottombar > .oac-bottombar { left: 42px; }
 .stage.has-bottombar .inspect-layout, .stage.has-bottombar .chartstate { bottom: 28px; }
 .stage.has-bottombar #replaybar, .stage.has-bottombar #replaypick { bottom: 58px; }
+/* One Go to: the bar's wherever the bar shows, the toolbar's in the phone shell. */
+body:has(.stage.has-bottombar) #goto { display: none; }
 
 /* ── small screens and touch ────────────────────────────────────
    Below 900px the rail becomes a strip along the bottom of the stage, its
@@ -857,6 +859,7 @@ body[data-fullscreen-pane="2"] #chart2 { left: 42px; }
   /* The touch bar takes the bottom bar's place. Two classes on the root, to
      outrank the widget sheet's own display rule, which loads after this one. */
   .host-bottombar.oac-widget > .oac-bottombar { display: none; }
+  body:has(.stage.has-bottombar) #goto { display: inline-flex; }
   .mobilebar { position: absolute; z-index: 24; left: 0; right: 0; bottom: 0; height: 52px;
     box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 4px 8px;
     overflow-x: auto; overflow-y: hidden; scrollbar-width: none; touch-action: pan-x;

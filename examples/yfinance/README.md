@@ -224,17 +224,23 @@ daemon threads, so a yfinance call that hangs cannot hold the process open.
 day, as long as the window is pinned with `to`. It is what the end-to-end
 suite runs against, and what a fresh clone can run before installing anything.
 
-- `session=extended` adds two hours either side of the synthetic session on the
-  same grid, so the regular bars are the same observations in both series and
-  only the pre and post market bars differ.
+- `session=extended` adds New York's pre and post market (04:00 to 09:30 and
+  16:00 to 20:00) on the same grid, so the regular bars are the same
+  observations in both series and only the pre and post market bars differ.
 - Each symbol has its own base price, drift and volatility, and a seeded random
   walk in trading time (a pure function of symbol and bar time), so two symbols
   never move together and a comparison overlay has something to show. Every bar's
   open is the previous bar's close.
-- Bars sit on a 09:15 to 15:30 IST session on weekdays, spelled in UTC. IST is
-  the library's default zone and has no daylight saving, so the grid is the
-  same number every day of the year. Daily bars land at the session open,
-  weekly bars on Mondays, monthly and quarterly bars on the first of the month.
+- Bars sit in each symbol's own venue hours, by the rule `src/status.js` reads
+  the venue by, so a chart's bars and its session calendar agree: an NSE or BSE
+  symbol (and `BANDED`) on weekdays from 09:15 to 15:30 in Kolkata, a US symbol
+  from 09:30 to 16:00 in New York, a `-USD` pair around the clock every day. An
+  index the page has no hours for keeps the Kolkata session. New York's clock
+  changes are spelled out rather than read from a zone database, which some
+  systems give Python only with the tzdata package, and the self-test holds them
+  to the zone database where one is installed. Daily bars land at the session open,
+  weekly bars on Mondays, monthly and quarterly bars on the first of the month,
+  all in the venue's own calendar.
 - Intraday ranges are clamped to the limits the real source enforces (`1m`
   seven days, `5m` to `90m` sixty days, `1h` two years), so the bar counts
   match a live run. The live source answers an over-long ask with nothing,
@@ -262,7 +268,7 @@ library as host-supplied metadata. Neither the server nor the library treats
 these rules as a default for anything else.
 
 Quotes and news are deterministic too. A quote is the fixture level at its own
-two-second step, not the close of the last bar, with the previous weekday's
+two-second step, not the close of the last bar, with the previous trading day's
 session close as its reference. News arrives on a per-symbol schedule, about three
 stories in five 90-minute slots, 60 slots deep; the cursor names a slot, so older
 pages do not move with the clock. One headline template carries `<b>` markup and a
@@ -271,7 +277,8 @@ the second. `FAIL` and `BUSY` answer news with their errors and `EMPTY` with an
 empty page; all three are left out of quote answers.
 
 `python server.py --self-test` starts a fixture server on a free port in the
-process and checks the contract above: the bar shape and grid, determinism
+process and checks the contract above: the bar shape and grid in each venue's
+hours, New York's clock changes, determinism
 across two server instances, every validation and error path, that a bug in
 the source is a 500 with no traceback in the body, the cache and gzip
 headers, static serving, the log line, and that shutdown returns promptly and
@@ -494,20 +501,30 @@ resizing changes only the CSS layout, so loaded bars and drawings stay in place.
 The widget tier's bottom bar (`mountBottombar`) sits under the stage and acts on the
 focused chart: preset ranges, **Go to**, the market status, a clock in the chart's
 timezone that opens a timezone menu, and the Auto, Log and Percent scale toggles. A range
-picks the nearest interval the page offers and the shortest history period that reaches
-its first session, then places it; a range wider than the plot keeps its latest bars in
-view. A timezone picked there survives the next rebuild. Session shading
+picks the nearest interval the page offers among those with a history period that
+reaches its first session, and the shortest such period, then places it; a range on the
+history already loaded only moves the view, and a range wider than the plot keeps its
+latest bars in view. A timezone picked there survives the next rebuild. Session shading
 (`attachSessionShading`) is attached to each chart as it is built.
+
+Where the bar shows, its **Go to** and its clock are the page's only ones: the toolbar
+keeps its **Go to** and the chart its corner clock for the phone shell, which hides the
+bar, and both follow the bar as a window crosses the phone rule. The Corner clock switch
+in the chart settings overrides that, and the choice is kept in `localStorage`.
 
 ### Go to a date or range
 
-**Go to** beside the history range opens the widget tier's go-to panel for the
-selected chart. **Date** centres one date at the current zoom; **Range** fits two
-dates or date and time pairs. Times are read in the chart timezone. When the date
-is older than the loaded period, the page loads the shortest longer period that
-reaches it (the range menu shows the result), then places the date once that load
-has been accepted. That load rebuilds the chart, and the panel with it, so the page
-opens the panel again on the new chart to carry the request through: an interval
+**Go to** in the bottom bar (in the toolbar beside the history range, in the phone
+shell) opens the widget tier's go-to panel for the selected chart; while the chart's
+history is still loading it says to wait instead, and after a failed load that there is
+no date to go to. **Date** centres one date at the
+current zoom; **Range** fits two dates or date and time pairs. Times are read in the
+chart timezone. When the date is older than the loaded period, the page loads the
+shortest longer period that reaches it (the range menu shows the result), then places
+the date once that load has been accepted. That load rebuilds the chart, and the panel
+with it, so the page opens the panel again on the new chart, at the control it was
+opened from (the toolbar's **Go to** when a narrower window has hidden the bar
+meanwhile), to carry the request through: an interval
 that cannot serve an older period reports there where history starts. Daily and
 longer frames take a date alone, since a time could not change the bar it names.
 Closing the panel while history loads drops the request, and the view stays where
@@ -526,7 +543,7 @@ exists to show one engine surface carrying real use, not just being present.
 | Module | Proves |
 |---|---|
 | `expression.js` | A symbol box holding arithmetic (`AAPL/MSFT`, `NSEIX:NIFTY1!/NSE:RELIANCE+NASDAQ:META`) charts the result. `parseExpression` names the legs before anything is fetched, so exactly those are loaded, in parallel, with the first failure winning: a ratio missing a leg is not a chart with a gap. `evaluateExpression` folds them onto the first leg's time grid, gapping any bar the others did not trade rather than carrying a stale price forward. Closes are exact; a high and low can be bounded by interval arithmetic, which is offered rather than assumed because the bound assumes each leg hit its extreme at the worst possible moment. |
-| `feed.js` | A `DataFeed` is one method. The bar cache wrapper (`withBarCache`) keys on symbol, exchange, interval and the data variant, snaps `from` to the bar grid so a reload inside the same bar hits, stops `to` at the last seen bar while the venue is shut (for an extended-hours chart, shut means outside its pre and post market too), and refetches only the forming bar. A 404, 429 or 5xx becomes a typed error (`NotFoundError`, `RateLimitedError`, `NetworkError`) with a deadline and one retry, so the readout can say "check the symbol" or "try again in a minute" rather than printing whatever the server wrote. A staleness badge says when the newest bar is older than the venue's clock allows, on the clock of the chart's session: an extended-hours chart can go stale in the pre and post market. |
+| `feed.js` | A `DataFeed` is one method. The bar cache wrapper (`withBarCache`) keys on symbol, exchange, interval and the data variant, snaps `from` to the bar grid so a reload inside the same bar hits, stops `to` at the last seen bar while the venue is shut (for an extended-hours chart, shut means outside its pre and post market too), and refetches only the forming bar. The cache holds back a bar that has not closed, so a warm answer that ends before the newest bar this page has already shown (the forming candle, or the day's candle after the close) is asked of the wire again: the page has no live subscription to supply that bar, and an older close would stand as the last price. A 404, 429 or 5xx becomes a typed error (`NotFoundError`, `RateLimitedError`, `NetworkError`) with a deadline and one retry, so the readout can say "check the symbol" or "try again in a minute" rather than printing whatever the server wrote. A staleness badge says when the newest bar is older than the venue's clock allows, on the clock of the chart's session: an extended-hours chart can go stale in the pre and post market. |
 | `intervals.js` | The interval registry accepts codes the built-in grammar does not (`1wk`, a calendar month, a quarter). Monthly and quarterly bars are folded from daily ones through `bucketStartOf`, so a month runs first-to-first in the chart's zone and February is 29 days long in 2024. Ranges are clamped to what the interval can serve. |
 | `history.js` | One undo timeline per chart through the widget tier's `ChartHistory`: a study added or removed (with its settings, pane and scale), its settings, the chart type, the price scales, pane moves, folds and heights, and drawings, in the order they were made. Ctrl+Z and Ctrl+Y and the mobile bar walk the focused chart's; the drawing toolbar's Undo and Redo and the rail's walk the main chart's, as the rest of that toolbar and the rail act on the main chart. The study settings dialog is one step per session, however many tabs commit its form, and an appearance change a linked chart applies from the other one is never a step of its own. The chart is rebuilt on every load and type switch, so the timeline lives on the app and each new chart is attached to it; the type switch itself is recorded as a command that rebuilds again. The chart settings dialog is one step per session, and a Cancel leaves none. Comparisons, the volume row and a loaded layout are the demo's own and go through `ignore`; a loaded layout starts a new timeline. No undo writes bars, fires an alert or places an order. |
 | `indicators.js` | The picker is built from `registeredIndicators()`, so built-ins and the host's opt-in example appear grouped by category. The gear opens a form generated from the descriptor's `inputs`; the same code renders MACD, Bollinger or your own indicator. An input's `visibleWhen` and `activeWhen` are read against the drafts on every committed edit with the widget's own `inputStates`, so a row appears, leaves or greys out as the settings it depends on change (a number box commits as the widget's does, clamped to its bounds, a blank one getting its last value back); a hidden draft is kept, an invalid hidden one never blocks Apply, and the change is announced in a polite live region. Inputs sharing an `inline` id sit on one row. |
@@ -548,7 +565,7 @@ exists to show one engine surface carrying real use, not just being present.
 | `properties.js` | The floating properties bar is generated from `drawingSettingsSchema`, which declares only the fields a tool's `draw` reads: a field in the schema is a control with something behind it, a field absent from it is a control not shown. With several drawings selected it edits the fields their schemas share, as one undo entry. A read-only selection shows "Read-only" and a Duplicate button instead of controls the controller would refuse. For text, rectangle, ellipse and table the schema's `space` field becomes a pin toggle: pinned, the drawing keeps its place on screen through pan and zoom and scales with the chart, and unpinning puts it back on the bars under it. The bar and the inline text editor place themselves by `draw.screenPoints(id)`, since a pinned drawing has no time and price to map. |
 | `host-study.js` | Study policies from the host's side. **Add Protected VWAP** in the right-click menu adds a VWAP with `policy: { removable: false, configurable: false, movable: false }`. Hide it, read it and raise an alert on it as usual; its legend row has no gear and no close button, its Objects dock row has no remove, settings, move, Earlier or Later and does not drag, its chip has no remove button, and the settings dialog and menu rows say it is protected. The policy is saved with the layout, so a reload brings the study back protected, and importing or loading a layout keeps it (a layout file's own restricted studies are left out, `untrustedStudies` in `persist.js`); a saved indicator template leaves it out, so applying one never copies it. If the host locks a study while its settings are open, Apply and Reset say so instead of closing as if they had applied. The same row, now **Remove Protected VWAP**, takes it away with `removeIndicator(id, { force: true })`, the one call in the host that overrides the policy. |
 | `session-marks.js` | Drawing policies from the host's side. **Mark ... for This Session** in the right-click menu places a dashed price line with `policy: { editable: false, persistent: false, listed: false }`. Select it to read it, copy it, duplicate it into your own drawing or raise an alert from it; it cannot be dragged, nudged, restyled, cut or deleted, undo does not remove it, it is left out of saved layouts and it is absent from the Objects dock. The host keeps the marks per symbol for the life of the page and puts them back, with their ids, after every chart-type switch, reload and layout restore. **Clear Session Marks** removes them with `removeMany(ids, { force: true })`, the one call in the host that overrides the policy. |
-| `session.js` | Trading session as a data variant. The session menu beside the range offers regular hours and, for intraday bars of a US listed stock (the one place this source has them), extended hours: the source's own pre and post market bars, asked for with `session=extended` and never derived from the regular series. The feed declares what it serves through `dataVariants`, so a request for extended hours anywhere else is refused before it is sent and the chart says so, with a button back to regular hours, rather than showing regular bars under the extended label. The session is part of the bar cache key, the chart's data context, comparisons (asked for in their chart's session), replay's finer history, the saved layout and named workspaces. In fixture mode extended hours are two hours either side of the synthetic session, the same bars in between, byte for byte on every run. |
+| `session.js` | Trading session as a data variant. The session menu beside the range offers regular hours and, for intraday bars of a US listed stock (the one place this source has them), extended hours: the source's own pre and post market bars, asked for with `session=extended` and never derived from the regular series. The feed declares what it serves through `dataVariants`, so a request for extended hours anywhere else is refused before it is sent and the chart says so, with a button back to regular hours, rather than showing regular bars under the extended label. The session is part of the bar cache key, the chart's data context, comparisons (asked for in their chart's session), replay's finer history, the saved layout and named workspaces. In fixture mode extended hours are New York's pre and post market, the same regular bars in between, byte for byte on every run. |
 | `clipboard.js` | One in-memory clipboard shared by both charts' controllers, so copy here and paste there works even when the browser refuses the OS clipboard; the OS read is bounded so a paste never hangs on a permission popup. |
 | `level-editor.js` | A ladder tool's levels (retracement, extension, channel, fan, time zones, the Gann pair) edited one row each: enable, ratio, colour, label, add, remove, reset. Every edit is one undo entry through the controller. |
 | `text-editor.js` | Inline text editing over the painted text, sized by the same rules the text tool paints with, with every pointer and key event stopped at the box so the chart under it does not pan. |
@@ -920,8 +937,8 @@ back and forth with Ctrl+Z, Ctrl+Y and the rail's Redo.
   `SYMBOL: no bars` rather than an empty chart; a throttle says so and is not
   retried; a dropped connection is retried once. A `STALE` badge beside the
   readout means the newest bar has closed while the venue is open: the feed is
-  behind, or the load was warm and the cache holds only closed bars (reload
-  ignoring the cache from the cache menu).
+  behind, or the load was warm and the cache held back a forming bar the page had
+  not seen yet (reload ignoring the cache from the cache menu).
 
 
 ### Drawing catalogue (2.2.0)

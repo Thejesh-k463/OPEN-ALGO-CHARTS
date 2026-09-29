@@ -14,14 +14,14 @@ import '/dist/openalgo-charts.indicators.mjs';
 import * as widgetTier from '/dist/openalgo-charts.widget.mjs';
 import { el, initShell, chartTheme, chartMotionOptions, setChartState, toast, currentTheme } from './ui.js';
 import { initHover } from './hover.js';
-import { fillIntervalSelect, clampPeriod, INTERVALS, PERIOD_DAYS, periodsFor } from './intervals.js';
+import { fillIntervalSelect, clampPeriod, rangeLoad } from './intervals.js';
 import { initFeed, fetchBars, fetchNote, feedErrorState } from './feed.js';
 import { applyTransform } from './transforms.js';
 import { isExpression, fetchExpressionBars, mountOperatorKeypad, referenceDataContext } from './expression.js';
 import { initStatus, nameOf, symbolStatus } from './status.js';
 import { requestVariant, sessionOf, sessionLabel } from './session.js';
 import { DEFAULT_TZ, initTimezone, syncTimezoneFromChart } from './timezone.js';
-import { initAxisChrome, applyAxisChrome, applyStatusLineChoice, applyTradeChoice } from './axis-chrome.js';
+import { initAxisChrome, applyAxisChrome, applyStatusLineChoice, applyTradeChoice, followBottombar } from './axis-chrome.js';
 import { initVolume, attachVolume, refreshVolume, setVolumeShown, setLegend, applyVolumeSettings } from './volume.js';
 import {
   initOrders, saveState, restoreState, cancelOrder, attachOrderLines, removeAllOrders,
@@ -579,9 +579,10 @@ async function load(opts) {
 // outlive every chart render() throws away; only the strip takes the pointer.
 //
 // A range here is the page's own: the source serves history by named period,
-// so a range picks the interval nearest its own that this page offers and
-// the shortest period reaching back to its first session, loads through the
-// ordinary load path, and then places the sessions on the bars that arrived.
+// so a range picks the interval nearest its own among those this page offers
+// that reach back to its first session, and the shortest period that does,
+// loads them through the ordinary load path unless the pane holds them
+// already, and then places the sessions on the bars that arrived.
 /** The range each pane last took, with the chart it was placed on: a rebuilt chart has left it. */
 const paneRanges = new Map();
 let rangeRequest = 0;
@@ -592,25 +593,32 @@ async function applyRange(id) {
   const target = capturePaneTarget(app);
   if (!range || !target?.current()) return { status: 'cancelled' };
   const mine = ++rangeRequest;
-  const interval = rangeInterval(range, INTERVALS);
   const now = Date.now() / 1000;
   const calendar = sessionCalendarFor(target.request.symbol);
   const reach = now - rangeWindow(range, { end: now, zone: target.chart.timezone(), calendar }).from;
-  const periods = periodsFor(interval);
-  const period = periods.find(p => PERIOD_DAYS[p] * 86400 >= reach) ?? periods[periods.length - 1];
+  const { interval, period } = rangeLoad(range, reach, rangeInterval);
   paneRanges.delete(target.pane);
   const request = { ...target.request, interval, period };
-  if (target.pane === 2) {
+  // History already on screen only needs the view moved: loading it again
+  // would rebuild the chart, and while a bar is forming it would come from
+  // the wire, all of it, for a change of view. A load under way is about to
+  // replace the chart the view would move on, so the range loads in its place.
+  const onScreen = target.request.interval === interval && target.request.period === period
+    && !(target.pane === 2 ? app.loading2 || app.loadFailed2 : app.loading || app.loadFailed)
+    && !app.replay && !app.replayPicking && !app.replayLoading;
+  if (!onScreen && target.pane === 2) {
     Object.assign(app.p2, request);
     await app.loadSecondary();
-  } else {
+  } else if (!onScreen) {
     for (const key of ['symbol', 'interval', 'period']) el(key).value = request[key];
     await load();
   }
   renderToolbar();
   if (mine !== rangeRequest) return { status: 'cancelled' };
   const chart = target.pane === 2 ? app.chart2 : app.chart;
-  if (!chart || (target.pane === 2 ? app.loadFailed2 : app.loadFailed)) return { status: 'error', error: new Error(`${request.symbol} history could not load`) };
+  // The split was closed while its history loaded, and the range went with it.
+  if (!chart) return { status: 'cancelled' };
+  if (target.pane === 2 ? app.loadFailed2 : app.loadFailed) return { status: 'error', error: new Error(`${request.symbol} history could not load`) };
   const bars = chart.primaryBars();
   if (bars.length === 0) return { status: 'no-data' };
   paneRanges.set(target.pane, { id, chart });
@@ -658,7 +666,10 @@ function initBottombar() {
       const target = capturePaneTarget(app);
       if (!target) return null;
       return {
-        chart: target.chart,
+        // Read when used: a range loads through the page, which builds the
+        // pane a new chart, and what the range did is read off that one. A
+        // split closed meanwhile leaves none, and applyRange cancels then.
+        get chart() { return target.pane === 2 ? app.chart2 : app.chart; },
         interval: () => target.request.interval,
         range: () => { const held = paneRanges.get(target.pane); return held && held.chart === target.chart ? held.id : null; },
         setRange: applyRange,
@@ -668,6 +679,9 @@ function initBottombar() {
     // A zone picked on the main chart survives the next rebuild, the way one picked in the settings does.
     onTimezone: () => { if (selectedPane(app) === 1) syncTimezoneFromChart(); autosave(); },
   });
+  // The phone shell hides the bar and a wider window brings it back, and the
+  // corner clock takes whichever side the bar leaves.
+  if (typeof ResizeObserver === 'function') new ResizeObserver(() => followBottombar()).observe(strip);
 }
 
 // Module wiring, in the order the original page registered its listeners.
