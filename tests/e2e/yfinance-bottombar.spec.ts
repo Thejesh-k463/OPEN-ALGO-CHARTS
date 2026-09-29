@@ -42,6 +42,34 @@ async function chooseSymbol(page: Page, symbol: string): Promise<void> {
   await expect.poll(() => app(page, `app.req.symbol === ${JSON.stringify(symbol)} && !app.loading && app.currentBars.length > 0`)).toBe(true);
 }
 
+/** Hold every history request until the returned function is called, so a load stays under way. */
+async function holdHistory(page: Page): Promise<() => void> {
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/history**', async route => { await held; await route.continue(); });
+  return release;
+}
+
+/** Load the main chart at `interval` over `period` through the page's own load path. */
+async function loadMain(page: Page, interval: string, period: string): Promise<void> {
+  await page.evaluate(async ([iv, p]) => {
+    (document.getElementById('interval') as HTMLSelectElement).value = iv;
+    (document.getElementById('period') as HTMLSelectElement).value = p;
+    await (window as any).__oac.app.load();
+  }, [interval, period]);
+}
+
+/** Ask the open go-to panel for the date `days` back, in the chart's zone, at no particular time. */
+async function askDaysBack(page: Page, days: number): Promise<void> {
+  const panel = page.locator('.oac-goto');
+  const target = await page.evaluate(back => new Intl.DateTimeFormat('en-CA', {
+    timeZone: (window as any).__oac.app.chart.timezone(), year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(Date.now() - back * 86400_000)), days);
+  await panel.locator('input[type=date]').first().fill(target);
+  await panel.locator('input[type=time]').first().fill('');
+  await panel.getByRole('button', { name: 'Go', exact: true }).click();
+}
+
 test('sits under the chart beside the rail, and the chart stands clear of it', async ({ page }, info) => {
   const errors = await openHost(page);
   const bar = page.locator('.host-bottombar .oac-bottombar');
@@ -236,14 +264,8 @@ test('Go to opens from the bar, waits for a load under way, and answers at the b
   const errors = await openHost(page);
   const barGoTo = page.locator('.host-bottombar .oac-bottombar__goto');
   // A chart about to be replaced gets no panel: the status line says why.
-  let release!: () => void;
-  const held = new Promise<void>(resolve => { release = resolve; });
-  await page.route('**/api/history**', async route => { await held; await route.continue(); });
-  const loading = page.evaluate(async () => {
-    (document.getElementById('interval') as HTMLSelectElement).value = '1h';
-    (document.getElementById('period') as HTMLSelectElement).value = '1mo';
-    await (window as any).__oac.app.load();
-  });
+  const release = await holdHistory(page);
+  const loading = loadMain(page, '1h', '1mo');
   await expect.poll(() => app(page, 'Boolean(app.loading)')).toBe(true);
   await barGoTo.click();
   await expect(page.locator('#status')).toHaveText('wait for chart history before going to a date');
@@ -258,18 +280,47 @@ test('Go to opens from the bar, waits for a load under way, and answers at the b
   await expect(panel).toBeVisible();
   const asked = (await panel.boundingBox())!;
   const bar = (await barGoTo.boundingBox())!;
-  const target = await page.evaluate(() => new Intl.DateTimeFormat('en-CA', {
-    timeZone: (window as any).__oac.app.chart.timezone(), year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date(Date.now() - 3 * 366 * 86400_000)));
-  await panel.locator('input[type=date]').first().fill(target);
-  await panel.locator('input[type=time]').first().fill('');
-  await panel.getByRole('button', { name: 'Go', exact: true }).click();
+  await askDaysBack(page, 3 * 366);
   await expect(page.locator('.oac-goto .oac-goto__message')).toHaveText(/^History starts at /, { timeout: 20_000 });
   expect(await app(page, 'app.req.period')).toBe('1y');
   const answered = (await page.locator('.oac-goto').boundingBox())!;
   expect(Math.abs(answered.x - asked.x)).toBeLessThanOrEqual(2);
   expect(answered.y + answered.height).toBeLessThanOrEqual(bar.y + 1);
   expect(answered.y + answered.height).toBeGreaterThan(bar.y - 60);
+  expect(errors).toEqual([]);
+});
+
+test('Go to on a chart whose history failed to load says there is none, rather than to wait', async ({ page }) => {
+  const errors = await openHost(page);
+  await page.route('**/api/history**', route => route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found","message":"no such symbol"}' }));
+  await page.evaluate(async () => {
+    (document.getElementById('symbol') as HTMLInputElement).value = 'MSFT';
+    await (window as any).__oac.app.load();
+  });
+  expect(await app(page, 'app.loadFailed')).toBe(true);
+  await page.locator('.host-bottombar .oac-bottombar__goto').click();
+  await expect(page.locator('#status')).toHaveText('chart history did not load, so there is no date to go to');
+  await expect(page.locator('.oac-goto')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('a Go to request that outlasts the bar answers at the toolbar\'s Go to', async ({ page }) => {
+  const errors = await openHost(page);
+  await loadMain(page, '1h', '1mo');
+  const release = await holdHistory(page);
+  await page.locator('.host-bottombar .oac-bottombar__goto').click();
+  await askDaysBack(page, 3 * 366);
+  await expect.poll(() => app(page, 'Boolean(app.loading)')).toBe(true);
+  // The window takes the phone shell while the longer period loads, and the bar goes with it.
+  await page.setViewportSize({ width: 820, height: 900 });
+  release();
+  await expect(page.locator('.oac-goto .oac-goto__message')).toHaveText(/^History starts at /, { timeout: 20_000 });
+  // Hung from the Go to on screen, not from the corner a hidden control leaves it in.
+  const answered = (await page.locator('.oac-goto').boundingBox())!;
+  const toolbar = (await page.locator('#goto').boundingBox())!;
+  expect(answered.y).toBeGreaterThanOrEqual(toolbar.y + toolbar.height - 1);
+  expect(answered.x).toBeLessThanOrEqual(toolbar.x + toolbar.width);
+  expect(answered.x + answered.width).toBeGreaterThanOrEqual(toolbar.x);
   expect(errors).toEqual([]);
 });
 

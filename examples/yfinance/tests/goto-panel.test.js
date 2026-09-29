@@ -61,6 +61,9 @@ function setup(interval, period) {
     dom.root.appendChild(node);
   }
   dom.doc.getElementById('period').value = period;
+  // The fake document lays nothing out, and a reopened panel hangs only from a
+  // control that is on screen: the toolbar's Go to is, here.
+  dom.doc.getElementById('goto').getClientRects = () => [{}];
   gate = null;
   app = { req: { symbol: 'AAA', interval, period }, focusPane: 1 };
   app.load = vi.fn(async () => {
