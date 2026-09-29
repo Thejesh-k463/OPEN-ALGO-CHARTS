@@ -363,6 +363,9 @@ export type WidgetBuiltinMessage =
   | "The indicator picker is not in this build"
   | "The instrument context changed. Reopen the editor for the intended instrument."
   | "The saved layout could not be restored: {error}"
+  // Hook (widget storage, 2.5.10): an asynchronous store that failed to read or write.
+  | "Saved chart settings could not be read, so changes are kept for this session only: {error}"
+  | "Saved chart settings could not be written: {error}"
   | "The scale could not be moved"
   | "The settings dialog is not in this build"
   | "The study settings could not be applied"

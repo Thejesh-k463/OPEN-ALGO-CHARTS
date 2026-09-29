@@ -4,6 +4,16 @@
  * the debounced write after a change and the flush when the page goes away,
  * and `restoreState` applying a state a host kept.
  *
+ * Over an asynchronous store (IndexedDB, the default) nothing saved can be
+ * read while the shell is built. The shell is built on the defaults and kept
+ * out of sight, its first load is held, and `restoreWhenLoaded` applies the
+ * saved facts, drawings and layout once the store has answered, then starts
+ * the load. Until then no save is written, so a slow store cannot have the
+ * defaults written over the layout it has not returned yet, and the drawings
+ * follow no instrument, so none is read from a copy not filled yet. A choice
+ * the user or the host made in the meantime (a symbol, an interval, a whole
+ * `restoreState`) is newer than the stored one and wins over it.
+ *
  * Its own module so persistence can grow (an asynchronous store, a layouts
  * catalog) while widget.ts stays under its line cap. The shell calls each
  * function with itself as `this`, typed `PersistHost`, for the reasons
@@ -19,10 +29,15 @@ import {
   dataVariantKey, isKnownInterval, normalizeDataVariant, registeredChartTypes,
   type DataVariant, type RestoreReport,
 } from 'openalgo-charts';
-import { InstrumentDrawings, instrumentDrawingsKey, memoryDrawingStore, migrateUnscopedDrawings, type DrawingDocumentStore } from 'openalgo-charts/draw';
+import {
+  InstrumentDrawings, instrumentDrawingsKey, memoryDrawingStore, migrateUnscopedDrawings,
+  type DrawingDocumentStore, type DrawingInstrument,
+} from 'openalgo-charts/draw';
+import type { WidgetStorage, WidgetStorageError } from './context';
 import { widgetText } from './localization';
 import { sanitizePanelDockState } from './panel-dock';
-import type { RailPrefs } from './rail';
+import { RAIL_PREFS_KEY, type RailPrefs } from './rail';
+import type { WidgetThemeName } from './tokens';
 import type {
   WidgetChartState, WidgetImpl, WidgetRestoreReport, WidgetState,
   DRAWINGS_KEY_PREFIX as DrawingsKeyPrefix, SAVE_DEBOUNCE_MS as SaveDebounceMs, STATE_KEY as StateKey, WIDGET_STATE_VERSION as StateVersion,
@@ -72,6 +87,24 @@ export interface PersistHost {
   readonly _publishDataContext: WidgetImpl['_publishDataContext'];
   readonly _scheduleSave: WidgetImpl['_scheduleSave'];
   readonly _saveNow: WidgetImpl['_saveNow'];
+  readonly root: WidgetImpl['root'];
+  readonly history: WidgetImpl['history'];
+  readonly dataController: WidgetImpl['dataController'];
+  readonly _themeName: WidgetImpl['_themeName'];
+  _restoring: WidgetImpl['_restoring'];
+  _holdDrawings: WidgetImpl['_holdDrawings'];
+  _saveWanted: WidgetImpl['_saveWanted'];
+  _stateGiven: WidgetImpl['_stateGiven'];
+}
+
+/** The facts the shell was built on before its store answered, to tell a later change from a default. */
+interface StartFacts {
+  symbol: string;
+  exchange: string;
+  interval: string;
+  variant: Readonly<DataVariant> | undefined;
+  chartType: string;
+  theme: WidgetThemeName;
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -152,14 +185,13 @@ export function applySavedLayout(this: PersistHost, saved: WidgetState | null): 
  */
 export function scopeDrawings(this: PersistHost, saved: WidgetState | null): InstrumentDrawings {
   const storage = this._storage;
-  const store: DrawingDocumentStore = this._opts.drawingStore ?? (storage.enabled ? {
-    get: key => storage.get(DRAWINGS_KEY_PREFIX + key),
-    set: (key, document) => storage.set(DRAWINGS_KEY_PREFIX + key, document),
-    remove: key => storage.remove(DRAWINGS_KEY_PREFIX + key),
-  } : memoryDrawingStore());
+  const store: DrawingDocumentStore = this._opts.drawingStore ?? (storage.enabled ? storedDrawings(storage) : memoryDrawingStore());
   if (saved?.chart?.drawings !== undefined) migrateUnscopedDrawings(store, savedKey(saved), saved.chart.drawings);
   return new InstrumentDrawings(this.chart, this.draw, {
     store,
+    // While the store has not answered, no instrument: nothing is read from
+    // a copy not filled yet, and nothing written over what it holds.
+    ...(this._holdDrawings ? { key: (instrument: DrawingInstrument) => (this._holdDrawings ? null : instrumentDrawingsKey(instrument)) } : {}),
     // Reported on the status line, as a failed layout write is: the drawings
     // stay in memory for the session and the next change tries again. The
     // shell may still be under construction, so this does what the
@@ -171,6 +203,33 @@ export function scopeDrawings(this: PersistHost, saved: WidgetState | null): Ins
       this._bus.emit('status', { text, kind: 'error' });
     },
   });
+}
+
+/** Each instrument's drawings beside the layout, in the widget's own storage. */
+function storedDrawings(storage: WidgetStorage): DrawingDocumentStore {
+  return {
+    get: key => storage.get(DRAWINGS_KEY_PREFIX + key),
+    set: (key, document) => storage.set(DRAWINGS_KEY_PREFIX + key, document),
+    remove: key => storage.remove(DRAWINGS_KEY_PREFIX + key),
+  };
+}
+
+/** Let the drawings follow the instrument the chart shows, reading its own from the store. */
+function releaseDrawings(this: PersistHost): void {
+  if (!this._holdDrawings) return;
+  this._holdDrawings = false;
+  this.instrumentDrawings?.setInstrument({ symbol: this._symbol, exchange: this._exchange });
+}
+
+/**
+ * A state the host restores before the store has answered is the newer
+ * layout: the stored one is not applied over it, and the drawings follow the
+ * instruments from now on, so the state's own reach theirs.
+ */
+function takeGivenState(this: PersistHost): void {
+  if (!this._restoring) return;
+  this._stateGiven = true;
+  releaseDrawings.call(this);
 }
 
 /** The key the drawings of a persisted layout belong under, or null when it names no instrument. */
@@ -216,10 +275,12 @@ export function restoreWidgetState(this: PersistHost, state: unknown): WidgetRes
     if (moving) doc = { ...doc, drawings: this.draw.toJSON() };
     chart = this.chart.restoreState(same ? doc : stripView(doc));
     if (!chart.applied) return { applied: false, reason: chart.reason, chart };
+    takeGivenState.call(this);
     if (moving && scoped !== null) scoped.setDocument({ symbol, exchange }, incoming ?? []);
     this._keepView = same;
     this._pendingView = same ? doc.viewport ?? null : null;
   }
+  takeGivenState.call(this);
   if (!same) {
     this._cancelNavigation();
     if (interval !== this._interval) {
@@ -275,6 +336,7 @@ export function readSaved(this: PersistHost): WidgetState | null {
 /** One write, a debounce after the last change, because drags fire per frame. */
 export function scheduleSave(this: PersistHost): void {
   if (!this._storage.enabled || this._destroyed) return;
+  if (this._restoring) { this._saveWanted = true; return; }
   if (this._saveTimer !== 0) clearTimeout(this._saveTimer);
   this._saveTimer = setTimeout(() => { this._saveTimer = 0; this._saveNow(); }, SAVE_DEBOUNCE_MS);
 }
@@ -282,6 +344,7 @@ export function scheduleSave(this: PersistHost): void {
 /** The write itself, now: a failure is reported on the status line, never thrown. */
 export function saveNow(this: PersistHost): void {
   if (!this._storage.enabled || this._destroyed) return;
+  if (this._restoring) { this._saveWanted = true; return; }
   if (this._saveTimer !== 0) { clearTimeout(this._saveTimer); this._saveTimer = 0; }
   try {
     if (!this._storage.set(STATE_KEY, this.getState())) this.context.status(widgetText(this.context, 'The chart layout could not be saved'), 'error');
@@ -293,11 +356,133 @@ export function saveNow(this: PersistHost): void {
 /** Writes a pending save when the page goes away; the listener goes with the shell. */
 export function flushOnPageHide(this: PersistHost): void {
   const win = this._doc.defaultView;
+  const later = !this._storage.loaded;
   if (win !== null && win !== undefined && typeof win.addEventListener === 'function') {
     // A debounced save still pending when the tab closes is the last quarter
     // second of the user's work; pagehide is the last synchronous moment.
-    const flush = (): void => this._saveNow();
+    // An asynchronous store is sent everything now as well, which journals
+    // what may not land before the page is gone.
+    const flush = later ? (): void => { this._saveNow(); void this._storage.flush(); } : (): void => this._saveNow();
     win.addEventListener('pagehide', flush);
     this._cleanups.push(() => win.removeEventListener('pagehide', flush));
   }
+  if (later) {
+    // A phone closes a page it has hidden without a pagehide, so hiding is
+    // the last moment such a page is sure to see.
+    const doc = this._doc;
+    const hidden = (): void => { if (doc.visibilityState === 'hidden') { this._saveNow(); void this._storage.flush(); } };
+    doc.addEventListener('visibilitychange', hidden);
+    this._cleanups.push(() => doc.removeEventListener('visibilitychange', hidden));
+  }
+}
+
+/**
+ * With an asynchronous store: keep the shell out of sight, read the store,
+ * then apply what it holds and start the load that was held. The promise is
+ * the widget's `ready`, and never rejects.
+ */
+export function restoreWhenLoaded(this: PersistHost): Promise<void> {
+  const start: StartFacts = {
+    symbol: this._symbol, exchange: this._exchange, interval: this._interval, variant: this._variant,
+    chartType: this.chartType(), theme: this._themeName,
+  };
+  // Hidden rather than removed, so the chrome keeps its measured size: the
+  // defaults would otherwise show for a moment before the saved layout.
+  this.root.style.visibility = 'hidden';
+  return this._storage.load().then(() => {
+    if (this._destroyed) return;
+    try { applyLoaded.call(this, start); }
+    catch (error) {
+      this._toasts.toast(widgetText(this.context, 'The saved layout could not be restored: {error}', { error: error instanceof Error ? error.message : String(error) }), 'error');
+    } finally {
+      this._restoring = false;
+      this._holdDrawings = false;
+      this.root.style.visibility = '';
+    }
+  });
+}
+
+/**
+ * The saved facts, drawings and layout, as the constructor applies them from
+ * a synchronous store: a fact the host passed as an option stays, and so does
+ * one the user or the host has changed since the shell was built. The load
+ * for the instrument that results goes out last.
+ */
+function applyLoaded(this: PersistHost, start: StartFacts): void {
+  const wanted = this._saveWanted;
+  const saved = this._stateGiven ? null : readSaved.call(this);
+  const o = this._opts;
+  const before = { symbol: this._symbol, exchange: this._exchange, interval: this._interval, variant: this._variant };
+  if (saved !== null) {
+    const instrument = this._symbol === start.symbol && this._exchange === start.exchange;
+    if (instrument && o.symbol === undefined) this._symbol = saved.symbol.toUpperCase();
+    if (instrument && o.exchange === undefined) this._exchange = saved.exchange;
+    if (o.interval === undefined && this._interval === start.interval && isKnownInterval(saved.interval)) this._interval = saved.interval;
+    if (o.variant === undefined && dataVariantKey(this._variant) === dataVariantKey(start.variant)) this._variant = saved.variant;
+  }
+  const moved = this._symbol !== before.symbol || this._exchange !== before.exchange;
+  const changed = moved || this._interval !== before.interval || dataVariantKey(this._variant) !== dataVariantKey(before.variant);
+  if (changed) {
+    // As setSymbol does: bars a host set for the defaults are not this dataset's.
+    if (this.dataController === null) this._series.setData([]);
+    this._publishDataContext();
+    this._statusline?.setSymbol(this._symbol, this._exchange, this._interval);
+    this._topbar?.refresh();
+    this._mobile?.refresh();
+  }
+  this.history.ignore(() => {
+    if (saved !== null && this.instrumentDrawings !== null && saved.chart?.drawings !== undefined) {
+      migrateUnscopedDrawings(o.drawingStore ?? storedDrawings(this._storage), savedKey(saved), saved.chart.drawings);
+    }
+    releaseDrawings.call(this);
+    if (saved === null) return;
+    const type = saved.chartType;
+    if (o.chartType === undefined && this.chartType() === start.chartType && type !== start.chartType && registeredChartTypes().includes(type)) this.setChartType(type);
+    if (o.theme === undefined && this._themeName === start.theme && saved.theme !== start.theme) this.setTheme(saved.theme);
+    // The rail read its own entry while the copy was empty.
+    const rail = this._storage.get(RAIL_PREFS_KEY);
+    if (rail !== null && this._rail !== null) this._rail.restorePrefs(rail);
+    applySavedLayout.call(this, saved);
+  });
+  // Announced once everything is in place, as the setters announce theirs.
+  if (this._interval !== before.interval) this._bus.emit('interval', { interval: this._interval });
+  if (moved) {
+    this._bus.emit('symbol', { symbol: this._symbol, exchange: this._exchange });
+    this.chart.emit('symbol', { symbol: this._symbol, exchange: this._exchange });
+  }
+  if (dataVariantKey(this._variant) !== dataVariantKey(before.variant)) this._bus.emit('variant', { variant: this._variant });
+  if (saved !== null) {
+    this._rail?.refresh();
+    this._statusline?.refresh();
+    this._bus.emit('layout', { reason: 'restore', chartType: this.chartType() });
+  }
+  this._restoring = false;
+  this._saveWanted = false;
+  // Only a change made meanwhile is written: applying what is stored changes
+  // nothing worth writing, and a layout this build refused stays stored.
+  if (wanted) this._scheduleSave();
+  const controller = this.dataController;
+  const request = controller?.getState().request ?? null;
+  const loading = request !== null && request.symbol === this._symbol && request.exchange === this._exchange
+    && request.interval === this._interval && dataVariantKey(request.variant) === dataVariantKey(this._variant);
+  if (controller !== null && this._symbol !== '' && !loading) void this.reload();
+}
+
+/**
+ * A failure of an asynchronous store, on the status line as a failed layout
+ * write is. A read that failed is raised as a toast as well, as a failed load
+ * is: it comes just before the first load, whose own messages take the status
+ * line over at once. A refused write is not, since a full store refuses every
+ * change and a toast for each would bury the chart.
+ */
+export function reportStorage(this: PersistHost, failure: WidgetStorageError): void {
+  if (this._destroyed) return;
+  const error = failure.error instanceof Error ? failure.error.message : String(failure.error);
+  if (failure.operation !== 'load') {
+    this.context.status(widgetText(this.context, 'Saved chart settings could not be written: {error}', { error }), 'error');
+    return;
+  }
+  const text = widgetText(this.context, 'Saved chart settings could not be read, so changes are kept for this session only: {error}', { error });
+  this.context.status(text, 'error');
+  this._toasts.toast(text, 'error');
 }
