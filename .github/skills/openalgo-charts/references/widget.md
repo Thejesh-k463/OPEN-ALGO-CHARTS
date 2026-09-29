@@ -169,6 +169,18 @@ changed, empty or loading source. The widget supplies source readiness; custom
 boundary. Active replay exports only installed rows. File failures surface in
 the status line and download resources are released after handoff or failure.
 
+### The bottom bar (`bottombar.ts`, `ranges.ts`) (since 2.5.10)
+
+| Export | Kind | What |
+|---|---|---|
+| `mountBottombar(ctx, host, opts?)` | function | The strip under the chart: preset ranges and Go to on the left; on the right the market status (from `marketStatusAt` on the chart's calendar, in a `role="status"` region so a change of phase is announced; hidden without a calendar, or with the "Session state" switch off), a clock in the chart's zone that opens a searchable timezone menu, and the Auto, Log and Percent price scale toggles, which follow the scale (an axis drag, an undo, a reset). `opts.target` is read at every use, so one bar can serve whichever chart has the focus; `ranges`, `onGoTo`, `now`, `timezones` and `onTimezone` are optional. `ctx` is a `BottombarContext`: a `WidgetContext` is one, and a custom host builds one from `createOverlayStack` and `createTipController` over an `.oac-widget` root. One timer a second, stopped while the page is hidden. Returns a `BottombarHandle` (`el`, `controls`, `refresh`, `destroy`); `controls` are the same actions without the markup, which the phone layout's More sheet lists. |
+| `BOTTOMBAR_HEIGHT` | const `28` | The strip's height in CSS px. |
+| `BOTTOMBAR_CSS` | const | Its rules, part of `WIDGET_COMPONENT_CSS`. A widget root carrying the bar (`.has-bottombar`) takes a fourth grid row for it, between the stage and the status line; `.is-mobile` hides it, except a bar marked `is-kept` (a widget with `topbar: false`, which has no More sheet), which stays above the phone footer. On a narrow bar the ranges scroll; the status, the clock and the toggles keep their size. |
+| `DEFAULT_RANGES` | const | `1D` (`1m`, one session), `5D` (`5m`, five sessions), `1M` (`30m`), `3M` (`1h`), `6M` (`1d`), `YTD` (`1d`), `1Y` (`1d`), `5Y` (`1w`), `All` (`1w`). |
+| `rangeWindow(range, { end, zone?, calendar?, bars? })` | function | The `{ from, to }` a range covers, ending at `end`. A `session` range walks back through the calendar's sessions (a weekend or a closed date is skipped, a date with a midday break counts once, its pre-open belongs to it), so one NSE day at `1m` is the 375 bars from 09:15, not 1,440 minutes; without a calendar it counts the dates the `bars` fall on, or weekdays. Months and years run from midnight on the same date that far back in `zone`, `ytd` from 1 January, `all` from the first bar (or 30 years back without `bars`). |
+| `rangeInterval(range, offered)` | function | The range's own interval when offered, else the nearest time-based one by ratio, the longer on a tie. |
+| `WidgetRange`, `WidgetRangeUnit`, `WidgetRangeWindow`, `RangeWindowOptions`, `BottombarContext`, `BottombarTarget`, `BottombarOptions`, `BottombarControls`, `BottombarHandle`, `BottombarScaleToggle`, `BottombarScaleState`, `MarketStatusReading`, `WidgetBottombarOptions`, `WidgetSessionCalendar` | types | |
+
 ### Status line, toasts, tokens, styles
 
 | Export | Kind | Purpose |
@@ -306,7 +318,11 @@ Color swatches stay compact. Theme overrides should target these tokens.
 | `theme` | `'dark' \| 'light' \| ChartTheme` | `'dark'` | Drives the canvas and the chrome tokens. Note the engine's own default is light; the widget's is dark. |
 | `rail` | `boolean \| RailOptions` | on | `false` hides it. `RailOptions.tools` restricts which ids appear (order still follows `RAIL_GROUPS`); `favorites` seeds the pins when nothing is stored. |
 | `topbar` | `boolean` | on | |
-| `statusline` | `boolean` | on | |
+| `statusline` | `boolean` | on | With `bottombar: false` it also shows the market status from the chart's calendar (since 2.5.10). |
+| `bottombar` | `boolean` | on | (since 2.5.10) The strip under the chart (see The bottom bar). `false` leaves it out and puts Go to back in the top bar. |
+| `ranges` | `readonly WidgetRange[]` | `DEFAULT_RANGES` | (since 2.5.10) The bar's range buttons and the ids `setRange` takes; `[]` leaves the buttons out. |
+| `sessionCalendar` | `SessionCalendarSource \| ((instrument) => SessionCalendarSource \| null)` | none | (since 2.5.10) Trading hours, applied with `chart.setSessionCalendar` for the first symbol and on every symbol change. They size a range in sessions and give the market status and the shading their hours. Without it the chart's calendar is left to the host. |
+| `sessionShading` | `boolean` | on | (since 2.5.10) `attachSessionShading` on the chart: a faint wash behind pre-open, post-close and extended-hours bars. Nothing is shaded without such hours in the calendar. |
 | `mobile` | `'auto'` \| `'always'` \| `'never'` | `'auto'` | Compact widget controls. Auto activates when the widget container is at most 640 CSS px wide, or, with a coarse primary pointer, at most 960 px wide and under 600 px tall; tablets and touch laptops keep the desktop chrome. |
 | `indicators` | `boolean` | on | The Indicators button. |
 | `persist` | `boolean \| string` | off | `true` uses the `default` namespace; a string names one, so two widgets on a page keep separate layouts. |
@@ -340,7 +356,9 @@ chrome. Size is read from the container, not the viewport.
 
 The compact header provides symbol entry and intervals. The bottom bar provides Draw,
 Studies, Objects and More according to the same `topbar`, `rail` and `indicators` options
-as desktop chrome. More contains theme, chart settings and chart type. A selected drawing
+as desktop chrome. More contains theme, chart settings and chart type, and (since
+2.5.10), while the widget's bottom bar is on, the market status and clock, the ranges, the
+scale toggles and the timezone the hidden bar would show. A selected drawing
 adds Properties, Lock or Unlock, and Delete. An active drawing tool adds Finish, Cancel,
 Undo, Magnet and Stay in the Drawing sheet.
 
@@ -378,6 +396,9 @@ widget.openObjects();                // false after destruction; focuses the exi
 widget.openAlerts();                 // desktop Alerts and mobile More use the same live list
 widget.openDateNavigation();         // the Go to panel; false after destruction
 await widget.goTo({ from, to? });    // DateNavigationResult; loads older history first
+await widget.setRange('1D');         // a preset range: interval, fetch sized in sessions, view (since 2.5.10);
+                                     // wider than the plot, it keeps its latest bars (clipped); All loads all history
+widget.range();                      // the range in force; null once the interval is changed by hand
 widget.getState();                   // WidgetState; rejects nonportable alert payloads
 widget.restoreState(state);          // WidgetRestoreReport
 await widget.reload();               // fetch again for the current symbol and interval
@@ -618,10 +639,10 @@ whether it comes from a gesture, a key, a linked chart or the host's own
 `setVisibleLogicalRange`: the view is wanted elsewhere, and the older bars still
 arrive without moving it. The widget's own move that keeps the bars in view still
 when a refresh lands does not count; nor does a move of the blank chart during a
-first load, which that load's arrival resets. The top bar's **Go to** button and
-the mobile **More** sheet open the panel (`openDateNavigation()`); on a tick or
-volume interval both are greyed with the reason and `openDateNavigation()` returns
-false. Daily and longer intervals show date fields only, since a time cannot change
+first load, which that load's arrival resets. The bottom bar's **Go to** button (the top
+bar's with `bottombar: false`, since 2.5.10) and the mobile **More** sheet open the
+panel (`openDateNavigation()`); on a tick or volume interval each is greyed with the
+reason and `openDateNavigation()` returns false. Daily and longer intervals show date fields only, since a time cannot change
 which bar a date names. The panel closes when the interval or the chart timezone
 changes under it, since its fields and hint were built for both, and it clears its
 loading line when its request is cancelled.
@@ -713,7 +734,8 @@ Rules the coordinator applies:
 `createChartGrid(container, options)` returns a `ChartGrid`: one widget per cell on a
 rows by columns grid, with splitters, one active cell, linking through the base
 `LinkGroup`, and the portable `WorkspacePayload` of `openalgo-charts/workspace`. It is
-part of the widget tier, not a new one. Source of truth: `src/widget/grid.ts`.
+part of the widget tier, not a new one. Source of truth: `src/widget/grid.ts`. Its cells
+carry no bottom bar of their own (since 2.5.10).
 
 ```ts
 import { createChartGrid } from 'openalgo-charts/widget';
