@@ -409,6 +409,33 @@ comparison needs it:
 The [opening-range recipe](/docs/indicators#a-window-you-state-rather-than-read) on the
 indicators page shows this inside a `calc`.
 
+### Market phases follow the calendar's zone
+
+A `SessionCalendar` or an `Instrument` answers which part of the trading day an instant
+falls in: pre-open, regular, post-close, extended hours, closed or holiday (see
+[market phases and status](/docs/instruments#market-phases-and-status)). Its windows are
+read in the calendar's own IANA zone, never in the chart's display zone and never at a
+fixed offset, so the answer does not move when a user relabels the chart:
+
+```ts
+import { SessionCalendar } from 'openalgo-charts';
+
+const ny = new SessionCalendar({
+  timezone: 'America/New_York', sessions: ['0930-1600:23456'],
+  preMarketMinutes: 330, postMarketMinutes: 240,
+});
+ny.phaseAt(Date.parse('2026-03-06T09:00:00Z') / 1000);  // 'pre', 04:00 EST
+ny.phaseAt(Date.parse('2026-03-09T08:00:00Z') / 1000);  // 'pre', 04:00 EDT after the clocks went forward
+```
+
+- Each boundary is resolved on its own date, so a window across the night the clocks
+  change is an hour shorter or longer in UTC, as the market runs it.
+- The pre-open and post-close are counted in elapsed minutes from the opening and the
+  close, which matches the wall clock unless the clocks change inside that window.
+- A holiday runs from local midnight to local midnight in the calendar's zone.
+- IST has no daylight saving, so an Indian calendar's boundaries sit at the same UTC
+  times all year, and nothing changes for a chart that sets no calendar.
+
 ## Saved layouts
 
 `getState()` includes the zone and `restoreState()` applies it, so a saved layout comes back
