@@ -177,6 +177,13 @@ and it runs save, save as, rename, delete, open and autosave one at a time with 
 checks. See [workspaces](./workspaces.md#catalog-transactions-and-storage) and the
 website's Workspaces page for its state and conflict rules.
 
+Since 2.5.10 `createWidget(el, { workspaces })` builds that controller over the widget
+itself (`widget.layouts`) with a Layouts menu in the top bar and the More sheet
+(`widget.openLayouts()`, `openLayoutsMenu(ctx, controller, anchor?)`), reopens the active
+layout on load, and offers indicator templates in the picker when the store has
+`planIndicatorTemplateState` (`applyIndicatorTemplate`, `saveIndicatorTemplate`).
+`widgetLayoutTarget(widget)` is the widget's own target.
+
 ## Mobile controls and navigation
 
 `mobile: 'auto'` selects compact controls when the widget container is at most 640 CSS
