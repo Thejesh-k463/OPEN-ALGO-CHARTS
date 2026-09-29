@@ -235,7 +235,7 @@ For asynchronous account storage use `WorkspaceRepository` and `WorkspaceStorage
 from `openalgo-charts/workspace`. Failed writes reject and can be retried. Create
 a new repository when the account namespace changes, and fence stale restores in
 the host. `migrateWidgetWorkspace` imports validated legacy widget state. The
-widget's `persist` convenience remains synchronous local preference storage.
+widget's `persist` convenience is local preference storage for one browser, not an account adapter.
 Portable documents contain no credentials or trading account state.
 
 Order-entry hosts can also pass `tradingCapabilities`, `tradingMode` and
@@ -312,6 +312,7 @@ const saved = widget.getState();   // { version, symbol, exchange, interval, cha
 widget.restoreState(saved);        // { applied, reason?, chart? }
 widget.destroy();                  // saves if persisting, removes the chrome, destroys the chart
 widget.isDestroyed;
+await widget.ready;                // since 2.5.10: the persisted layout applied, the first load started
 ```
 
 `restoreState` applies a saved viewport only when the state was captured on the same
@@ -513,8 +514,8 @@ passes through to `createChart` unchanged.
 | `sessionShading` | `boolean` | Shade pre-open, post-close and extended-hours bars from the chart's calendar (since 2.5.10). Default on; nothing is shaded without such hours. |
 | `mobile` | `'auto'` \| `'always'` \| `'never'` | Responsive widget controls. Default `'auto'`, active at a container width of 640 CSS px or less, or up to 960 px wide and under 600 px tall with a coarse primary pointer. |
 | `indicators` | `boolean` | The Indicators button and picker. Turn it off for a host that manages indicators itself. |
-| `persist` | `boolean` \| `string` | `true` saves the state under the `default` namespace (`oac-widget:default:state`) and restores it on the next `createWidget`; a string names the namespace, for more than one widget per origin. |
-| `storage` | `StorageLike` \| `null` | The store behind `persist`. Default: the page's `localStorage`. |
+| `persist` | `boolean` \| `string` | `true` saves the state under the `default` namespace (`oac-widget:default:state`) and restores it on the next `createWidget`; a string names the namespace, for more than one widget per origin. Since 2.5.10 the state lands when `widget.ready` settles (see [Persistence](#persistence)). |
+| `storage` | `StorageLike` \| `AsyncStorageLike` \| `null` | The store behind `persist`. Default: IndexedDB (since 2.5.10), else the page's `localStorage`. Pass `localStorage` to restore synchronously, as before. |
 | `drawingScope` | `'instrument'` \| `'chart'` | Whose drawings the chart shows (since 2.5.9). Default `'instrument'`: each symbol and exchange keeps its own. `'chart'` keeps one set on screen whatever symbol is loaded. See [Drawings per instrument](#drawings-per-instrument). |
 | `drawingStore` | `DrawingDocumentStore` | Where each instrument's drawings are kept (since 2.5.9). Default: beside the layout with `persist`, else in memory. |
 | `drawingTemplates` | `DrawingTemplateStore` | Saved drawing looks (since 2.5.9): a tool's default and named templates, usually a `DrawingTemplateRepository` from `openalgo-charts/workspace`. Without one no template control is shown. See [Drawing toolbar, templates and coordinates](#drawing-toolbar-templates-and-coordinates). |
@@ -531,6 +532,36 @@ passes through to `createChart` unchanged.
 The chrome switches (`rail`, `topbar`, `statusline`, `indicators`) default to on, so a
 bare `createWidget(el)` is the full terminal. `persist` defaults to off: nothing is
 written to storage until you ask.
+
+## Persistence
+
+With `persist` the widget keeps its layout, rail preferences, panels and each
+instrument's drawings in IndexedDB (since 2.5.10; before, `localStorage`). IndexedDB
+answers later, so the widget is built on its defaults, kept out of sight, and asks the
+feed for nothing until the saved layout has been read; then it applies it and loads the
+saved instrument. Await `widget.ready` before reading or editing the restored state:
+
+```ts
+const widget = createWidget(el, { feed, persist: 'desk' });
+await widget.ready;
+widget.symbol();   // the saved symbol
+```
+
+- **Upgrading.** The first visit copies the `oac-widget:<namespace>:` keys an earlier
+  release left in `localStorage` into IndexedDB, once, and leaves them where they were.
+- **Several tabs.** Each write that lands is announced to the other tabs on the
+  database, so a tab opened earlier shows the lines another tab drew since and does not
+  write over them. A hidden tab writes its layout only when it has a change pending.
+- **Unload.** The writes still pending when the page hides or closes are kept in a small
+  `localStorage` journal and written at the next load.
+- **Failures.** A store that cannot be read runs the session on memory; a refused write
+  is sent again with the next change. Both are reported on the status line.
+- **Keeping localStorage.** `storage: localStorage` (or any synchronous `StorageLike`)
+  restores before `createWidget` returns, exactly as before 2.5.10.
+- **Another store.** `createIndexedDbWidgetStorage(indexedDB, 'my-app-charts')` names the
+  database. Any object with `entries(prefix)`, `setItem` and `removeItem` returning
+  promises (`AsyncStorageLike`) works too. An optional `subscribe(listener)` lets the widget
+  follow the changes others make to it.
 
 <Callout type="info">
 A control exists only where the engine has something behind it. Every dialog is generated
@@ -565,7 +596,8 @@ widget.instrumentDrawings?.document({ symbol: 'INFY', exchange: 'NSE' });   // r
 
 - **Storage.** With `persist`, each instrument's drawings sit beside the layout under
   `oac-widget:<namespace>:drawings:<exchange>:<symbol>` (`DRAWINGS_KEY_PREFIX`), written on
-  every change. Without it they live in memory for the life of the widget. `drawingStore`
+  every change. Since 2.5.10 those keys live in IndexedDB unless `storage` names a
+  synchronous store. Without it they live in memory for the life of the widget. `drawingStore`
   puts them anywhere else.
 - **Layouts.** `getState()` carries the drawings of the symbol it names, the ones on screen.
   A layout restored for another symbol keeps its drawings for that symbol. A layout saved
