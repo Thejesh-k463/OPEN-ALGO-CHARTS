@@ -5,11 +5,11 @@
  * and `restoreState` applying a state a host kept.
  *
  * Its own module so persistence can grow (an asynchronous store, a layouts
- * catalog) while widget.ts stays under its line cap. The functions reach the
- * shell through `PersistHost`. The shell itself is the host: each member
- * carries the name and the type of the shell's own, so the moved code reads
- * as it did in widget.ts, and a member the shell renames or retypes fails to
- * compile here. The tier entry exports none of it: the names hosts import
+ * catalog) while widget.ts stays under its line cap. The shell calls each
+ * function with itself as `this`, typed `PersistHost`, for the reasons
+ * widget-keys.ts gives: a member the shell renames or retypes fails to
+ * compile here, and the moved code reads and compresses as it did in
+ * widget.ts. The tier entry exports none of it: the names hosts import
  * (`stripView` and the storage constants) stay declared in widget.ts.
  * `_scheduleSave` and `_saveNow` stay on the shell as one-line delegates,
  * because every change the shell follows schedules a save and `destroy`
@@ -117,30 +117,30 @@ export function stripView(state: WidgetChartState): WidgetChartState {
 
 /**
  * The saved layout, onto the dataset it belongs to: its view only on the
- * symbol, interval and variant it was saved on, then its rail preferences
- * and panels. Runs once the chrome is built.
+ * instrument (symbol and exchange), interval and variant it was saved on,
+ * then its rail preferences and panels. Runs once the chrome is built.
  */
-export function applySavedLayout(w: PersistHost, saved: WidgetState | null): void {
+export function applySavedLayout(this: PersistHost, saved: WidgetState | null): void {
   if (saved?.chart !== undefined) {
-    const same = saved.symbol === w._symbol && saved.exchange === w._exchange && saved.interval === w._interval
-      && dataVariantKey(saved.variant) === dataVariantKey(w._variant);
+    const same = saved.symbol === this._symbol && saved.exchange === this._exchange && saved.interval === this._interval
+      && dataVariantKey(saved.variant) === dataVariantKey(this._variant);
     let layout = same ? saved.chart : stripView(saved.chart);
     // The layout's own drawings were attached to its instrument by
     // `scopeDrawings`; the chart keeps the ones the current instrument has,
     // already on it. A layout that names no instrument has nowhere else to
     // keep them, so they land as they always did and go to the first
     // instrument charted.
-    if (w.instrumentDrawings !== null && savedKey(saved) !== null) layout = { ...layout, drawings: w.draw.toJSON() };
-    const report = w.chart.restoreState(layout);
+    if (this.instrumentDrawings !== null && savedKey(saved) !== null) layout = { ...layout, drawings: this.draw.toJSON() };
+    const report = this.chart.restoreState(layout);
     if (report.applied) {
-      w._keepView = same;
-      w._pendingView = same ? saved.chart.viewport ?? null : null;
+      this._keepView = same;
+      this._pendingView = same ? saved.chart.viewport ?? null : null;
     } else {
-      w._toasts.toast(widgetText(w.context, 'The saved layout could not be restored: {error}', { error: report.reason ?? 'unknown reason' }), 'error');
+      this._toasts.toast(widgetText(this.context, 'The saved layout could not be restored: {error}', { error: report.reason ?? 'unknown reason' }), 'error');
     }
   }
-  if (saved?.rail && w._rail !== null) w._rail.restorePrefs(saved.rail);
-  if (saved?.panels) w._dock?.restore(saved.panels);
+  if (saved?.rail && this._rail !== null) this._rail.restorePrefs(saved.rail);
+  if (saved?.panels) this._dock?.restore(saved.panels);
 }
 
 /**
@@ -150,25 +150,25 @@ export function applySavedLayout(w: PersistHost, saved: WidgetState | null): voi
  * are attached to that instrument here, so opening on another symbol
  * neither shows them there nor loses them.
  */
-export function scopeDrawings(w: PersistHost, saved: WidgetState | null): InstrumentDrawings {
-  const storage = w._storage;
-  const store: DrawingDocumentStore = w._opts.drawingStore ?? (storage.enabled ? {
+export function scopeDrawings(this: PersistHost, saved: WidgetState | null): InstrumentDrawings {
+  const storage = this._storage;
+  const store: DrawingDocumentStore = this._opts.drawingStore ?? (storage.enabled ? {
     get: key => storage.get(DRAWINGS_KEY_PREFIX + key),
     set: (key, document) => storage.set(DRAWINGS_KEY_PREFIX + key, document),
     remove: key => storage.remove(DRAWINGS_KEY_PREFIX + key),
   } : memoryDrawingStore());
   if (saved?.chart?.drawings !== undefined) migrateUnscopedDrawings(store, savedKey(saved), saved.chart.drawings);
-  return new InstrumentDrawings(w.chart, w.draw, {
+  return new InstrumentDrawings(this.chart, this.draw, {
     store,
     // Reported on the status line, as a failed layout write is: the drawings
     // stay in memory for the session and the next change tries again. The
     // shell may still be under construction, so this does what the
     // context's own status call does rather than going through it.
     onError: ({ operation, key }) => {
-      if (operation === 'read' || w._destroyed) return;
-      const text = widgetText(w._opts, 'The drawings for {instrument} could not be saved', { instrument: decodeURIComponent(key) });
-      w._statusline?.setMessage(text, 'error');
-      w._bus.emit('status', { text, kind: 'error' });
+      if (operation === 'read' || this._destroyed) return;
+      const text = widgetText(this._opts, 'The drawings for {instrument} could not be saved', { instrument: decodeURIComponent(key) });
+      this._statusline?.setMessage(text, 'error');
+      this._bus.emit('status', { text, kind: 'error' });
     },
   });
 }
@@ -179,7 +179,7 @@ function savedKey(saved: WidgetState): string | null {
 }
 
 /** What `restoreState` applies, inside the history's `ignore`. */
-export function restoreWidgetState(w: PersistHost, state: unknown): WidgetRestoreReport {
+export function restoreWidgetState(this: PersistHost, state: unknown): WidgetRestoreReport {
   if (!isRecord(state)) return { applied: false, reason: 'not a widget state object' };
   if (state.version !== undefined && state.version !== WIDGET_STATE_VERSION) {
     return { applied: false, reason: `widget state version ${String(state.version)} is not ${WIDGET_STATE_VERSION}` };
@@ -193,67 +193,67 @@ export function restoreWidgetState(w: PersistHost, state: unknown): WidgetRestor
   let variant: Readonly<DataVariant> | undefined;
   try { variant = normalizeDataVariant(state.variant); }
   catch (error) { return { applied: false, reason: error instanceof Error ? error.message : 'invalid data variant' }; }
-  if (state.theme === 'dark' || state.theme === 'light') w.setTheme(state.theme);
-  if (typeof state.chartType === 'string' && registeredChartTypes().includes(state.chartType)) w.setChartType(state.chartType);
-  if (state.rail !== undefined && w._rail !== null) w._rail.restorePrefs(state.rail);
-  if (state.panels !== undefined) w._dock?.restore(state.panels);
-  const symbol = typeof state.symbol === 'string' ? state.symbol.toUpperCase() : w._symbol;
-  const exchange = typeof state.exchange === 'string' ? state.exchange : w._exchange;
-  const interval = typeof state.interval === 'string' && isKnownInterval(state.interval) ? state.interval : w._interval;
-  const sameVariant = dataVariantKey(variant) === dataVariantKey(w._variant);
-  const same = symbol === w._symbol && exchange === w._exchange && interval === w._interval && sameVariant;
+  if (state.theme === 'dark' || state.theme === 'light') this.setTheme(state.theme);
+  if (typeof state.chartType === 'string' && registeredChartTypes().includes(state.chartType)) this.setChartType(state.chartType);
+  if (state.rail !== undefined && this._rail !== null) this._rail.restorePrefs(state.rail);
+  if (state.panels !== undefined) this._dock?.restore(state.panels);
+  const symbol = typeof state.symbol === 'string' ? state.symbol.toUpperCase() : this._symbol;
+  const exchange = typeof state.exchange === 'string' ? state.exchange : this._exchange;
+  const interval = typeof state.interval === 'string' && isKnownInterval(state.interval) ? state.interval : this._interval;
+  const sameVariant = dataVariantKey(variant) === dataVariantKey(this._variant);
+  const same = symbol === this._symbol && exchange === this._exchange && interval === this._interval && sameVariant;
   let chart: RestoreReport | undefined;
   if (isRecord(state.chart)) {
     let doc = state.chart as unknown as WidgetChartState;
-    const scoped = w.instrumentDrawings;
+    const scoped = this.instrumentDrawings;
     // A layout for another instrument brings that instrument's drawings.
     // They wait in its store while the chart restore keeps the ones on
     // screen, which are this instrument's until the switch below, so the
     // alerts the layout restores are judged against their own drawings.
-    const moving = scoped !== null && (symbol !== w._symbol || exchange !== w._exchange)
+    const moving = scoped !== null && (symbol !== this._symbol || exchange !== this._exchange)
       && instrumentDrawingsKey({ symbol, exchange }) !== null;
     const incoming = doc.drawings;
-    if (moving) doc = { ...doc, drawings: w.draw.toJSON() };
-    chart = w.chart.restoreState(same ? doc : stripView(doc));
+    if (moving) doc = { ...doc, drawings: this.draw.toJSON() };
+    chart = this.chart.restoreState(same ? doc : stripView(doc));
     if (!chart.applied) return { applied: false, reason: chart.reason, chart };
     if (moving && scoped !== null) scoped.setDocument({ symbol, exchange }, incoming ?? []);
-    w._keepView = same;
-    w._pendingView = same ? doc.viewport ?? null : null;
+    this._keepView = same;
+    this._pendingView = same ? doc.viewport ?? null : null;
   }
   if (!same) {
-    w._cancelNavigation();
-    if (interval !== w._interval) {
-      w._interval = interval;
-      w._bus.emit('interval', { interval });
+    this._cancelNavigation();
+    if (interval !== this._interval) {
+      this._interval = interval;
+      this._bus.emit('interval', { interval });
     }
-    if (symbol !== w._symbol || exchange !== w._exchange) {
-      w._symbol = symbol;
-      w._exchange = exchange;
-      w._bus.emit('symbol', { symbol, exchange });
+    if (symbol !== this._symbol || exchange !== this._exchange) {
+      this._symbol = symbol;
+      this._exchange = exchange;
+      this._bus.emit('symbol', { symbol, exchange });
     }
     if (!sameVariant) {
-      w._variant = variant;
-      w._bus.emit('variant', { variant });
+      this._variant = variant;
+      this._bus.emit('variant', { variant });
     }
-    w._statusline?.setSymbol(w._symbol, w._exchange, w._interval);
-    w._topbar?.refresh();
-    w._mobile?.refresh();
-    if (w._opts.feed) void w.reload();
+    this._statusline?.setSymbol(this._symbol, this._exchange, this._interval);
+    this._topbar?.refresh();
+    this._mobile?.refresh();
+    if (this._opts.feed) void this.reload();
     else {
-      w._series.setData([]);
-      w._publishDataContext();
+      this._series.setData([]);
+      this._publishDataContext();
     }
   }
-  w._rail?.refresh();
-  w._statusline?.refresh();
-  w._bus.emit('layout', { reason: 'restore', chartType: w.chartType() });
-  w._scheduleSave();
+  this._rail?.refresh();
+  this._statusline?.refresh();
+  this._bus.emit('layout', { reason: 'restore', chartType: this.chartType() });
+  this._scheduleSave();
   return chart === undefined ? { applied: true } : { applied: true, chart };
 }
 
 /** The stored layout, checked field by field, or null when nothing this build can read is stored. */
-export function readSaved(w: PersistHost): WidgetState | null {
-  const raw = w._storage.get(STATE_KEY);
+export function readSaved(this: PersistHost): WidgetState | null {
+  const raw = this._storage.get(STATE_KEY);
   if (!isRecord(raw) || raw.version !== WIDGET_STATE_VERSION) return null;
   const variant = savedVariant(raw.variant);
   const chart = isRecord(raw.chart) ? (raw.chart as unknown as WidgetChartState) : undefined;
@@ -273,31 +273,31 @@ export function readSaved(w: PersistHost): WidgetState | null {
 }
 
 /** One write, a debounce after the last change, because drags fire per frame. */
-export function scheduleSave(w: PersistHost): void {
-  if (!w._storage.enabled || w._destroyed) return;
-  if (w._saveTimer !== 0) clearTimeout(w._saveTimer);
-  w._saveTimer = setTimeout(() => { w._saveTimer = 0; w._saveNow(); }, SAVE_DEBOUNCE_MS);
+export function scheduleSave(this: PersistHost): void {
+  if (!this._storage.enabled || this._destroyed) return;
+  if (this._saveTimer !== 0) clearTimeout(this._saveTimer);
+  this._saveTimer = setTimeout(() => { this._saveTimer = 0; this._saveNow(); }, SAVE_DEBOUNCE_MS);
 }
 
 /** The write itself, now: a failure is reported on the status line, never thrown. */
-export function saveNow(w: PersistHost): void {
-  if (!w._storage.enabled || w._destroyed) return;
-  if (w._saveTimer !== 0) { clearTimeout(w._saveTimer); w._saveTimer = 0; }
+export function saveNow(this: PersistHost): void {
+  if (!this._storage.enabled || this._destroyed) return;
+  if (this._saveTimer !== 0) { clearTimeout(this._saveTimer); this._saveTimer = 0; }
   try {
-    if (!w._storage.set(STATE_KEY, w.getState())) w.context.status(widgetText(w.context, 'The chart layout could not be saved'), 'error');
+    if (!this._storage.set(STATE_KEY, this.getState())) this.context.status(widgetText(this.context, 'The chart layout could not be saved'), 'error');
   } catch (error) {
-    w.context.status(widgetText(w.context, 'The chart layout could not be saved: {error}', { error: error instanceof Error ? error.message : 'invalid state' }), 'error');
+    this.context.status(widgetText(this.context, 'The chart layout could not be saved: {error}', { error: error instanceof Error ? error.message : 'invalid state' }), 'error');
   }
 }
 
 /** Writes a pending save when the page goes away; the listener goes with the shell. */
-export function flushOnPageHide(w: PersistHost): void {
-  const win = w._doc.defaultView;
+export function flushOnPageHide(this: PersistHost): void {
+  const win = this._doc.defaultView;
   if (win !== null && win !== undefined && typeof win.addEventListener === 'function') {
     // A debounced save still pending when the tab closes is the last quarter
     // second of the user's work; pagehide is the last synchronous moment.
-    const flush = (): void => w._saveNow();
+    const flush = (): void => this._saveNow();
     win.addEventListener('pagehide', flush);
-    w._cleanups.push(() => win.removeEventListener('pagehide', flush));
+    this._cleanups.push(() => win.removeEventListener('pagehide', flush));
   }
 }

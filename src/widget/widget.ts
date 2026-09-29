@@ -471,7 +471,7 @@ class WidgetImpl implements Widget {
     const ns = typeof options.persist === 'string' ? options.persist : 'default';
     const store = options.persist ? (options.storage === undefined ? defaultStorage() : options.storage) : null;
     this._storage = new WidgetStorage(ns, store);
-    const saved = readSaved(this as unknown as PersistHost);
+    const saved = readSaved.call(this as unknown as PersistHost);
 
     this._symbol = (options.symbol ?? saved?.symbol ?? '').toUpperCase();
     this._exchange = options.exchange ?? saved?.exchange ?? '';
@@ -561,7 +561,7 @@ class WidgetImpl implements Widget {
     this.draw = new DrawingController(this.chart, {});
     // Before the alerts and before the saved layout lands: the drawings on the
     // chart are the current instrument's from the first moment anything reads them.
-    this.instrumentDrawings = options.drawingScope === 'chart' ? null : scopeDrawings(this as unknown as PersistHost, saved);
+    this.instrumentDrawings = options.drawingScope === 'chart' ? null : scopeDrawings.call(this as unknown as PersistHost, saved);
     this.alerts = new AlertController(this.chart, { drawings: this.draw });
     this.objects = new ChartObjects(this.chart, {
       drawings: this.draw,
@@ -590,7 +590,7 @@ class WidgetImpl implements Widget {
     const tips = createTipController(root, overlays.layer, doc);
     this._toasts = mountToasts(toastEl, doc, options);
     const sc = this.chart.shortcuts;
-    this._keymap = new Keymap({ chart: sc === null ? null : { list: () => sc.list() }, scopes: () => keyScopes(this as unknown as KeysHost) });
+    this._keymap = new Keymap({ chart: sc === null ? null : { list: () => sc.list() }, scopes: () => keyScopes.call(this as unknown as KeysHost) });
     this._keymap.onConflict((c) => this._bus.emit('keymap:conflict', { combo: c.combo, kept: c.kept, shadowed: c.shadowed }));
 
     this.context = new WidgetContextImpl(this, {
@@ -731,7 +731,7 @@ class WidgetImpl implements Widget {
       indicatorsAvailable: () => widgetDialog('indicatorPicker') !== null,
     });
 
-    installKeys(this as unknown as KeysHost);
+    installKeys.call(this as unknown as KeysHost);
     this._keymap.attach(doc);
     if (options.typingNavigation !== false) {
       this._quickEntry = mountQuickEntry(this.context, {
@@ -741,11 +741,11 @@ class WidgetImpl implements Widget {
         onInterval: code => this.setInterval(code), search: options.symbolSearch,
       });
     }
-    trackPointer(this as unknown as KeysHost);
+    trackPointer.call(this as unknown as KeysHost);
     this._followChart();
 
     // ── the saved layout, onto the dataset it belongs to ───────────────
-    applySavedLayout(this as unknown as PersistHost, saved);
+    applySavedLayout.call(this as unknown as PersistHost, saved);
 
     if (this.dataController !== null) {
       this._cleanups.push(this.dataController.subscribe(state => this._applyData(state)));
@@ -1076,14 +1076,14 @@ class WidgetImpl implements Widget {
   public restoreState(state: unknown): WidgetRestoreReport {
     // A loaded layout is a new document, not a step: nothing recorded before
     // it describes the chart it builds, and nothing it sets is the user's edit.
-    const report = this.history.ignore(() => restoreWidgetState(this as unknown as PersistHost, state));
+    const report = this.history.ignore(() => restoreWidgetState.call(this as unknown as PersistHost, state));
     if (report.applied) this.history.clear();
     return report;
   }
 
-  private _scheduleSave(): void { scheduleSave(this as unknown as PersistHost); }
+  private _scheduleSave(): void { scheduleSave.call(this as unknown as PersistHost); }
 
-  private _saveNow(): void { saveNow(this as unknown as PersistHost); }
+  private _saveNow(): void { saveNow.call(this as unknown as PersistHost); }
 
   // ── keyboard ─────────────────────────────────────────────────────────
   /** The engine's own test for its shortcuts: the pointer over the chart, or the focus in it. */
@@ -1118,7 +1118,7 @@ class WidgetImpl implements Widget {
       const event = payload as AlertTriggeredPayload;
       this.context.toast(event.message ?? event.title, 'success');
     }));
-    flushOnPageHide(this as unknown as PersistHost);
+    flushOnPageHide.call(this as unknown as PersistHost);
   }
 
   public destroy(): void {

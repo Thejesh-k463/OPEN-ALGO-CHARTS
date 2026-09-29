@@ -5,10 +5,12 @@
  *
  * Its own module so the keyboard can grow (rebinding, capturing a new chord,
  * saved overrides) while widget.ts stays under its line cap. The shell wires
- * these functions while it is built, and they reach the shell through
- * `KeysHost`. The shell itself is the host: each member carries the name and
- * the type of the shell's own, so the moved code reads as it did in
- * widget.ts, and a member the shell renames or retypes fails to compile here.
+ * these functions while it is built, calling each with itself as `this`,
+ * typed `KeysHost`. Each member carries the name and the type of the shell's
+ * own, so a member the shell renames or retypes fails to compile here. The
+ * code keeps `this` rather than taking the shell as a parameter because it
+ * then reads exactly as it did in widget.ts and compresses like the rest of
+ * the shell, where the parameter form measurably grew the widget bundle.
  * The tier entry exports none of it.
  */
 import { drawingShortcuts, keyToDrawingAction, type DrawingKeyContext } from 'openalgo-charts/draw';
@@ -39,26 +41,26 @@ export interface KeysHost {
 }
 
 /** The scopes a chord is resolved in, innermost first. The keymap asks on every key. */
-export function keyScopes(w: KeysHost): KeyScope[] {
-  if (w.context.overlays.size() > 0) return ['overlay'];
+export function keyScopes(this: KeysHost): KeyScope[] {
+  if (this.context.overlays.size() > 0) return ['overlay'];
   const out: KeyScope[] = [];
-  const active = w._doc.activeElement;
-  const routed = w._opts.keyboardRoute?.();
-  if (routed === false || (active !== null && w._dataStatus.el.contains(active))) return [];
+  const active = this._doc.activeElement;
+  const routed = this._opts.keyboardRoute?.();
+  if (routed === false || (active !== null && this._dataStatus.el.contains(active))) return [];
   // A control that walks itself with the arrows (the drawing toolbar) names its own scope.
-  const own = active !== null && w.root.contains(active) ? active.closest('[data-key-scope]')?.getAttribute('data-key-scope') : null;
+  const own = active !== null && this.root.contains(active) ? active.closest('[data-key-scope]')?.getAttribute('data-key-scope') : null;
   if (own) out.push(own);
-  if (w._rail !== null && active !== null && w._rail.el.contains(active)) out.push('rail');
-  if (routed || w._inChart()) out.push('chart');
-  if (routed || w._pointerInside || (active !== null && w.root.contains(active))) out.push('widget');
+  if (this._rail !== null && active !== null && this._rail.el.contains(active)) out.push('rail');
+  if (routed || this._inChart()) out.push('chart');
+  if (routed || this._pointerInside || (active !== null && this.root.contains(active))) out.push('widget');
   out.push('global');
   return out;
 }
 
 /** Every chord the shell owns: the editing keys, Escape, the tool chords and `?`. */
-export function installKeys(w: KeysHost): void {
-  const km = w._keymap;
-  const draw = w.draw;
+export function installKeys(this: KeysHost): void {
+  const km = this._keymap;
+  const draw = this.draw;
   const drawCtx = (): DrawingKeyContext => ({
     hasSelection: draw.selected() !== null,
     hasTarget: draw.hovered() !== null,
@@ -79,29 +81,29 @@ export function installKeys(w: KeysHost): void {
     // Alert deletion is a fallback: a drawing selection, hover or active
     // tool keeps ownership even when the pointer is over an alert line.
     if (action === null) {
-      const alertId = w.alerts.hovered();
+      const alertId = this.alerts.hovered();
       if (alertId !== undefined && draw.activeTool() === null && (e.key === 'Delete' || e.key === 'Backspace')) {
-        w.alerts.remove(alertId);
-        w._rail?.refresh();
+        this.alerts.remove(alertId);
+        this._rail?.refresh();
         return true;
       }
       return false;
     }
     switch (action.type) {
       // The chart-wide timeline: a drawing, a study and a pane in the order they were made.
-      case 'undo': historyPress(w.context, 'undo'); break;
-      case 'redo': historyPress(w.context, 'redo'); break;
+      case 'undo': historyPress(this.context, 'undo'); break;
+      case 'redo': historyPress(this.context, 'redo'); break;
       case 'delete': draw.removeMany(targets()); break;
       case 'duplicate': draw.duplicate(targets()); break;
       case 'nudge': draw.nudge(targets(), action.dx, action.dy); break;
-      case 'cancel': draw.cancel(); if (draw.activeTool() === null) w._rail?.setDrawLock(false); break;
+      case 'cancel': draw.cancel(); if (draw.activeTool() === null) this._rail?.setDrawLock(false); break;
       case 'finish': draw.finish(); break;
       case 'popAnchor': draw.popAnchor(); break;
       case 'copy': void draw.copy(targets()); break;
       case 'cut': void draw.cut(targets()); break;
       case 'paste': void draw.paste(); break;
     }
-    w._rail?.refresh();
+    this._rail?.refresh();
     return true;
   };
   const G = 'Drawing';
@@ -130,31 +132,31 @@ export function installKeys(w: KeysHost): void {
     if (draw.activeTool() !== null) {
       if (editing(e)) return true;
       draw.setTool(null);
-      w._rail?.setDrawLock(false);
+      this._rail?.setDrawLock(false);
       return true;
     }
-    if (draw.selection().length > 0) { draw.select(null); w._rail?.refresh(); return true; }
+    if (draw.selection().length > 0) { draw.select(null); this._rail?.refresh(); return true; }
     return false;
   }, 'widget', { label: 'Leave the tool, then clear the selection', group: G });
   for (const [id, chord] of Object.entries(drawingShortcuts())) {
-    km.register(chord, () => { w._rail?.setDrawLock(false); draw.setTool(id); }, 'widget', { label: toolName(id), group: 'Drawing tools' });
+    km.register(chord, () => { this._rail?.setDrawLock(false); draw.setTool(id); }, 'widget', { label: toolName(id), group: 'Drawing tools' });
   }
-  km.register('?', () => { openShortcutsPanel(w.context); }, 'widget', { label: 'Keyboard shortcuts', group: 'Widget' });
+  km.register('?', () => { openShortcutsPanel(this.context); }, 'widget', { label: 'Keyboard shortcuts', group: 'Widget' });
 }
 
 /** The pointer facts `keyScopes` and `_inChart` read; the listeners go with the shell. */
-export function trackPointer(w: KeysHost): void {
-  const root = w.root;
-  const chartEl = w._chartEl;
-  const onRootEnter = (): void => { w._pointerInside = true; };
-  const onRootLeave = (): void => { w._pointerInside = false; w._pointerInChart = false; };
-  const onChartEnter = (): void => { w._pointerInChart = true; };
-  const onChartLeave = (): void => { w._pointerInChart = false; };
+export function trackPointer(this: KeysHost): void {
+  const root = this.root;
+  const chartEl = this._chartEl;
+  const onRootEnter = (): void => { this._pointerInside = true; };
+  const onRootLeave = (): void => { this._pointerInside = false; this._pointerInChart = false; };
+  const onChartEnter = (): void => { this._pointerInChart = true; };
+  const onChartLeave = (): void => { this._pointerInChart = false; };
   root.addEventListener('pointerenter', onRootEnter);
   root.addEventListener('pointerleave', onRootLeave);
   chartEl.addEventListener('pointerenter', onChartEnter);
   chartEl.addEventListener('pointerleave', onChartLeave);
-  w._cleanups.push(() => {
+  this._cleanups.push(() => {
     root.removeEventListener('pointerenter', onRootEnter);
     root.removeEventListener('pointerleave', onRootLeave);
     chartEl.removeEventListener('pointerenter', onChartEnter);
