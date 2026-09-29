@@ -227,9 +227,10 @@ suite runs against, and what a fresh clone can run before installing anything.
 - `session=extended` adds two hours either side of the synthetic session on the
   same grid, so the regular bars are the same observations in both series and
   only the pre and post market bars differ.
-- Each symbol has its own base price, drift and three waves whose periods the
-  symbol's hash picks, so two symbols never move together and a comparison
-  overlay has something to show. Every bar's open is the previous bar's close.
+- Each symbol has its own base price, drift and volatility, and a seeded random
+  walk in trading time (a pure function of symbol and bar time), so two symbols
+  never move together and a comparison overlay has something to show. Every bar's
+  open is the previous bar's close.
 - Bars sit on a 09:15 to 15:30 IST session on weekdays, spelled in UTC. IST is
   the library's default zone and has no daylight saving, so the grid is the
   same number every day of the year. Daily bars land at the session open,
@@ -478,13 +479,25 @@ count switches back to count mode. Existing saved navigation preferences are ret
 
 This example is a custom host around the DOM-free engine and draw tier. Its responsive
 controls belong to `examples/yfinance`; it does not use the packaged widget's
-`WidgetOptions.mobile`. At 900 CSS pixels or less, or with a coarse primary pointer, the
-desktop drawing rail yields to a bottom touch bar and the top toolbar becomes one scrollable
-row. Every compact control is at least 44 CSS pixels high. The native drawing picker exposes
+`WidgetOptions.mobile`. At 900 CSS pixels or less, or with a coarse primary pointer at
+most 960 pixels wide and under 600 tall (a phone on its side; tablets and touch laptops
+keep the rail), the desktop drawing rail yields to a bottom touch bar and the top toolbar
+becomes one scrollable row. Every touch bar control is at least 44 CSS pixels high, and
+any coarse pointer grows the other controls to 40 pixel targets. The native drawing picker exposes
 the registered tools, followed by Cursor, Undo, Redo, Magnet, Zoom out, Zoom in and Fit.
 Drawing actions use the existing controller and navigation uses the chart's public logical
 range and reset APIs. In split view the controls act on the last plot touched. Rotating or
 resizing changes only the CSS layout, so loaded bars and drawings stay in place.
+
+### Bottom bar
+
+The widget tier's bottom bar (`mountBottombar`) sits under the stage and acts on the
+focused chart: preset ranges, **Go to**, the market status, a clock in the chart's
+timezone that opens a timezone menu, and the Auto, Log and Percent scale toggles. A range
+picks the nearest interval the page offers and the shortest history period that reaches
+its first session, then places it; a range wider than the plot keeps its latest bars in
+view. A timezone picked there survives the next rebuild. Session shading
+(`attachSessionShading`) is attached to each chart as it is built.
 
 ### Go to a date or range
 
@@ -526,7 +539,7 @@ exists to show one engine surface carrying real use, not just being present.
 | `volume.js` | Volume rides an overlay price scale (`priceScaleId: ''`) inside the price pane, pinned to the bottom fifth, so the right-hand axis stays a clean price ladder. It hides and shows from the legend eye and the right-click menu, and the choice survives a reload and a chart-type switch. |
 | `status.js`, `axis-chrome.js`, `timezone.js` | The status line, the clock and the countdown are fed by the host: venue, session hours by IANA zone (never a fixed offset) handed to the library as a `SessionCalendar` whose phases give the market status (`venueCalendar`; a closed date listed in `SESSIONS` reads "Market holiday"; the phase is asked once and held until it changes), and long names. A chart on extended hours reads "Pre-market" or "Post-market" while its extra bars are arriving rather than "Market closed". The chart zone is a runtime setting the demo carries across a rebuild. |
 | `orders.js`, `bracket.js` | Chart trading: right-click for single orders, Buy and Sell brackets with OCO target and stop, drag any line to re-price it, and per-symbol trade state that survives a symbol switch. |
-| `ticks.js` | Price-dependent ticks supplied by the host. Load `BANDED` in fixture mode: it trades around 100 with a 0.01 tick below 100 and a 0.05 tick from 100 (synthetic rules, not any venue's). Right-click prices, dragged order lines, dragged price alerts, market fills and every bracket leg snap to the band they land in, the status line names the tick in force, and a bracket exit stays one tick of its own band from the entry as it crosses the boundary. The rules are `InstrumentMetadata` with `tickBands`, validated by `Instrument` before anything snaps to them, and the price axis takes the instrument's `priceTick`, the grid both bands lie on. The host hands the schedule to each chart with `chart.setTickSchedule`, which is what rounds a dragged alert by band. Every other symbol keeps two-decimal order prices. The same module gives each chart its venue's regular hours as a `SessionCalendar` (`dataLayer.setSessionCalendar`), so on an intraday chart a drawing placed past Friday's last candle ends on Monday's session bars; crypto and venues without hours keep the median bar spacing, and there is no holiday list, the same limit the status line states. |
+| `ticks.js` | Price-dependent ticks supplied by the host. Load `BANDED` in fixture mode: it trades around 100 with a 0.01 tick below 100 and a 0.05 tick from 100 (synthetic rules, not any venue's). Right-click prices, dragged order lines, dragged price alerts, market fills and every bracket leg snap to the band they land in, the status line names the tick in force, and a bracket exit stays one tick of its own band from the entry as it crosses the boundary. The rules are `InstrumentMetadata` with `tickBands`, validated by `Instrument` before anything snaps to them, and the price axis takes the instrument's `priceTick`, the grid both bands lie on. The host hands the schedule to each chart with `chart.setTickSchedule`, which is what rounds a dragged alert by band. Every other symbol keeps two-decimal order prices. The same module gives each chart its venue's calendar from `status.js` (`venueCalendar`, through `dataLayer.setSessionCalendar`), pre-open and post-close included, which the bottom bar's market status and the session shading read; the future is laid out in the regular session only, so on an intraday chart a drawing placed past Friday's last candle ends on Monday's session bars; crypto and venues without hours keep the median bar spacing, and there is no holiday list, the same limit the status line states. |
 | `account.js` | The Account button opens a sandbox broker: the trade tier's `OrderEngine` and `AccountManager` against a `FakeBroker` with account ledgers, in analyzer mode. The widget tier's account summary shows the selected account's equity and margin and switches account; a live account the provider also offers is never listed. Place stays disabled until that exact ticket is previewed, durations (DAY, IOC, GTC, GTD with an expiry) and leverage are sent only because the provider declares them, and Close, Close part, Reverse and Place bracket are the provider's own commands, never an opposite order. Drop connection marks the figures stale; Reconnect reads the provider's order history for every account the panel has written to and settles every write from it (a lost answer by the token the provider echoes, a write the history never mentions released), so the legs of a bracket whose entry has filled stay live orders, before reading the account again. These orders are separate from the page's own simulated orders. |
 | `replay.js`, `replay-timing.js` | One replay transport drives the captured chart or all captured charts from a shared availability clock. Scope controls appear in the picker and transport. Finer history uses separate request slots and each chart's captured instrument, interval and timezone. Cancellation discards late responses; exit restores data and viewports. A coarse candle forms from a contiguous prefix of finer observations, held inside the candle it closes on. Finer history is asked for only as far back as the source keeps it (five days of 1-minute bars under a month of 5-minute ones). A candle with no finer history forms along a simulated path from its open to the nearer extreme, the other extreme and its close, at the finer rung's pace (`REPLAY_SIMULATED_STEPS`), and the replay bar marks those steps Simulated. |
 | `compare.js`, `split.js`, `link.js` | Each selected chart owns its comparison symbols, scale mode, hidden rows and history requests. Each source has an independent scale, rebased at the first visible timestamp shared by all visible sources. Missing overlap shows "No common starting bar" and draws gaps. Replay readouts withhold forming comparison closes. The dialog retains its owner across focus changes; changing or closing a chart cancels stale loads. Source failures remain visible with Retry. The linked second chart has independent switches for crosshair, viewport, symbol and interval. Interval sync is off by default. |
