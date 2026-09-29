@@ -2,8 +2,8 @@ import { test, expect, type Page } from '@playwright/test';
 import { VERSION } from '../../src/version';
 
 // The chart grid in a real browser: layout, measured charts, splitters,
-// keyboard routing, the compact view, all-or-nothing workspace import and
-// the desk kept in IndexedDB.
+// keyboard routing, the compact view, all-or-nothing workspace import, the
+// bars over and under the charts and the desk kept in IndexedDB.
 async function mount(page: Page, preset = '2x2', size = { width: 1200, height: 800 }, extra = ''): Promise<string[]> {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -486,6 +486,73 @@ test('at phone width the bar stays usable: menus fit, maximize and capture say w
   expect(errors).toEqual([]);
 });
 
+test('one bar under the grid acts on the active chart, and its Go to opens over the grid', async ({ page }, info) => {
+  for (const theme of ['dark', 'light']) {
+    const errors = await mount(page, '2x2', { width: 1360, height: 900 }, `&toolbar=1&bottombar=1&theme=${theme}`);
+    await readyEvery(page);
+    const bar = page.locator('.oac-grid__foot .oac-bottombar');
+    await expect(page.locator('.oac-bottombar')).toHaveCount(1);
+    // The charts leave Go to to the bar.
+    await expect(page.locator('.oac-grid__cell .oac-topbar__goto')).toHaveCount(0);
+    const barBox = (await bar.boundingBox())!;
+    const cellsBox = (await page.locator('.oac-grid__cells').boundingBox())!;
+    const topBox = (await page.locator('.oac-grid__bar').boundingBox())!;
+    expect(topBox.y).toBe(0);
+    expect(Math.abs(barBox.y - (cellsBox.y + cellsBox.height))).toBeLessThanOrEqual(1);
+    expect(barBox.y + barBox.height).toBeCloseTo(900, 0);
+    expect(barBox.height).toBe(28);
+    // A press on the second chart makes it the one the bar acts on.
+    const second = (await page.locator('.oac-grid__cell').nth(1).locator('.oac-chart').boundingBox())!;
+    await page.mouse.click(second.x + second.width / 2, second.y + second.height / 2);
+    await expect.poll(() => activeIndex(page)).toBe(1);
+    await bar.locator('.oac-bottombar__icon[data-scale="log"]').click();
+    expect(await page.evaluate(() => (window as any).fixture.grid.cells().map((c: any) => c.widget.chart.priceAxisState(c.widget.chart.primaryPaneIndex(), 'right').mode)))
+      .toEqual(['linear', 'logarithmic', 'linear', 'linear']);
+    await expect(bar.locator('.oac-bottombar__icon[data-scale="log"]')).toHaveAttribute('aria-pressed', 'true');
+    // Go to opens over the grid, above its own button, and gives the focus back to it.
+    const goTo = bar.locator('.oac-bottombar__goto');
+    await goTo.click();
+    const panel = page.locator('.oac-grid__overlay .oac-goto');
+    await expect(panel).toBeVisible();
+    const box = (await panel.boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height).toBeLessThanOrEqual(barBox.y + 1);
+    await page.screenshot({ path: info.outputPath(`grid-bottom-bar-${theme}.png`) });
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+    await expect(goTo).toBeFocused();
+    expect(errors).toEqual([]);
+  }
+});
+
+test('the bar under a four by four grid opens Go to whole for a small chart, and fits a phone', async ({ page }, info) => {
+  const errors = await mount(page, '4x4', { width: 1360, height: 900 }, '&toolbar=1&bottombar=1');
+  await readyEvery(page);
+  await page.locator('.oac-grid__cell').nth(5).locator('.oac-chart').click();
+  await expect.poll(() => activeIndex(page)).toBe(5);
+  await page.locator('.oac-bottombar__goto').click();
+  const panel = page.locator('.oac-grid__overlay .oac-goto');
+  await expect(panel).toBeVisible();
+  // Taller than the chart it is for, and still whole.
+  const cell = (await page.locator('.oac-grid__cell').nth(5).boundingBox())!;
+  const box = (await panel.boundingBox())!;
+  expect(box.height).toBeGreaterThan(cell.height);
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(1360);
+  await expect(panel.locator('[data-action="go-to"]')).toBeInViewport();
+  await page.screenshot({ path: info.outputPath('grid-4x4-goto.png') });
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({ width: 390, height: 780 });
+  const bar = (await page.locator('.oac-bottombar').boundingBox())!;
+  expect(bar.x + bar.width).toBeLessThanOrEqual(390);
+  for (const control of ['.oac-bottombar__clock', '.oac-bottombar__icon[data-scale="percent"]']) {
+    const b = (await page.locator(control).boundingBox())!;
+    expect(b.x + b.width).toBeLessThanOrEqual(390);
+  }
+  await page.screenshot({ path: info.outputPath('grid-phone-bottom-bar.png') });
+  expect(errors).toEqual([]);
+});
+
 test('a desk kept in localStorage, as 2.5.9 kept it, opens from IndexedDB and stays there', async ({ page }) => {
   const errors = await mount(page, '1x2', { width: 1200, height: 800 }, '&persist=legacy&storage=local');
   await setSymbols(page, ['AAA', 'BBB']);
@@ -526,7 +593,7 @@ test('the grid bar and its menus keep a strict style policy', async ({ page }) =
   await page.evaluate(async nonce => {
     const url = '/dist/openalgo-charts.widget.mjs';
     const { createChartGrid } = await import(url);
-    (window as any).__grid = createChartGrid(document.getElementById('desk'), { styleNonce: nonce, toolbar: true, preset: '1x2', rail: false });
+    (window as any).__grid = createChartGrid(document.getElementById('desk'), { styleNonce: nonce, toolbar: true, bottombar: true, preset: '1x2', rail: false });
   }, NONCE);
   await page.locator('.oac-grid__layout').click();
   await expect(page.locator('.oac-grid__picker')).toHaveCSS('display', 'flex');
@@ -538,6 +605,7 @@ test('the grid bar and its menus keep a strict style policy', async ({ page }) =
   await page.locator('.oac-grid__capture').click();
   await page.keyboard.press('Escape');
   await expect(page.locator('.oac-grid__bar')).toHaveCSS('display', 'flex');
+  await expect(page.locator('.oac-grid__foot .oac-bottombar')).toHaveCSS('display', 'flex');
   await expect(page.locator('.oac-grid__mark')).toHaveCount(2);
   expect(await page.evaluate(() => (window as any).__cspViolations)).toEqual([]);
   expect(errors).toEqual([]);

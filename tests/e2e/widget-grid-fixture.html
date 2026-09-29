@@ -40,7 +40,9 @@ const grid = createChartGrid(document.getElementById('grid'), {
   preset: params.get('preset') || '2x2', rail: params.get('rail') === '1', statusline: params.get('statusline') === '1',
   toolbar: params.get('toolbar') === '1', theme: params.get('theme') === 'light' ? 'light' : 'dark',
   links: { crosshair: true, viewport: false },
+  // ?bottombar=1 one bar under the grid;
   // ?persist=<name> the desk kept between visits, in IndexedDB unless ?storage=local.
+  bottombar: params.get('bottombar') === '1',
   persist: params.get('persist') ?? undefined,
   storage: params.get('storage') === 'local' ? localStorage : undefined,
 });

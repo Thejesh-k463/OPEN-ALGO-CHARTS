@@ -64,6 +64,8 @@ export const CHART_GRID_CSS = `
   padding: 4px 6px; background: var(--oac-panel); border-bottom: 1px solid var(--oac-bd-soft); overflow: visible; }
 .oac-grid__bar .oac-grid__bar-text { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }
 .oac-grid__bar-mark { display: inline-flex; }
+/* One bar under the charts: the widget's own strip, acting on the active chart. */
+.oac-widget.oac-grid__foot { display: block; flex: none; height: auto; min-height: 0; }
 .oac-widget.oac-grid__overlay { position: absolute; inset: 0; display: block; background: transparent; pointer-events: none;
   z-index: 80; overflow: visible; }
 .oac-widget .oac-grid__menu { max-width: 380px; }

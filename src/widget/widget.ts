@@ -93,6 +93,14 @@ export const STATE_KEY = 'state';
 export const DRAWINGS_KEY_PREFIX = 'drawings:';
 export const WIDGET_STATE_VERSION = 1;
 
+/**
+ * Hook (chart grid, 2.5.10): the options of a chart under a grid's own
+ * bottom bar, which carries Go to and the market status for every chart. Such
+ * a chart shows neither in its own bars, and opens its go-to panel in the
+ * context this gives, over the whole grid. Internal: the tier does not export it.
+ */
+export const GRID_BAR_CHARTS = new WeakMap<WidgetOptions, (ctx: WidgetContext) => WidgetContext>();
+
 /** Named lists and their quotes for the docked watchlist. A chosen row charts that instrument. */
 export type WidgetWatchlistOptions = Omit<WatchlistPanelOptions, 'onSelect' | 'normalize'>;
 /** The news source for the docked reader, which follows the chart's instrument. */
@@ -750,9 +758,10 @@ class WidgetImpl implements Widget {
     this.drawingTemplates = options.drawingTemplates ? createDrawingTemplates(this.context, options.drawingTemplates) : null;
     (this.context as WidgetContextImpl).drawingTemplates = this.drawingTemplates ?? undefined;
     if (options.drawingToolbar ?? options.rail !== false) this._drawbar = mountDrawingToolbar(this.context, stage, { chart: chartEl, templates: this.drawingTemplates });
+    // Bottom bar hook: with no bar, here or under a grid, Go to and the market status stay in the chart's own bars.
+    const barless = options.bottombar === false && !GRID_BAR_CHARTS.has(options);
     if (options.statusline !== false) {
-      // Bottom bar hook: without a bar the status line says the market status.
-      this._statusline = mountStatusline(this.context, statusEl, { locale: options.locale, marketStatus: options.bottombar === false, now: options.now });
+      this._statusline = mountStatusline(this.context, statusEl, { locale: options.locale, marketStatus: barless, now: options.now });
       this._statusline.setSymbol(this._symbol, this._exchange, this._interval);
       if (options.account !== undefined) {
         const summary = mountAccountSummary(this.context, statusEl, { source: options.account, locale: options.locale });
@@ -779,8 +788,7 @@ class WidgetImpl implements Widget {
         onAlerts: (anchor) => this._openAlerts(anchor),
         onWatchlist: this._docked('watchlist') ? () => this._dock?.toggle('watchlist') : undefined,
         onNews: this._docked('news') ? () => this._dock?.toggle('news') : undefined,
-        // Bottom bar hook: Go to lives in the bottom bar while there is one.
-        onGoTo: options.bottombar === false ? (anchor) => this._openGoTo(anchor) : undefined,
+        onGoTo: barless ? (anchor) => this._openGoTo(anchor) : undefined,
         layouts: this._layouts?.controller ?? undefined, onLayouts: (anchor) => this._layouts?.open(anchor),
         settingsAvailable: () => widgetDialog('settings') !== null,
         indicatorsAvailable: () => widgetDialog('indicatorPicker') !== null,
@@ -988,7 +996,7 @@ class WidgetImpl implements Widget {
     if (this._destroyed || timeBuckets(this._interval) === null) return false;
     if (this._goToPanel?.isOpen()) { this._goToPanel.el.focus(); return true; }
     let mine = 0;
-    this._goToPanel = openDateNavigation(this.context, anchor, {
+    this._goToPanel = openDateNavigation(GRID_BAR_CHARTS.get(this._opts)?.(this.context) ?? this.context, anchor, {
       navigate: target => {
         const work = this.goTo(target);
         mine = this._navigation;

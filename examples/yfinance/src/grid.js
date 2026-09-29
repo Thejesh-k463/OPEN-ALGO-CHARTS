@@ -10,6 +10,7 @@ import {
   GRID_INTERVALS, GRID_PRESET_LABELS, gridFeeds, presetGlyph, takeGridHandoff, readGridFile, gridDocument,
 } from './grid-view.js';
 import { THEME_KEY } from './ui.js';
+import { sessionCalendarFor } from './ticks.js';
 import { referenceWatchlists, referenceQuotes, referenceNewsFeed } from './market-panels.js';
 
 const PERSIST = 'yfinance-grid';
@@ -42,8 +43,12 @@ export function initGridView(doc = document) {
     document: doc, feed: gridFeeds({ ready }), symbol: 'AAPL', exchange: '', interval: '1d', intervals: GRID_INTERVALS,
     theme, preset: '2x2', persist: PERSIST, links: { crosshair: true, viewport: true },
     // The grid's own bar: layouts up to sixteen charts, maximize, link groups
-    // and one picture of every chart. The page's bar keeps only the file.
-    toolbar: true,
+    // and one picture of every chart. The page's bar keeps only the file. The
+    // bar under the charts acts on the active one.
+    toolbar: true, bottombar: true,
+    // Each chart's venue hours, as on the main page: the bar under the charts
+    // says whether the active chart's market is open, and sizes its ranges in sessions.
+    sessionCalendar: ({ symbol }) => sessionCalendarFor(symbol),
     // Touch devices get the auto rule in each chart (compact in a phone-sized
     // cell, desktop in a tablet-sized one); a mouse keeps the desktop bar even
     // when a chart in a four-way split is narrow.

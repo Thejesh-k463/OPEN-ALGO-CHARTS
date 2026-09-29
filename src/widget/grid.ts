@@ -32,19 +32,24 @@
  * - **Maximizing is a view, not a layout.** It shows the active chart alone
  *   the way the compact width does, keeps every other chart alive behind it,
  *   and is not saved: a desk reopens as the grid it is.
+ * - **The grid's chrome is the host's choice.** The bar over the charts and
+ *   the one under them are off unless asked for, so a host with controls of
+ *   its own keeps its page as it was, and each chart keeps its own Go to and
+ *   market status until a bar under the grid takes them over.
  */
 import type { ChartTheme, DataFeed, DataVariant, LinkChart, LinkOptions, ResolvedLinkOptions } from 'openalgo-charts';
 import type { WorkspaceChartState, WorkspacePane, WorkspacePayload } from 'openalgo-charts/workspace';
 import type { DrawingsDocument } from 'openalgo-charts/draw';
 import {
   WidgetBus, WidgetStorage, createOverlayStack, createTipController, h,
-  type AsyncStorageLike, type OverlayStack, type StorageLike, type TipController,
+  type AsyncStorageLike, type OverlayOptions, type OverlayStack, type StorageLike, type TipController, type WidgetContext,
 } from './context';
 import { defaultWidgetStore } from './storage';
+import { mountBottombar, type BottombarHandle } from './bottombar';
 import { widgetText } from './localization';
 import { applyTokens, widgetTokens, TOKEN_PREFIX, WIDGET_FONT, type WidgetThemeName } from './tokens';
 import { captureName, type MenuRow } from './topbar';
-import { createWidget, resolveTheme, SAVE_DEBOUNCE_MS, type Widget, type WidgetOptions } from './widget';
+import { GRID_BAR_CHARTS, createWidget, resolveTheme, SAVE_DEBOUNCE_MS, type Widget, type WidgetOptions } from './widget';
 import { cellDrawingStore, checkWorkspace, readChartDrawings, type ChartDrawings } from './grid-payload';
 import { CHART_GRID_LAYOUTS, focusSlot, isChartGridLayout, type ChartGridLayoutId } from './grid-layouts';
 import {
@@ -86,6 +91,14 @@ export interface ChartGridOptions extends Omit<WidgetOptions, 'persist' | 'stora
    * host with its own controls keeps its page as it was.
    */
   toolbar?: boolean;
+  /**
+   * One bottom bar under the grid, acting on the active chart: preset ranges,
+   * Go to, the market status, the clock and the price scale toggles (since
+   * 2.5.10). The charts then leave Go to out of their own bars and the market
+   * status off their status lines. Default false, as for `toolbar`: each
+   * chart keeps both.
+   */
+  bottombar?: boolean;
   /**
    * The layouts the bar's picker offers, in its order, as `intervals` lists
    * the intervals beside `interval`. Default: every `CHART_GRID_LAYOUTS`
@@ -293,7 +306,8 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   // so cells keep desktop chrome unless the host asks for touch controls.
   // Each chart's capture menu offers the whole grid beside its own picture.
   Object.assign(cellOptions, { document: doc, mobile: options.mobile ?? 'never', captureRows: () => captureRows() });
-  // Bottom bar hook: a cell has no bar of its own; the grid's one bar acts on the focused cell.
+  // A chart has no bottom bar of its own; the grid's one bar, when it has
+  // one, acts on the active chart.
   cellOptions.bottombar = false;
   // Layouts: a chart never saves a layout of its own inside a grid. The
   // `workspaces` store still gives every picker its templates, and a
@@ -356,7 +370,9 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   const body = h(doc, 'div', 'oac-grid__cells');
   tabs.hidden = true;
   const barEl = options.toolbar === true ? h(doc, 'div') : null;
-  root.append(...(barEl === null ? [] : [barEl]), tabs, body);
+  // The bottom bar's rules are scoped under `.oac-widget`, like every piece of the widget's chrome.
+  const footEl = options.bottombar === true ? h(doc, 'div', 'oac-widget oac-grid__foot') : null;
+  root.append(...(barEl === null ? [] : [barEl]), tabs, body, ...(footEl === null ? [] : [footEl]));
   /**
    * The grid's own menus hang over every chart, so they live in a layer over
    * the whole grid rather than in any one widget. Made on first use: a grid
@@ -410,10 +426,19 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   const paintTheme = (): void => {
     const t = resolveTheme(theme);
     root.dataset.theme = t.name;
-    if (chromeLayer !== null) chromeLayer.el.dataset.theme = t.name;
-    if (barEl !== null) barEl.dataset.theme = t.name;
+    for (const el of [chromeLayer?.el, barEl, footEl]) if (el != null) el.dataset.theme = t.name;
     applyTokens(root, widgetTokens(t.theme, t.name));
   };
+  /**
+   * A chart's context over the grid's own layer: a panel the grid's chrome
+   * opens for a chart (the go-to panel) hangs over the whole grid, next to
+   * the control that opened it, where one small chart would clip it. One
+   * opened with no anchor hangs from `anchor`.
+   */
+  const overGrid = (ctx: WidgetContext, anchor?: () => HTMLElement | null): WidgetContext => Object.create(ctx, {
+    root: { value: chrome().el },
+    openOverlay: { value: (el: HTMLElement, o: OverlayOptions = {}) => chrome().overlays.open(el, { ...o, anchor: o.anchor ?? anchor?.() ?? undefined }) },
+  }) as WidgetContext;
 
   // ── focus ──────────────────────────────────────────────────────────────
   /**
@@ -678,6 +703,8 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
       variant: source.variant, chartType: source.chartType, keyboardRoute: () => route(cell),
       feed: typeof feed === 'function' ? feed({ id, historyPeriod }) : feed, drawingStore: cellDrawingStore(id, docs),
     };
+    // The bar under the grid carries this chart's Go to, which opens over the grid from that bar.
+    if (footEl !== null) GRID_BAR_CHARTS.set(chartOptions, ctx => overGrid(ctx, () => footEl.querySelector<HTMLElement>('.oac-bottombar__goto')));
     try {
       cell.widget = createWidget(element, chartOptions);
     } catch (error) {
@@ -937,6 +964,7 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
     capture: { blocked: captureBlocked, download: downloadAll, copy: copyAll, canCopy },
   };
   let bar: GridBarHandle | null = null;
+  let foot: BottombarHandle | null = null;
   let ready: Promise<void> = Promise.resolve();
 
   const grid: ChartGrid = {
@@ -1185,6 +1213,8 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
       storage.close();
       destroyed = true;
       for (const off of offs.splice(0)) off();
+      // Before the overlays: the bar closes its zone menu there.
+      foot?.destroy();
       chromeLayer?.overlays.destroy();
       chromeLayer?.tips.destroy();
       bar?.destroy();
@@ -1355,6 +1385,17 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
         grid.active().widget.context.toast(widgetText(text, 'The saved layout could not be restored: {error}', { error: error instanceof Error ? error.message : String(error) }), 'error');
       } finally { root.style.visibility = ''; }
     });
+  }
+
+  // ── chrome, over the charts the grid opened with ─────────────────────
+  if (footEl !== null) {
+    const { tips, overlays } = chrome();
+    const strip = footEl.appendChild(h(doc, 'div'));
+    foot = mountBottombar({
+      document: doc, locale: options.locale, translate: options.translate, tips, openOverlay: overlays.open,
+      status: (message, kind) => active?.widget.context.status(message, kind),
+    }, strip, { target: () => active?.widget ?? null, ranges: options.ranges, now: options.now, onGoTo: () => active?.widget.openDateNavigation() });
+    offs.push(bus.on('active', () => foot?.refresh()));
   }
   measure();
   return grid;
