@@ -288,6 +288,17 @@ describe('layouts controller: opening and saving', () => {
     expect(controller.state()).toMatchObject({ layoutId: null, dirty: false, revision: 3 });
   });
 
+  it('hands reload() a copy of the catalog: a caller trimming the list leaves the held layout as it was', async () => {
+    const { controller, fake } = setup();
+    const doc = await controller.saveAs('Morning');
+    const catalog = await controller.reload();
+    catalog.workspaces.length = 0;
+    expect(controller.state().catalog?.workspaces.map(item => item.id)).toEqual([doc.id]);
+    fake.edit('TCS');
+    await controller.save();
+    expect(controller.state()).toMatchObject({ conflict: false, dirty: false, error: null });
+  });
+
   it('renames and duplicates without touching the held layout', async () => {
     const { controller, repo } = setup();
     const doc = await controller.saveAs('Morning');
@@ -737,6 +748,110 @@ describe('layouts controller: dirty state and autosave', () => {
     await controller.flush();
     expect(writes).toHaveBeenCalledTimes(2);
     expect((await repo.load()).workspaces[0].panes[0].symbol).toBe('SBIN');
+  });
+
+  it('resumes a paused autosave after a reload, without waiting for another change', async () => {
+    vi.useFakeTimers();
+    const { controller, fake, repo, failWrites } = setup({ autosaveDelay: 500 });
+    await controller.saveAs('Morning');
+    await controller.setAutosave(true);
+    failWrites(new Error('quota exceeded'));
+    fake.edit('TCS');
+    await vi.advanceTimersByTimeAsync(500);
+    await controller.flush();
+    expect(controller.state()).toMatchObject({ autosave: 'failed', dirty: true });
+    failWrites(null);
+    await controller.reload();
+    // Pending means a write is on its way: the next queued operation runs after it.
+    await controller.reload();
+    expect((await repo.load()).workspaces[0].panes[0].symbol).toBe('TCS');
+    expect(controller.state()).toMatchObject({ autosave: 'saved', dirty: false, error: null });
+  });
+
+  it('resumes a paused autosave once any write goes through again', async () => {
+    vi.useFakeTimers();
+    const { controller, fake, repo, failWrites } = setup({ autosaveDelay: 500 });
+    await controller.saveAs('Morning');
+    const spare = await controller.duplicate('layout-1', 'Spare');
+    await controller.setAutosave(true);
+    failWrites(new Error('quota exceeded'));
+    fake.edit('TCS');
+    await vi.advanceTimersByTimeAsync(500);
+    await controller.flush();
+    expect(controller.state()).toMatchObject({ autosave: 'failed', dirty: true });
+    failWrites(null);
+    // Renaming another layout proves the store takes writes again. No change follows and nothing is flushed.
+    await controller.rename(spare.id, 'Spare, renamed');
+    await vi.waitFor(async () => expect((await repo.load()).workspaces[0].panes[0].symbol).toBe('TCS'));
+    expect(controller.state()).toMatchObject({ autosave: 'saved', dirty: false });
+  });
+
+  it('saves the unsaved change when another control on the page turns autosave on', async () => {
+    const { controller, fake, repo } = setup({ autosaveDelay: 60_000 });
+    await controller.saveAs('Morning');
+    fake.edit('TCS');
+    await controller.flush();
+    expect(controller.state()).toMatchObject({ dirty: true, autosave: 'off' });
+    const store: WorkspaceStore = repo;
+    await store.setAutosave(true);
+    // No change follows and nothing is flushed: the commit the controller hears queues the write.
+    await vi.waitFor(async () => expect((await repo.load()).workspaces[0].panes[0].symbol).toBe('TCS'));
+    expect(controller.state()).toMatchObject({ dirty: false, autosave: 'saved' });
+  });
+
+  it('refuses to open another layout when the change waiting for the layout being left cannot be saved', async () => {
+    const { controller, fake, repo, failWrites } = setup({ autosaveDelay: 60_000 });
+    const first = await controller.saveAs('First');
+    fake.edit('HDFCBANK');
+    const second = await controller.saveAs('Second');
+    await controller.setAutosave(true);
+    fake.edit('WIPRO');
+    // The menu sees nothing unsaved yet: the change is still waiting for the quiet period.
+    expect(controller.state()).toMatchObject({ dirty: false, autosave: 'pending' });
+    failWrites(new Error('quota exceeded'));
+    await expect(controller.open(first.id)).rejects.toThrow('quota exceeded');
+    // The change is still on the chart, and the menu is told why it was not saved.
+    expect(fake.symbol()).toBe('WIPRO');
+    expect(controller.state()).toMatchObject({ layoutId: second.id, dirty: true, autosave: 'failed', error: new Error('quota exceeded') });
+    failWrites(null);
+    expect((await repo.load()).activeWorkspaceId).toBe(second.id);
+    // Asked again, the user has been told: the layout opens and the change is left behind.
+    expect(await controller.open(first.id)).toEqual({ applied: true });
+    expect(fake.symbol()).toBe('INFY');
+    expect((await repo.load()).workspaces.find(doc => doc.id === second.id)?.panes[0].symbol).toBe('HDFCBANK');
+  });
+
+  it('refuses to open another layout when the change waiting for the layout being left meets another tab\'s save', async () => {
+    const { controller, fake, repo, other } = setup({ autosaveDelay: 60_000 });
+    const first = await controller.saveAs('First');
+    fake.edit('HDFCBANK');
+    const second = await controller.saveAs('Second');
+    await controller.setAutosave(true);
+    await other.saveWorkspace(second.id, payload('SBIN'));
+    fake.edit('WIPRO');
+    await expect(controller.open(first.id)).rejects.toEqual(conflict);
+    expect(fake.symbol()).toBe('WIPRO');
+    expect(controller.state()).toMatchObject({ layoutId: second.id, conflict: true, dirty: true, autosave: 'failed' });
+    expect((await repo.load()).workspaces.find(doc => doc.id === second.id)?.panes[0].symbol).toBe('SBIN');
+  });
+
+  it('takes the default quiet period for a delay that is not a finite number', async () => {
+    for (const autosaveDelay of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      vi.useFakeTimers();
+      const { controller, fake, repo } = setup({ autosaveDelay });
+      await controller.saveAs('Morning');
+      await controller.setAutosave(true);
+      await vi.advanceTimersByTimeAsync(0);
+      const writes = vi.spyOn(repo, 'saveWorkspace');
+      fake.edit('TCS');
+      await vi.advanceTimersByTimeAsync(999);
+      expect(writes).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await controller.flush();
+      expect(writes).toHaveBeenCalledTimes(1);
+      controller.destroy();
+      vi.useRealTimers();
+    }
   });
 
   it('never autosaves over a layout another tab saved: the conflict holds until the user chooses', async () => {

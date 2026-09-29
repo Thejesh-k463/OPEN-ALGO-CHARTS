@@ -37,7 +37,8 @@ export interface LayoutTarget {
  * `off` while the catalog's autosave preference is off or no layout is held;
  * otherwise `pending` (a change waits for the quiet period), `saving`,
  * `saved` (the stored layout matches the target) or `failed` (the last write
- * of this layout failed, or it conflicts; autosave waits for the user).
+ * of this layout failed, or it conflicts; autosave waits for a save, a
+ * reload or, for a conflict, the user's choice).
  */
 export type LayoutAutosaveStatus = 'off' | 'pending' | 'saving' | 'saved' | 'failed';
 
@@ -72,7 +73,11 @@ export interface LayoutsState {
 }
 
 export interface LayoutsControllerOptions {
-  /** Quiet time in ms after the last change before the target is compared with its layout and autosaved. Default 1000. */
+  /**
+   * Quiet time in ms after the last change before the target is compared
+   * with its layout and autosaved. Default 1000; a value that is not a
+   * finite number takes the default.
+   */
   autosaveDelay?: number;
 }
 
@@ -91,17 +96,20 @@ export interface LayoutsController {
   /** Called after the state changes. Returns the unsubscribe. */
   subscribe(listener: (state: LayoutsState) => void): () => void;
   /**
-   * Read the catalog again. The target is not touched. After a page load,
-   * `open(catalog.activeWorkspaceId)` continues on the layout that was active.
+   * Read the catalog again, and resolve with a copy of it. The target is not
+   * touched. A paused autosave resumes, unless the held layout conflicts.
+   * After a page load, `open(catalog.activeWorkspaceId)` continues on the
+   * layout that was active.
    */
   reload(): Promise<WorkspaceCatalog>;
   /**
    * Show a saved layout and record it as active and recent, unless it already
    * is. A change still waiting for the quiet period is autosaved into the
-   * layout being left first. A refused apply resolves with its report and
-   * leaves the target and the held layout as they were; when the store
-   * refuses the record, the previous layout goes back on the target and this
-   * rejects.
+   * layout being left first; when that write fails this rejects and changes
+   * nothing, and opening again goes ahead without it. A refused apply
+   * resolves with its report and leaves the target and the held layout as
+   * they were; when the store refuses the record, the previous layout goes
+   * back on the target and this rejects.
    */
   open(id: string): Promise<LayoutApplyReport>;
   /** Write the target into the held layout. Rejects when no layout is held, and while it conflicts. */
@@ -125,6 +133,8 @@ export interface LayoutsController {
 
 /** Attempts after the first when the catalog moved but the subject did not: bounds a burst of other writers. */
 const RETRIES = 3;
+/** The longest delay a timer keeps: past it, as with NaN, a timer fires at once, the opposite of a quiet period. */
+const MAX_DELAY = 2147483647;
 const noop = (): void => {};
 // Matched by name: a class check would load the workspace tier into the widget.
 const isConflict = (error: unknown): boolean => error instanceof Error && error.name === 'WorkspaceConflictError';
@@ -137,7 +147,7 @@ const payloadOf = (doc: WorkspaceDocument): WorkspacePayload =>
 
 /** Drive `target`'s saved layouts through `store`. Call `reload()` or any operation to load the catalog. */
 export function createLayoutsController(store: WorkspaceStore, target: LayoutTarget, options: LayoutsControllerOptions = {}): LayoutsController {
-  const delay = Math.max(0, options.autosaveDelay ?? 1000);
+  const delay = Number.isFinite(options.autosaveDelay) ? Math.min(Math.max(0, options.autosaveDelay as number), MAX_DELAY) : 1000;
   let view: WorkspaceCatalog | null = null;
   let held: number | null = null;
   let layoutId: string | null = null;
@@ -199,13 +209,6 @@ export function createLayoutsController(store: WorkspaceStore, target: LayoutTar
     held = view.revision;
     return true;
   };
-
-  const offStore = store.subscribe(catalog => {
-    if (destroyed || (view !== null && catalog.revision <= view.revision)) return;
-    view = catalog;
-    settle();
-    emit();
-  });
 
   const detach = (): void => {
     layoutId = null;
@@ -337,11 +340,13 @@ export function createLayoutsController(store: WorkspaceStore, target: LayoutTar
     return result.then(value => {
       ops--;
       error = null;
+      resume();
       emit();
       return value;
     }, (reason: unknown) => {
       ops--;
       fail(reason);
+      resume();
       emit();
       throw reason;
     });
@@ -375,6 +380,16 @@ export function createLayoutsController(store: WorkspaceStore, target: LayoutTar
     passQueued = true;
     queue = queue.then(pass).then(noop, noop);
   };
+  /**
+   * Queue the autosave an unsaved target is owed when no change will: an
+   * operation has cleared a failure (a reload, or any write that went
+   * through) or a conflict, or the preference came on elsewhere. Without it
+   * the status reads `pending` with nothing to run it. A write of the held
+   * layout in flight settles `dirty` itself when it lands.
+   */
+  function resume(): void {
+    if (view?.autosave && layoutId !== null && dirty && !conflict && !failed && !saving && timer === undefined) queuePass();
+  }
   /** Run a comparison that is waiting, now: the change belongs to the layout the target still holds. */
   const due = async (): Promise<void> => {
     if (timer === undefined && !passQueued) return;
@@ -393,6 +408,13 @@ export function createLayoutsController(store: WorkspaceStore, target: LayoutTar
     emit();
   };
   const offTarget = target.subscribe?.(changed);
+  const offStore = store.subscribe(catalog => {
+    if (destroyed || (view !== null && catalog.revision <= view.revision)) return;
+    view = catalog;
+    settle();
+    resume();
+    emit();
+  });
 
   return {
     store,
@@ -401,9 +423,15 @@ export function createLayoutsController(store: WorkspaceStore, target: LayoutTar
       listeners.add(listener);
       return () => { listeners.delete(listener); };
     },
-    reload: () => op(load),
+    // A detached copy: a caller sorting or trimming the list cannot reach the one held here.
+    reload: () => op(async () => JSON.parse(JSON.stringify(await load())) as WorkspaceCatalog),
     open: id => op(async () => {
+      const paused = failed;
       await due();
+      // The change could not be saved into the layout being left, so it stays on
+      // the target and the user hears why, instead of losing it to the next
+      // layout unseen. Opening again goes ahead: autosave is paused by then.
+      if (failed && !paused) throw error;
       // The newest version is the one shown: a layout another tab saved opens as saved there.
       await load();
       const doc = find(view, id);
