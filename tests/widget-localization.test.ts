@@ -36,6 +36,13 @@ describe('widget translation contract', () => {
       'Enter an expiry date and time in UTC': 'Introduzca una fecha UTC',
       'Expires {time} UTC': 'Caduca {time} UTC',
       'Last fired {time} UTC': 'Activada {time} UTC',
+      // Retired in 2.5.10 for the active wording, still valid in a typed catalog until 3.0.0.
+      'Armed': 'Armada',
+      'Keep tool armed': 'Mantener la herramienta',
+      'On: the tool stays armed after each drawing': 'Activado',
+      'Tools stay armed after each drawing': 'Las herramientas siguen',
+      '{group}: chevron for the rest. Double-click keeps it armed': '{group}',
+      '{name} stays armed until Escape': '{name}',
     };
     const translate: WidgetTranslator = key => messages[key];
     expect(widgetText({ translate }, 'Expires {time} UTC', { time: '2099-01-02 03:04' })).toBe('Caduca 2099-01-02 03:04 UTC');
