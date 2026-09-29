@@ -1,8 +1,8 @@
 # Chart linking
 
-*When to read this: driving a grid of charts as one workspace, so hovering, panning or changing the symbol on one moves the others.*
+*When to read this: driving a grid of charts as one workspace, so hovering, panning or changing the symbol, interval or chart type on one moves the others, and drawings made on one appear on the others; and saving those links, in named groups, in a workspace.*
 
-Source of truth: `src/link/group.ts`, `src/link/appearance.ts`, `src/link/align.ts`, `src/link/crosshair.ts`, and `src/draw/drawing-link.ts`. General linking ships in the **base** bundle: `import { createLinkGroup } from 'openalgo-charts'`. Drawing synchronization is separate in `openalgo-charts/draw`.
+Source of truth: `src/link/group.ts`, `src/link/appearance.ts`, `src/link/drawings.ts`, `src/link/align.ts`, `src/link/crosshair.ts`, `src/draw/drawing-link.ts`, and for the saved form `src/workspace/documents.ts`. General linking ships in the **base** bundle: `import { createLinkGroup } from 'openalgo-charts'`. The drawings channel's switch and membership are in the base group; the drawing synchronization itself is in `openalgo-charts/draw`.
 
 Headless in the same sense as `ReplayController` and `DrawingController`. The group owns the sync; the link badge, the colour chips and the menu of switches are the host's UI.
 
@@ -59,7 +59,9 @@ Inside the covered range with no bar at exactly that second, `whenMissing` decid
 | `viewport` | `boolean` | `true` | Panning or zooming one moves the others to the same wall-clock window. |
 | `symbol` | `boolean` | `false` | Off by default: symbol sync needs host cooperation (see below). |
 | `interval` | `boolean` | `false` | Host-owned timeframe synchronization through `onInterval`. |
+| `chartType` | `boolean` | `false` | Host-owned chart type (candles, bars, a line) through `onChartType`. |
 | `appearance` | `boolean` | `false` | Supported visual settings through a `LinkAppearanceAdapter`. |
+| `drawings` | `boolean` | `false` | Drawing sharing through each member's `LinkDrawingsAdapter` (see the drawings channel below). |
 | `whenMissing` | `'nearest' \| 'hide'` | `'nearest'` | What a follower does with an instant it has no bar for. |
 
 Each channel switches on its own because a user routinely wants one without the others: mirror the cursor across four timeframes but keep each zoom, or slave every chart's instrument but let each keep its own window.
@@ -78,6 +80,8 @@ Each channel switches on its own because a user routinely wants one without the 
 | `symbol` | `() => string \| null` | The instrument the group has agreed on, `null` if nobody declared one. |
 | `setInterval` | `(chart: LinkChart, interval: string) => void` | Report an interval selection. |
 | `interval` | `() => string \| null` | Latest declared interval. |
+| `setChartType` | `(chart: LinkChart, chartType: string) => void` | Report a chart type selection; the imperative twin of emitting `'chartType'`. |
+| `chartType` | `() => string \| null` | Latest declared chart type, even while the channel is off. |
 | `syncAppearance` | `(chart: LinkChart) => void` | Read and broadcast the member's visual settings when appearance is enabled. |
 | `crosshairIndex` | `(chart: LinkChart) => number \| null` | That member's **own** logical index its linked crosshair is marking, or `null`. |
 | `destroy` | `() => void` | No listeners, no linked crosshairs, no references. |
@@ -94,7 +98,22 @@ map it through that chart's `dataLayer.indexToTime(i)` and read its own bar.
 
 - Turning `crosshair` **off** clears the linked lines immediately, rather than leaving the last one frozen on every follower.
 - Turning `symbol` **on** makes the group agree on the instrument it already knows, because a switch that only took effect on the *next* change would leave a linked grid visibly unlinked.
+- Turning `interval` or `chartType` **on** converges the same way, on the latest selection.
+- Turning `drawings` **on** calls `join()` on every member's adapter; turning it off calls `leave()`.
 - Turning `viewport` on does nothing until the next pan or zoom. Nothing in the group says whose window the others should have adopted.
+
+`LinkMemberOptions`, the second argument of `add`:
+
+| Field | Type | Notes |
+|---|---|---|
+| `symbol` | `string` | The instrument the chart shows now. |
+| `onSymbol` | `(symbol, chart) => void` | Load it. Omit to make the member follow nobody. |
+| `interval` | `string` | The interval the chart shows now. |
+| `onInterval` | `(interval, chart) => boolean \| void` | Apply synchronously; `false` refuses. |
+| `chartType` | `string` | The chart type the chart shows now (a registered chart type id). |
+| `onChartType` | `(chartType, chart) => boolean \| void` | Apply synchronously; `false` refuses a type the chart cannot draw. |
+| `appearance` | `LinkAppearanceAdapter` | `read()` and `apply(values)`. |
+| `drawings` | `LinkDrawingsAdapter` | `join()` and `leave()`. Without one the member never shares drawings. |
 
 ## Symbol sync is a partnership
 
@@ -142,6 +161,7 @@ Everything comes off the chart's own event bus, so a host can drive it from anyw
 | `pan`, `zoom` | viewport |
 | `symbol` | symbol (host-emitted; the core never emits it) |
 | `interval` | timeframe (host-emitted) |
+| `chartType` | chart type (host-emitted; payload a string or `{ chartType }`) |
 | `style:change` | appearance (emitted by `applyChartSettings`) |
 | `destroy` | pruning |
 
@@ -168,6 +188,37 @@ load. Return `false` for an unsupported interval; this preserves the member's
 previous interval. Async fetching stays with the host and its cancellation rules.
 Callbacks cannot recursively overwrite the leader's interval by echoing a token.
 Removing or destroying a member releases the interval listener with other links.
+
+## Chart type linking (since 2.5.10)
+
+`createLinkGroup({ chartType: true })` adds the chart type channel, off by
+default, and it works exactly like the interval channel: supply the member's
+current `chartType` and an `onChartType(chartType, chart)` callback to `add`,
+report changes with `group.setChartType(chart, id)` or
+`chart.emit('chartType', { chartType: id })`, and read `group.chartType()`.
+The core never emits `'chartType'`; the host reports it, as it does an interval.
+
+```ts
+import { createLinkGroup, registeredChartTypes } from 'openalgo-charts';
+
+const group = createLinkGroup({ chartType: true });
+for (const { chart, series } of cells) {
+  group.add(chart, {
+    chartType: chart.seriesType(series) ?? undefined,
+    onChartType: id => registeredChartTypes().includes(id)
+      && chart.setSeriesType(series, id),
+  });
+}
+chartA.setSeriesType(seriesA, 'bar');
+group.setChartType(chartA, 'bar');   // every other member now draws bars
+```
+
+Return `false` from `onChartType` for a type the chart cannot draw; the member
+keeps its own and is asked again on the next change. Colours, scales and the
+status line are the appearance channel, never this one, so candles linked to
+candles keep each chart's own colours unless appearance is on too. The widget
+reports its own change on its bus as `'layout'` with `reason: 'chartType'`; a
+grid forwards that to `setChartType`.
 
 ## Appearance linking
 
@@ -198,6 +249,42 @@ watermark text, instrument identity, interval, timezone, navigation, studies,
 event feeds, alerts and trading. No chart data or series type crosses. Each peer
 receives a separate record; callbacks cannot echo back through the group guard.
 Enabling appearance waits for the next edit or explicit notification.
+
+## The drawings channel (since 2.5.10)
+
+`LinkOptions.drawings` (default false) is the switch, and each member brings a
+`LinkDrawingsAdapter` with `join()` and `leave()`. The base group decides **who**
+shares: the members of this group, while the switch is on. The draw tier's
+`DrawingLinkGroup` decides **which** drawings cross and moves them, so no drawing
+code enters the base bundle. Use one `DrawingLinkGroup` per link group:
+
+```ts
+import { createLinkGroup } from 'openalgo-charts';
+import { createDrawingLinkGroup } from 'openalgo-charts/draw';
+
+const group = createLinkGroup({ symbol: true, drawings: true });
+const sharing = createDrawingLinkGroup({ enabled: true });   // the group's switch rules
+group.add(chart, {
+  symbol, onSymbol,
+  drawings: {
+    join: () => sharing.add(chart, controller),
+    leave: () => sharing.remove(chart),
+  },
+});
+```
+
+The group calls `join` when the member is in it and the switch is on, and `leave`
+when either stops being true: the switch goes off, `remove`, a replaced adapter
+(the old one leaves before the new one joins), the chart's `destroy`, or
+`group.destroy()`. Calls alternate; a member is never joined twice.
+
+The rule, which a host can state to its users as is:
+
+- **Same instrument only.** Drawings cross only between charts showing the same symbol and exchange. A chart on another instrument neither sends nor receives, whatever its group.
+- **Price pane, data space.** A drawing pinned to the viewport stays on its chart.
+- **Drawn while on, and present.** A drawing crosses to the charts that are on its instrument when it is drawn, and from then on every edit and the deletion reach each of them. Drawings already on a chart when the switch goes on stay private until `sharing.share(chart, ids?)`. A chart that arrives on the instrument later, or joins the group later, gets a drawing shared without it only when the host shares it again.
+- **An instrument change keeps drawings with their instrument.** With drawings kept per instrument (`InstrumentDrawings`, the widget's default), a chart leaving an instrument keeps its copies in that instrument's saved document and shows the new instrument's own. Coming back, the copies reconnect and take the state the charts still on it hold, a deletion included. With symbol linking on too, the whole group moves together and keeps sharing on each instrument it visits. Build the `InstrumentDrawings` before joining, so it swaps the document before the sharer sees the new instrument.
+- **Leaving keeps what arrived.** Switching off or leaving the group stops the traffic; copies already made stay, private to each chart.
 
 ## Drawing linking (draw tier)
 
@@ -269,3 +356,34 @@ existing slots, leaving unrelated local drawings in place.
 These methods are used by the group. Cancellation, context change, unlink and
 destruction clear previews. The channel never copies alerts, orders or other
 primitives, and importing the base link group never imports the draw tier.
+
+## Saving links in a workspace
+
+The chart type, drawings and missing-bar flags, named groups and `linkGroup` are since 2.5.10.
+
+The workspace tier (`openalgo-charts/workspace`) saves the links as
+`WorkspacePayload.sync`, a `WorkspaceSync`. Every field added since the first
+release is optional, so every document saved before reads, and writes back,
+unchanged, and a host that builds `sync` itself keeps compiling.
+
+| Type | Fields |
+|---|---|
+| `WorkspaceLinkChannels` | `crosshair`, `viewport`, `symbol`, `interval` (required booleans), optional `appearance`, `chartType`, `drawings` booleans and `whenMissing` (`'nearest' \| 'hide'`). Named as `LinkOptions` names them, so a group's flags open with `createLinkGroup(channels)`. |
+| `WorkspaceSync` | `WorkspaceLinkChannels` plus optional `groups: WorkspaceLinkGroup[]` (at most 16). |
+| `WorkspaceLinkGroup` | `WorkspaceLinkChannels` plus `id` (1 to 100 characters, unique) and `name` (1 to 120). |
+| `WorkspacePane.linkGroup` | Optional: the `id` of the group the chart is in. |
+
+How a reader applies them:
+
+- **No `groups`**: the whole desk is one group on the flags beside it. Every workspace saved before groups reads this way.
+- **`groups` present**, even empty: each chart is in the group its `linkGroup` names, or in none when it has no `linkGroup`, and each group links on its own flags. A group with no chart yet is kept.
+- A `linkGroup` naming an undeclared group, or any `linkGroup` while no groups are declared, refuses the document (`WorkspaceDocumentError`), since either would link that chart wrongly. So do duplicate group ids, a blank id or name, and non-boolean flags.
+- Absent optional flags read as the engine defaults (off, and `'nearest'`), and are not written back.
+
+Writing groups: a reader older than groups drops `groups` and `linkGroup` and
+applies the flags beside them to every chart. Turn a flag on there only when
+every chart can follow it together (for example, symbol only when all charts show
+one instrument); all off is always safe. Refuse, per group, a document whose
+symbol-linked group holds different instruments, or whose interval-linked group
+holds different intervals, as the grid does for the whole desk today: joining a
+linked group converges it, which would overwrite a chart saved on another.
