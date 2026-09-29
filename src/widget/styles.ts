@@ -317,6 +317,8 @@ export const WIDGET_CSS = `
 .oac-widget .oac-mobile-sheet__controls { grid-column: 1 / -1; display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid ${v('bd-soft')}; margin-bottom: 6px; }
 .oac-widget .oac-mobile-sheet__body small { display: block; color: ${v('faint')}; }
+/* A sheet row with a glyph (a chart type): the glyph sits on the middle of its label, not the baseline. */
+.oac-widget .oac-mobile-sheet .oac-mobile__action > .oac-glyph { vertical-align: middle; margin: -2px 8px 0 0; }
 .oac-widget .oac-mobile-results { width: min(360px, calc(100% - 16px)); max-height: min(50%, 360px); overflow: hidden;
   display: flex; flex-direction: column; background: ${v('panel')}; border: 1px solid ${v('bd')}; border-radius: 10px; box-shadow: ${v('shadow')}; }
 .oac-widget .oac-mobile-results__head { flex: none; display: flex; align-items: center; gap: 8px; min-height: 44px;

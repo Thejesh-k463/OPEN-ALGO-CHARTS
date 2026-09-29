@@ -211,10 +211,6 @@ export const DIALOG_CSS = `
 .oac-widget .oac-ctx__key { margin-left: 8px; color: ${v('faint')}; }
 .oac-widget .oac-ctx__hr { height: 1px; background: ${v('bd-soft')}; margin: 4px 6px; }
 
-/* A row of the phone layout's sheets with a glyph (a chart type): the sheet is a dialog, and the
-   glyph sits on the middle of its label rather than on the baseline. */
-.oac-widget .oac-mobile-sheet .oac-mobile__action > .oac-glyph { vertical-align: middle; margin: -2px 8px 0 0; }
-
 @container oac-widget (max-width: 720px) {
   .oac-widget .oac-settings__main { grid-template-columns: 1fr; }
   .oac-widget .oac-tabs--rail { flex-direction: row; overflow-x: auto; min-width: 0; padding: 0 0 6px; border-right: 0;
