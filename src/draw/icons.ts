@@ -532,10 +532,13 @@ export const CHROME_ICONS: Readonly<Record<string, string>> = {
   // layout glyph is the picker for one. The tiles of a particular layout
   // come from `layoutIconPath`, not from this registry.
   layout: 'M2 2 6 2 6 14 2 14zM10 2 14 2 14 6 10 6zM10 10 14 10 14 14 10 14z',
-  // A cell grows to fill the grid along its diagonal; fullscreen is the
-  // whole display, so its marks are the display's corners.
-  maximize: 'M9 7l5-5M10 2h4v4M7 9l-5 5M2 10v4h4',
-  restore: 'M14 2 9 7M9 3v4h4M2 14l5-5M3 9h4v4',
+  // A cell grows to fill the grid along its diagonal, and shrinks back to
+  // its centre; fullscreen is the whole display, so its marks are the
+  // display's corners. The heads are three units, as on the set's other
+  // arrows, and the two arrows of each glyph leave the centre clear, which
+  // is where maximize and restore differ.
+  maximize: 'M10 6 14 2M11 2h3v3M6 10 2 14M2 11v3h3',
+  restore: 'M13 3 9 7M12 7H9V4M3 13l4-4M4 9h3v3',
   fullscreen: 'M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4',
   'fullscreen-exit': 'M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4',
   // The channels a group of charts shares: two panes joined, a drawing by its
