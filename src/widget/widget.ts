@@ -759,7 +759,8 @@ class WidgetImpl implements Widget {
     (this.context as WidgetContextImpl).drawingTemplates = this.drawingTemplates ?? undefined;
     if (options.drawingToolbar ?? options.rail !== false) this._drawbar = mountDrawingToolbar(this.context, stage, { chart: chartEl, templates: this.drawingTemplates });
     // Bottom bar hook: with no bar, here or under a grid, Go to and the market status stay in the chart's own bars.
-    const barless = options.bottombar === false && !GRID_BAR_CHARTS.has(options);
+    const gridBar = GRID_BAR_CHARTS.has(options);
+    const barless = options.bottombar === false && !gridBar;
     if (options.statusline !== false) {
       this._statusline = mountStatusline(this.context, statusEl, { locale: options.locale, marketStatus: barless, now: options.now });
       this._statusline.setSymbol(this._symbol, this._exchange, this._interval);
@@ -817,7 +818,8 @@ class WidgetImpl implements Widget {
       onAlerts: (anchor) => this._openAlerts(anchor),
       onWatchlist: this._docked('watchlist') ? () => this._dock?.open('watchlist') : undefined,
       onNews: this._docked('news') ? () => this._dock?.open('news') : undefined,
-      onGoTo: (anchor) => this._openGoTo(anchor),
+      // A grid's bar shows on a phone too, so its Go to is the only one.
+      onGoTo: gridBar ? undefined : (anchor) => this._openGoTo(anchor),
       onProperties: (anchor) => this._openDialog('drawingProperties', anchor),
       onCapture: (anchor) => this._topbar?.openCapture(anchor),
       // Bottom bar hook: the More sheet stands in for the bar the phone layout hides.

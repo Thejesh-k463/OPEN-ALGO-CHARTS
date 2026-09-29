@@ -81,6 +81,22 @@ describe('chart grid bottom bar', () => {
     expect(cellRoot(grid, 0).querySelector('.oac-statusline__msg')?.textContent).not.toBe('');
   });
 
+  it('leaves Go to out of a phone chart More sheet as well, since the bar under the grid shows on a phone', async () => {
+    const sheetActions = async (bottombar: boolean): Promise<Array<string | undefined>> => {
+      const { grid } = makeGrid({ ...options, bottombar, mobile: 'always' });
+      await flush();
+      cellRoot(grid, 0).querySelector('[data-mobile-action="more"]')!.click();
+      const actions = cellRoot(grid, 0).querySelectorAll('.oac-mobile-sheet [data-mobile-action]').map(node => node.dataset.mobileAction);
+      grid.destroy();
+      return actions;
+    };
+    const plain = await sheetActions(false);
+    expect(plain).toContain('go-to');
+    const barred = await sheetActions(true);
+    expect(barred).toContain('alerts');
+    expect(barred).not.toContain('go-to');
+  });
+
   it('opens Go to over the whole grid, hanging from its own button, for the active chart', async () => {
     const { grid, root } = makeGrid({ ...options, bottombar: true });
     await flush();
