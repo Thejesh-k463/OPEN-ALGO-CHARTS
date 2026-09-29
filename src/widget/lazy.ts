@@ -2,17 +2,17 @@
  * The parts of the widget that load on first use.
  *
  * A plain widget never opens the shortcuts editor, the Layouts menu, the
- * indicator templates list or the chart data dialog, and never shows a
- * grid's bar or its menus, so none of them rides in the tier's own file: the
- * build writes each one beside it (rollup.config.js) and `import()` fetches
- * it the first time someone asks for it. Once a part has arrived it is used
- * at once, as if it had been bundled in; until then the request waits for
- * it. A load that fails is reported where the user asked, and forgotten, so
- * the next request tries again rather than failing for the rest of the
- * page's life.
+ * indicator templates list or the chart data dialog, never shows a grid's
+ * bar or its menus, and persists nothing to IndexedDB, so none of them rides
+ * in the tier's own file: the build writes each one beside it
+ * (rollup.config.js) and `import()` fetches it the first time it is needed.
+ * Once a part has arrived it is used at once, as if it had been bundled in;
+ * until then the request waits for it. A load that fails is reported where
+ * the user asked, and forgotten, so the next request tries again rather than
+ * failing for the rest of the page's life.
  *
- * Each part is declared beside the one control that opens it. The tier entry
- * exports none of this.
+ * Each part is declared beside the code that uses it. The tier entry exports
+ * none of this.
  */
 import { widgetText, type WidgetTranslationOptions } from './localization';
 
