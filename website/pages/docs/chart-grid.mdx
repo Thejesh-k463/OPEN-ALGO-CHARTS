@@ -86,8 +86,8 @@ the host's `translate` like any other widget text.
 
 `setPreset(id)` keeps the charts that still fit, in reading order and with their
 drawings, studies and data, destroys the rest and builds any new ones. In an uneven
-layout the active chart takes the large slot and the others keep their reading order
-around it. Weights reset to the layout's own, so a large chart beside a stack of three
+layout the active chart takes the large slot, even when it sat past the charts that
+fit, and the others keep their reading order around it. Weights reset to the layout's own, so a large chart beside a stack of three
 starts at two thirds of the width. An id outside the catalogue throws before anything
 changes.
 
@@ -107,7 +107,8 @@ widget's own buttons, menus, focus ring and themes:
   count, the current layout checked. The arrow keys walk the tiles (Up and Down move
   between rows), Home and End go to either end, Enter picks, and Escape closes and
   gives the focus back. A line under the tiles names the one under the pointer or the
-  focus. `layouts` limits and orders what the picker offers.
+  focus. `layouts` limits and orders what the picker offers; an empty list leaves the
+  Layout control out.
 - **Maximize** shows the active chart alone, and restores the grid when pressed again.
 - **Link** opens the link menu for the active chart (see Linking and link groups).
 - **Capture** downloads or copies one picture of every chart.
@@ -268,6 +269,9 @@ channels, and each pane names its group in `linkGroup`. The flat channels are th
 ones every chart can follow together: those of a group holding every chart, and all
 off otherwise, so a reader from before groups, which applies the flat channels to the
 whole desk, can neither refuse the desk nor pull one chart onto another's instrument.
+A group nobody named is written under the name it shows, `Group A` and on, because the
+schema needs one, and reads back as unnamed, so a desk that returns to one group
+holding every chart writes the flat channels again.
 
 With `persist`, the grid saves this payload after every change and restores it on
 the next construction. A layout, link, group, theme, active chart, instrument, swap or
@@ -312,7 +316,9 @@ narrower than 560 or shorter than 340 CSS px is therefore dense: its drawing rai
 its top bar keeps one row that scrolls sideways, the exchange and the less frequent
 buttons hide, and buttons with an icon drop their words. Drawing shortcuts still work,
 and maximizing a chart brings everything back. The grid rechecks density on every
-resize, splitter drag, layout change and maximize.
+resize, splitter drag, layout change and maximize. The rule is the cell's size, not the
+layout's name, so it applies to every layout: a two by two grid on a laptop screen
+under 700 px tall is dense too, where a full rail would show only part of its tools.
 
 A linked pan or crosshair across sixteen charts redraws every follower in the same
 frame. The grid's browser suite measures it, with the frame time, the script heap and
