@@ -269,7 +269,7 @@ export function setStayMode(on) {
   applyStay();
   refreshControls();
   const status = el('status');
-  if (status) status.textContent = prefs.stay ? 'tools stay armed after each drawing' : 'one drawing per pick';
+  if (status) status.textContent = prefs.stay ? 'tools stay active after each drawing' : 'one drawing per pick';
 }
 
 /**
@@ -384,7 +384,7 @@ function hold(tool) {
   setDrawLock(true);
   arm(tool);
   const status = el('status');
-  if (status) status.textContent = `${toolName(tool)} stays armed until Escape`;
+  if (status) status.textContent = `${toolName(tool)} stays active until Escape`;
 }
 
 function groupButton(g) {
@@ -395,7 +395,7 @@ function groupButton(g) {
     tip: () => ({
       title: toolName(lastOf(g)),
       chord: chordOf(lastOf(g)),
-      sub: g.title + ': chevron for the rest' + (prefs.stay ? '' : '. Double-click keeps it armed'),
+      sub: g.title + ': chevron for the rest' + (prefs.stay ? '' : '. Double-click keeps it active'),
       side: 'right',
     }),
     onClick: (e) => {
@@ -483,8 +483,8 @@ function controlsBlock() {
     cls: 'rail__btn--chrome',
     glyph: chromeGlyph('link'),
     tip: () => ({
-      title: 'Keep tool armed',
-      sub: prefs.stay ? 'On: the tool stays armed after each drawing' : 'Off: one drawing per pick',
+      title: 'Keep tool active',
+      sub: prefs.stay ? 'On: the tool stays active after each drawing' : 'Off: one drawing per pick',
       side: 'right',
     }),
     onClick: () => setStayMode(!prefs.stay),

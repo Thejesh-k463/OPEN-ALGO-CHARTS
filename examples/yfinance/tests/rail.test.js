@@ -267,7 +267,7 @@ describe('magnet and stay', () => {
 
   it('stay is a mode the toggle owns; the double-click hold is separate and Escape clears only the hold', () => {
     const d = setup();
-    const stay = railButtons(page).find((b) => b.getAttribute('aria-label') === 'Keep tool armed');
+    const stay = railButtons(page).find((b) => b.getAttribute('aria-label') === 'Keep tool active');
     expect(stayMode()).toBe(false);
     clickOn(stay);
     expect(stayMode()).toBe(true);
@@ -284,7 +284,7 @@ describe('magnet and stay', () => {
     clickOn(groupButton(page, 'lines'), { detail: 2 });
     expect(d.state.opts.stayInDrawingMode).toBe(true);
     expect(groupButton(page, 'lines').classList.contains('is-held')).toBe(true);
-    expect(page.status.textContent).toMatch(/stays armed/);
+    expect(page.status.textContent).toMatch(/stays active until Escape/);
     setDrawLock(false);
     expect(d.state.opts.stayInDrawingMode).toBe(false);
     expect(groupButton(page, 'lines').classList.contains('is-held')).toBe(false);
@@ -635,6 +635,33 @@ describe('tooltips', () => {
     vi.advanceTimersByTime(TIP_DWELL_MS);
     expect(tip.textContent).toContain('Magnet: weak');
     expect(magnet.getAttribute('aria-label')).toBe('Magnet: weak');
+    vi.useRealTimers();
+  });
+
+  it('say active, never armed, for the stay mode and the double-click hold', () => {
+    vi.useFakeTimers();
+    setup();
+    const said = [];
+    const tipText = (b) => {
+      pointer('pointerenter', b);
+      vi.advanceTimersByTime(TIP_DWELL_MS);
+      const text = page.doc.body.querySelector('.rail-tip').textContent;
+      pointer('pointerleave', b);
+      said.push(text);
+      return text;
+    };
+    const stay = railButtons(page).find((b) => (b.getAttribute('aria-label') || '').startsWith('Keep tool'));
+    expect(tipText(stay)).toContain('Keep tool active');
+    expect(tipText(groupButton(page, 'lines'))).toContain('Double-click keeps it active');
+    setStayMode(true);
+    said.push(page.status.textContent);
+    expect(page.status.textContent).toBe('tools stay active after each drawing');
+    expect(tipText(stay)).toContain('On: the tool stays active after each drawing');
+    setStayMode(false);
+    clickOn(groupButton(page, 'lines'), { detail: 2 });
+    said.push(page.status.textContent);
+    for (const text of said) expect(text).not.toMatch(/arm(ed|ing|s)?/i);
+    setDrawLock(false);
     vi.useRealTimers();
   });
 
