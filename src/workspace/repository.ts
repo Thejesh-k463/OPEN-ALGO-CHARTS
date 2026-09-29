@@ -1,8 +1,12 @@
+import type { Chart } from 'openalgo-charts';
 import {
   parseIndicatorTemplatePayload, parseIndicatorTemplate, parseWorkspaceDocument, parseWorkspacePayload,
-  type IndicatorTemplateDocument, type IndicatorTemplateInput, type WorkspaceDocument, type WorkspaceKind, type WorkspacePayload,
+  type IndicatorTemplateDocument, type IndicatorTemplateInput, type IndicatorTemplatePayload, type WorkspaceDocument, type WorkspaceKind,
+  type WorkspacePayload,
 } from './documents';
 import { boolean, list, number, readJson, record, string, WorkspaceDocumentError } from './json';
+import { captureIndicatorTemplate, planIndicatorTemplateState, type IndicatorTemplateApplyOptions, type IndicatorTemplatePlan } from './template-layout';
+import type { IndicatorTemplateMode } from './templates';
 
 export interface WorkspaceCatalog {
   version: 1; revision: number; workspaces: WorkspaceDocument[]; templates: IndicatorTemplateDocument[];
@@ -61,6 +65,20 @@ export interface WorkspaceStore {
   remove(kind: WorkspaceKind, id: string, options?: WorkspaceOperationOptions): Promise<void>;
   /** Store the autosave preference. It starts no timer: the control that holds a layout saves it. */
   setAutosave(enabled: boolean, options?: WorkspaceOperationOptions): Promise<void>;
+  /**
+   * `captureIndicatorTemplate` (since 2.5.10): a chart's studies with their
+   * panes and scales, for `createTemplate`. The widget's indicator picker reads
+   * it through the store it is given, so the widget tier never loads this tier
+   * on its own. Without it the picker saves the plain study list.
+   */
+  captureIndicatorTemplate?(chart: Chart): IndicatorTemplatePayload;
+  /**
+   * `planIndicatorTemplateState` (since 2.5.10), for the same reason. The
+   * picker offers saved templates only when the store has it: applying one
+   * without a plan could lose the chart's panes and scales.
+   */
+  planIndicatorTemplateState?(chart: Chart, incoming: IndicatorTemplateInput, mode: IndicatorTemplateMode,
+    options?: IndicatorTemplateApplyOptions): IndicatorTemplatePlan;
 }
 
 export class WorkspaceConflictError extends Error {
@@ -225,6 +243,15 @@ export class WorkspaceRepository implements WorkspaceStore {
   async importDocument(input: unknown, options?: WorkspaceOperationOptions): Promise<WorkspaceDocument | IndicatorTemplateDocument> {
     const doc = documentOf(input);
     return this._transact(catalog => this._insert(catalog, doc, doc.name), options);
+  }
+
+  /** `captureIndicatorTemplate`, as the store member a widget reaches it through. */
+  captureIndicatorTemplate(chart: Chart): IndicatorTemplatePayload { return captureIndicatorTemplate(chart); }
+
+  /** `planIndicatorTemplateState`, as the store member a widget reaches it through. */
+  planIndicatorTemplateState(chart: Chart, incoming: IndicatorTemplateInput, mode: IndicatorTemplateMode,
+    options?: IndicatorTemplateApplyOptions): IndicatorTemplatePlan {
+    return planIndicatorTemplateState(chart, incoming, mode, options);
   }
 
   async exportDocument(kind: WorkspaceKind, id: string): Promise<string> {

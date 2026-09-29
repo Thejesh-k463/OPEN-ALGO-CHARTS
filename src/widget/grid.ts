@@ -281,6 +281,10 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   Object.assign(cellOptions, { document: doc, mobile: options.mobile ?? 'never' });
   // Bottom bar hook: a cell has no bar of its own; the grid's one bar acts on the focused cell.
   cellOptions.bottombar = false;
+  // Layouts: a chart never saves a layout of its own inside a grid. The
+  // `workspaces` store still gives every picker its templates, and a
+  // controller the host passes drives the menu of every chart.
+  cellOptions.layouts = options.layouts ?? false;
   const store = options.persist ? (options.storage === undefined ? defaultStorage() : options.storage) : null;
   const storage = new WidgetStorage(typeof options.persist === 'string' ? options.persist : 'default', store);
   const bus = new WidgetBus<ChartGridEvents>();

@@ -623,10 +623,10 @@ export class ChartHistory {
     this._record({ label: command.label, commands: [command] });
   }
 
-  /** Forget every step. The chart is left as it is. */
+  /** Forget every step. The chart is left as it is. In place: a press whose command restores the chart still files its step. */
   public clear(): void {
-    this._undo = [];
-    this._redo = [];
+    this._undo.length = 0;
+    this._redo.length = 0;
     if (this._group !== null) this._group.entry = null;
     this._pending = false;
     this._orphans = [];
