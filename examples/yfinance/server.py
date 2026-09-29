@@ -48,6 +48,7 @@ the first real request, so static serving and --fixture work without it.
 from __future__ import annotations
 
 import argparse
+import functools
 import gzip
 import hashlib
 import json
@@ -392,23 +393,95 @@ def _noise(symbol: str, t: int, salt: str) -> float:
     return (zlib.crc32(f"{symbol}|{t}|{salt}".encode()) & 0xFFFFFFFF) / 2 ** 32
 
 
+# The fixture's price is a seeded random walk, so a chart of it reads like a
+# traded stock. It walks in trading time: each weekday adds the minutes of
+# its extended session, and a night or a weekend adds none, so the open
+# follows on from the last close the way a quiet night's does. Every value is
+# still a pure function of (symbol, bar time): the walk is laid out as a
+# Brownian bridge over a binary tree of minute spans, each split drawn from a
+# digest of the symbol and the span, so the level at any minute costs one
+# descent of the tree rather than a sum of every step since 1970.
+WALK_MINUTES = (EXTENDED_CLOSE - EXTENDED_OPEN) // 60
+# 2**25 trading minutes reach past the year 2150 at 615 minutes a weekday.
+WALK_DEPTH = 25
+# A symbol trades at its base price at the start of 2025 and walks from there.
+WALK_ANCHOR = 1_735_689_600
+# BANDED's walk comes back to 100 about every 53 trading days, so its tick
+# boundary stays on screen at any date instead of drifting off it.
+BANDED_SPAN = 1 << 15
+
+
+def _trading_minute(t: int) -> int:
+    """Minutes of weekday extended sessions from 1970 to t; a weekend or a night holds the last one."""
+    day = t // DAY
+    weeks, rest = divmod(day, 7)
+    before = weeks * 5 + sum(1 for i in range(rest) if _weekday(i * DAY) < 5)
+    if _weekday(day * DAY) >= 5:
+        return before * WALK_MINUTES
+    into = min(max(t - day * DAY - EXTENDED_OPEN, 0), EXTENDED_CLOSE - EXTENDED_OPEN) // 60
+    return before * WALK_MINUTES + into
+
+
+@functools.lru_cache(maxsize=1 << 16)
+def _gauss(symbol: str, lo: int, size: int) -> float:
+    """A standard normal draw for one span of one symbol's walk. A digest, not crc32: neighbouring spans must not correlate."""
+    digest = hashlib.blake2b(f"{symbol}|walk|{lo}|{size}".encode(), digest_size=8).digest()
+    u = (int.from_bytes(digest[:4], "big") + 0.5) / 2 ** 32
+    v = int.from_bytes(digest[4:], "big") / 2 ** 32
+    return math.sqrt(-2.0 * math.log(u)) * math.cos(2 * math.pi * v)
+
+
+def _walk(symbol: str, n: int, pin: int = 0) -> float:
+    """The sum of the first n unit steps of the symbol's walk; with `pin`, less the line through each pin-long span's ends."""
+    lo, size = 0, 1 << WALK_DEPTH
+    total = _gauss(symbol, -1, size) * math.sqrt(size)
+    acc = 0.0
+    block = None
+    while True:
+        if size == pin:
+            block = (lo, acc, total)
+        if n <= lo:
+            s = acc
+            break
+        if n >= lo + size:
+            s = acc + total
+            break
+        half = size >> 1
+        # Brownian bridge: given a span's total, its first half is half of it
+        # plus a draw whose spread is half the span's root length.
+        left = total / 2 + _gauss(symbol, lo, size) * math.sqrt(size) / 2
+        if n >= lo + half:
+            acc += left
+            lo += half
+            total -= left
+        else:
+            total = left
+        size = half
+    if not pin:
+        return s
+    if block is None:
+        return 0.0
+    start, before, span_total = block
+    return s - before - (n - start) / pin * span_total
+
+
+@functools.lru_cache(maxsize=256)
+def _walk_anchor(symbol: str) -> float:
+    return _walk(symbol, _trading_minute(WALK_ANCHOR))
+
+
 def fixture_level(symbol: str, t: int) -> float:
-    """The synthetic close at time t: a base per symbol, a slow drift and three waves whose periods the symbol picks."""
+    """The synthetic close at time t: the symbol's random walk from its base, with a drift and a volatility it picks."""
     seed = zlib.crc32(symbol.encode()) & 0xFFFFFFFF
-    banded = symbol == BANDED
-    # BANDED holds still around its boundary instead of drifting off it.
-    base = 100 if banded else 20 + seed % 2000
-    slow = DAY * (40 + seed % 50)
-    mid = DAY * (7 + (seed >> 8) % 20)
-    fast = 3600 * (3 + (seed >> 16) % 30)
-    phase = ((seed >> 4) % 628) / 100
-    years = (t - 1_600_000_000) / 31_557_600
-    drift = 0 if banded else years * 0.02 * (seed % 7 - 3)
-    wave = 0.12 * math.sin(2 * math.pi * t / slow + phase) \
-        + 0.05 * math.sin(2 * math.pi * t / mid + 2 * phase) \
-        + 0.02 * math.sin(2 * math.pi * t / fast + 3 * phase)
-    jitter = (_noise(symbol, t, "c") - 0.5) * 0.01
-    return base * math.exp(drift + wave + jitter)
+    n = _trading_minute(t)
+    if symbol == BANDED:
+        return 100 * math.exp(0.0004 * _walk(symbol, n, BANDED_SPAN))
+    base = 20 + seed % 2000
+    # A day's move is 1.2 to 2.3 percent, and a year drifts -9 to +9 percent.
+    vol = (0.012 + ((seed >> 8) % 12) / 1000) / math.sqrt(WALK_MINUTES)
+    drift = (seed % 7 - 3) * 0.03 / (261 * WALK_MINUTES)
+    ref = _trading_minute(WALK_ANCHOR)
+    return base * math.exp(vol * (_walk(symbol, n) - _walk_anchor(symbol)) + drift * (n - ref))
 
 
 def fixture_bars(req: HistoryRequest, now: int) -> list:
@@ -864,6 +937,29 @@ class SelfTest(unittest.TestCase):
         _, _, bars = self.json("/api/history?symbol=AAPL&interval=1d&from=1700000000&to=1710000000")
         for prev, cur in zip(bars, bars[1:]):
             self.assertEqual(cur["open"], prev["close"])
+
+    def test_the_price_is_a_random_walk_not_a_wave(self):
+        # A random walk's variance over q days is q times its one-day
+        # variance, so the ratio of the two sits near 1. Waves that repeat
+        # within a quarter hold the 125-day change to their amplitude, and the
+        # ratio falls towards 0: the sine fixture this replaced measured 0.18.
+        # One symbol's ratio is noisy, so it is pooled over several.
+        q, days = 125, 1300
+        ratios = []
+        for symbol in ("AAPL", "RELIANCE.NS", "INFY.NS", "MSFT", "^NSEI", "TCS.NS", "GOOG", "SBIN.NS"):
+            closes, day = [], (1_700_000_000 // DAY) * DAY
+            while len(closes) < days:
+                if _weekday(day) < 5:
+                    closes.append(math.log(fixture_level(symbol, day + SESSION_CLOSE - 60)))
+                day += DAY
+
+            def variance(xs):
+                mean = sum(xs) / len(xs)
+                return sum((x - mean) ** 2 for x in xs) / len(xs)
+            one = variance([b - a for a, b in zip(closes, closes[1:])])
+            ratios.append(variance([closes[i + q] - closes[i] for i in range(days - q)]) / (q * one))
+        self.assertGreater(sum(ratios) / len(ratios), 0.5)
+        self.assertLess(sum(ratios) / len(ratios), 1.6)
 
     def test_intraday_grid_sits_in_the_session_on_weekdays(self):
         _, _, bars = self.json("/api/history?symbol=AAPL&interval=5m&from=1700000000&to=1700600000")

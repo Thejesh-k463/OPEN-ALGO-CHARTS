@@ -71,6 +71,8 @@ import {
   ShellBus, applySavedLayout, flushOnPageHide, readSaved, reportStorage, restoreWhenLoaded, restoreWidgetState, saveNow, scheduleSave,
   scopeDrawings, stripView as stripSavedView, type PersistHost,
 } from './widget-persist';
+// Bottom bar hook: the bar, the ranges, the session calendar and the shading live in bottombar-shell.ts.
+import { attachBottombar, BOTTOMBAR_OPTION_KEYS, type BottombarHost, type ShellBottombar, type WidgetBottombarOptions } from './bottombar-shell';
 
 /** The intervals offered when the host names none: the registry's codes are appended. */
 export const DEFAULT_INTERVALS: readonly string[] = ['1m', '5m', '15m', '1h', '1d', '1w'];
@@ -92,7 +94,7 @@ export type WidgetWatchlistOptions = Omit<WatchlistPanelOptions, 'onSelect' | 'n
 /** The news source for the docked reader, which follows the chart's instrument. */
 export type WidgetNewsOptions = NewsPanelOptions;
 
-export interface WidgetOptions extends Omit<ChartOptions, 'theme'> {
+export interface WidgetOptions extends Omit<ChartOptions, 'theme'>, WidgetBottombarOptions {
   /** Docked Data and Objects panels. False retains the original Objects dialog. Default true. */
   panels?: boolean;
   /** Unclaimed letters and digits open symbol and interval entry on the focused chart. Default true. */
@@ -314,6 +316,10 @@ export interface Widget {
   goTo(target: DateNavigationTarget): Promise<DateNavigationResult>;
   /** Open the go-to panel. False after destruction or on an interval without time buckets. */
   openDateNavigation(): boolean;
+  /** Show a preset range (`WidgetOptions.ranges`): its interval, its span in view, and the history that needs. One wider than the plot keeps its latest bars in view (`clipped`). */
+  setRange(id: string): Promise<DateNavigationResult>;
+  /** The preset range in force, or null: none was set, or the interval has changed since. */
+  range(): string | null;
   on<K extends WidgetEventName>(event: K, cb: (payload: WidgetBusEvents[K]) => void): () => void;
   off<K extends WidgetEventName>(event: K, cb?: (payload: WidgetBusEvents[K]) => void): void;
   destroy(): void;
@@ -327,6 +333,8 @@ const WIDGET_ONLY_KEYS: ReadonlyArray<keyof WidgetOptions> = [
   'tradingCapabilities', 'tradingMode', 'tradingLocked', 'account',
   'eventDetails',
   'panels', 'typingNavigation', 'keyboardRoute', 'watchlist', 'news', 'drawingTemplates', 'drawingToolbar',
+  // Bottom bar hook: its options are the widget's, not the chart's.
+  ...BOTTOMBAR_OPTION_KEYS,
 ];
 
 /**
@@ -448,6 +456,8 @@ class WidgetImpl implements Widget {
   private _alertsPanel: PanelHandle | null = null;
   private _goToPanel: PanelHandle | null = null;
   private readonly _navigator: DateNavigator;
+  /** Bottom bar hook: the ranges, the load window and the bar's controls (bottombar-shell.ts). */
+  private readonly _bottombar: ShellBottombar;
   /** Bumped by every go-to request and every context change, so a waiting request knows it lost. */
   private _navigation = 0;
   private _loading: Promise<unknown> | null = null;
@@ -707,13 +717,16 @@ class WidgetImpl implements Widget {
     (this.context as WidgetContextImpl).drawingTemplates = this.drawingTemplates ?? undefined;
     if (options.drawingToolbar ?? options.rail !== false) this._drawbar = mountDrawingToolbar(this.context, stage, { chart: chartEl, templates: this.drawingTemplates });
     if (options.statusline !== false) {
-      this._statusline = mountStatusline(this.context, statusEl, { locale: options.locale });
+      // Bottom bar hook: without a bar the status line says the market status.
+      this._statusline = mountStatusline(this.context, statusEl, { locale: options.locale, marketStatus: options.bottombar === false, now: options.now });
       this._statusline.setSymbol(this._symbol, this._exchange, this._interval);
       if (options.account !== undefined) {
         const summary = mountAccountSummary(this.context, statusEl, { source: options.account, locale: options.locale });
         this._cleanups.push(() => summary.destroy());
       }
     }
+    // Bottom bar hook: the calendar, the shading, the ranges and the bar, between the stage and the status line.
+    this._bottombar = attachBottombar.call(this as unknown as BottombarHost, statusEl);
     if (options.topbar !== false) {
       this._topbar = mountTopbar(this.context, topbarEl, {
         intervals: this._intervals,
@@ -731,7 +744,8 @@ class WidgetImpl implements Widget {
         onAlerts: (anchor) => this._openAlerts(anchor),
         onWatchlist: this._docked('watchlist') ? () => this._dock?.toggle('watchlist') : undefined,
         onNews: this._docked('news') ? () => this._dock?.toggle('news') : undefined,
-        onGoTo: (anchor) => this._openGoTo(anchor),
+        // Bottom bar hook: Go to lives in the bottom bar while there is one.
+        onGoTo: options.bottombar === false ? (anchor) => this._openGoTo(anchor) : undefined,
         settingsAvailable: () => widgetDialog('settings') !== null,
         indicatorsAvailable: () => widgetDialog('indicatorPicker') !== null,
         dataAvailable: () => this.dataController === null || this._dataState?.status === 'ready' || this._dataState?.status === 'stale',
@@ -761,6 +775,8 @@ class WidgetImpl implements Widget {
       onGoTo: (anchor) => this._openGoTo(anchor),
       onProperties: (anchor) => this._openDialog('drawingProperties', anchor),
       onCapture: (anchor) => this._topbar?.openCapture(anchor),
+      // Bottom bar hook: the More sheet stands in for the bar the phone layout hides.
+      bottombar: this._bottombar.controls,
       settingsAvailable: () => widgetDialog('settings') !== null,
       indicatorsAvailable: () => widgetDialog('indicatorPicker') !== null,
     });
@@ -924,6 +940,9 @@ class WidgetImpl implements Widget {
     return true;
   }
   public openDateNavigation(): boolean { return this._openGoTo(); }
+  // Bottom bar hook: a range is the widget's, so it works with the bar off.
+  public setRange(id: string): Promise<DateNavigationResult> { return this._bottombar.setRange(id); }
+  public range(): string | null { return this._bottombar.range(); }
 
   private _openGoTo(anchor?: HTMLElement): boolean {
     if (this._destroyed || timeBuckets(this._interval) === null) return false;
@@ -990,7 +1009,8 @@ class WidgetImpl implements Widget {
     if (same) { await controller.refresh(); return; }
     const nowSec = this._opts.loading?.now?.() ?? Math.floor((this._opts.now ?? Date.now)() / 1000);
     const request: BarsRequest = { symbol: this._symbol, exchange: this._exchange, interval: this._interval,
-      ...loadWindow(this._interval, this._opts.lookbackBars ?? DEFAULT_LOOKBACK_BARS, nowSec),
+      // Bottom bar hook: a range in force widens the window to its sessions.
+      ...this._bottombar.fetchWindow(loadWindow(this._interval, this._opts.lookbackBars ?? DEFAULT_LOOKBACK_BARS, nowSec), nowSec),
       ...(this._variant ? { variant: this._variant } : {}) };
     this._initialView = true;
     this._displayedBars = null;

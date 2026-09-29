@@ -8,6 +8,7 @@ import {
 } from './topbar';
 import { mountSymbolPicker, type SymbolPickerHandle } from './symbol-picker';
 import { timeBuckets } from './date-navigator';
+import { SCALE_TOGGLES, type BottombarControls } from './bottombar';
 
 export type MobileMode = 'auto' | 'always' | 'never';
 
@@ -72,6 +73,12 @@ export interface MobileOptions {
   onProperties(anchor: HTMLElement): boolean;
   settingsAvailable(): boolean;
   indicatorsAvailable(): boolean;
+  /**
+   * The bottom bar's controls. The phone layout hides the bar, so the More
+   * sheet lists them instead: the market status and the clock, the preset
+   * ranges, the price scale toggles and the timezone.
+   */
+  bottombar?: BottombarControls;
 }
 
 export interface MobileHandle {
@@ -91,7 +98,13 @@ interface ActionIdentity {
   tool?: string;
   interval?: string;
   chartType?: string;
+  range?: string;
+  scale?: string;
+  zone?: string;
 }
+
+/** The data attributes an action's identity is read from, so a repaint can put focus back on the same control. */
+const IDENTITY_KEYS = ['tool', 'interval', 'chartType', 'range', 'scale', 'zone'] as const;
 
 /** Mount the narrow widget controls against the same chart and controllers as the desktop chrome. */
 export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHandle {
@@ -135,20 +148,15 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
     const button = element.closest('[data-mobile-action]') as HTMLElement | null;
     const action = button?.dataset.mobileAction;
     if (button === null || action === undefined) return null;
-    return {
-      action,
-      ...(button.dataset.tool === undefined ? {} : { tool: button.dataset.tool }),
-      ...(button.dataset.interval === undefined ? {} : { interval: button.dataset.interval }),
-      ...(button.dataset.chartType === undefined ? {} : { chartType: button.dataset.chartType }),
-    };
+    const identity: ActionIdentity = { action };
+    for (const key of IDENTITY_KEYS) if (button.dataset[key] !== undefined) identity[key] = button.dataset[key];
+    return identity;
   };
 
   const findIdentity = (host: HTMLElement, identity: ActionIdentity): HTMLElement | null => {
     const candidates = Array.from(host.querySelectorAll('[data-mobile-action]')) as HTMLElement[];
     return candidates.find((button) => button.dataset.mobileAction === identity.action
-      && button.dataset.tool === identity.tool
-      && button.dataset.interval === identity.interval
-      && button.dataset.chartType === identity.chartType) ?? null;
+      && IDENTITY_KEYS.every(key => button.dataset[key] === identity[key])) ?? null;
   };
 
   const closeSheet = (): void => {
@@ -314,7 +322,10 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
     if (opts.onDataWindow) bar.appendChild(makeAction('data-window', widgetText(ctx, 'schema.ui.dataWindow', {}, 'Data'), (anchor) => { opts.onDataWindow?.(anchor); }));
     bar.appendChild(makeAction('more', widgetText(ctx, 'More'), (anchor) => {
       openSheet(widgetText(ctx, 'More'), anchor, (body, close) => {
-        // First: a step taken on a narrow screen needs a way back that does not depend on a tool being armed.
+        const bottom = opts.bottombar;
+        // The bar's readout first, since the sheet stands in for the hidden bar.
+        if (bottom !== undefined) body.appendChild(statusNote(bottom));
+        // Then: a step taken on a narrow screen needs a way back that does not depend on a tool being active.
         body.append(...historyActions());
         if (opts.onCapture) body.appendChild(makeAction('capture', widgetText(ctx, 'Capture'), () => {
           close();
@@ -355,6 +366,7 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
           branding.textContent = link.label;
           body.appendChild(branding);
         }
+        if (bottom !== undefined) barRows(body, bottom, anchor, close);
         const heading = h(doc, 'div', 'oac-head');
         heading.textContent = widgetText(ctx, 'Chart type');
         body.appendChild(heading);
@@ -372,6 +384,80 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
   }
   if (bar.children.length > 0) footer.appendChild(bar);
   if (footer.children.length > 0) root.appendChild(footer);
+
+  /** The market status and the clock, read when the sheet paints. */
+  function statusNote(controls: BottombarControls): HTMLElement {
+    const note = h(doc, 'p', 'oac-mobile-sheet__note');
+    const reading = controls.marketStatus();
+    if (reading !== null) {
+      const state = h(doc, 'b');
+      state.textContent = reading.label;
+      note.append(state, doc.createTextNode(reading.detail === '' ? ' \u00b7 ' : ` ${reading.detail} \u00b7 `));
+    }
+    note.appendChild(doc.createTextNode(controls.clock()));
+    return note;
+  }
+
+  /** The bar's ranges, scale toggles and zone as sheet rows. */
+  function barRows(body: HTMLElement, controls: BottombarControls, anchor: HTMLElement, close: () => void): void {
+    const head = (text: string): void => {
+      const heading = h(doc, 'div', 'oac-head');
+      heading.textContent = text;
+      body.appendChild(heading);
+    };
+    /** A row of short choices across the sheet, so nine ranges take two rows rather than five. */
+    const row = (cls: string, text: string): HTMLElement => {
+      head(text);
+      const group = h(doc, 'div', cls, { role: 'group', 'aria-label': text });
+      body.appendChild(group);
+      return group;
+    };
+    const ranges = controls.ranges();
+    if (ranges.length > 0) {
+      const group = row('oac-mobile-sheet__ranges', widgetText(ctx, 'schema.ui.bottombar.ranges', {}, 'Range'));
+      const current = controls.range();
+      for (const range of ranges) {
+        const button = makeAction('range', widgetText(ctx, `schema.ui.range.${range.id}`, {}, range.label), () => {
+          controls.setRange(range.id);
+          close();
+        });
+        button.dataset.range = range.id;
+        button.setAttribute('aria-pressed', String(current === range.id));
+        group.appendChild(button);
+      }
+    }
+    const scales = row('oac-mobile-sheet__scales', widgetText(ctx, 'schema.ui.bottombar.scale', {}, 'Price scale'));
+    const scale = controls.scale();
+    // Words, not the bar's glyphs: a phone has no hover to explain a glyph.
+    for (const toggle of SCALE_TOGGLES) {
+      const button = makeAction('scale', widgetText(ctx, toggle.key, {}, toggle.label), () => {
+        controls.toggleScale(toggle.id);
+        refresh();
+      });
+      button.dataset.scale = toggle.id;
+      button.setAttribute('aria-pressed', String(scale !== null && scale[toggle.id]));
+      button.setAttribute('aria-disabled', String(scale === null));
+      scales.appendChild(button);
+    }
+    head(widgetText(ctx, 'schema.ui.bottombar.timezones', {}, 'Timezone'));
+    const zone = makeAction('timezone', controls.timezone(), () => {
+      openSheet(widgetText(ctx, 'schema.ui.bottombar.timezones', {}, 'Timezone'), anchor, (list, done) => {
+        const current = controls.timezone();
+        for (const name of controls.timezones()) {
+          const choice = makeAction('pick-zone', name, () => {
+            controls.setTimezone(name);
+            done();
+          });
+          choice.dataset.zone = name;
+          choice.setAttribute('aria-pressed', String(name === current));
+          list.appendChild(choice);
+        }
+      });
+    });
+    zone.setAttribute('aria-label', widgetText(ctx, 'schema.ui.bottombar.timezone', { zone: controls.timezone() }, 'Timezone: {zone}'));
+    zone.setAttribute('aria-haspopup', 'dialog');
+    body.appendChild(zone);
+  }
 
   function refresh(): void {
     if (destroyed) return;
@@ -465,6 +551,8 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
   offs.push(ctx.bus.on('interval', refresh));
   offs.push(ctx.bus.on('theme', refresh));
   offs.push(ctx.chart.on('branding:changed', refresh));
+  // A range, a zone or a scale changed from anywhere, or the market moved on.
+  if (opts.bottombar !== undefined) offs.push(opts.bottombar.subscribe(refresh));
   applyMode();
   refresh();
 

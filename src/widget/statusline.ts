@@ -16,6 +16,12 @@ import { widgetText } from './localization';
  * the handler writes text only when a value changed, so an idle pointer
  * touches nothing.
  *
+ * With `marketStatus` on it also says where the market stands (open, pre-open,
+ * closed until Monday), from the chart's session calendar, as a pane legend
+ * shows the session state when its host supplies none. The widget turns it on
+ * when it has no bottom bar to say it; a timer set for the next change of
+ * phase keeps a chart nobody touches from reading "open" after the close.
+ *
  * While the pointer is away the row follows the latest bar, the way the
  * legend does: it re-reads that bar on every `data:update` (a reload, a live
  * tick, a new bar), not only the first time it has none. Holding the bar it
@@ -26,10 +32,19 @@ import type { Bar, Chart, CrosshairMoveEvent } from 'openalgo-charts';
 import { formatZonedCrosshairLabel } from 'openalgo-charts';
 import { h, type WidgetContext } from './context';
 import { dataVariantLabel } from './data-status';
+import { MarketStatusHold, marketStatusReading, sessionStateShown } from './bottombar-status';
 
 export interface StatuslineOptions {
   /** BCP 47 tag for number formatting. Default: the runtime's. */
   locale?: string;
+  /**
+   * Show the market status from the chart's session calendar, while the
+   * chart's "Session state" switch is on. Nothing shows without a calendar
+   * that lays out phases. Default false.
+   */
+  marketStatus?: boolean;
+  /** Clock for the market status, in milliseconds. Default `Date.now`. */
+  now?: () => number;
 }
 
 export interface StatuslineHandle {
@@ -115,6 +130,9 @@ export function mountStatusline(ctx: WidgetContext, host: HTMLElement, opts: Sta
   const oi = field(widgetText(ctx, 'OI'), 'oac-statusline__oi');
   const time = h(doc, 'span', 'oac-statusline__time');
   host.appendChild(time);
+  const market = h(doc, 'span', 'oac-statusline__market');
+  market.hidden = true;
+  host.appendChild(market);
   const msg = h(doc, 'span', 'oac-statusline__msg');
   host.appendChild(msg);
   const tz = h(doc, 'span', 'oac-statusline__tz');
@@ -173,7 +191,35 @@ export function mountStatusline(ctx: WidgetContext, host: HTMLElement, opts: Sta
     if (openInterest && bar?.oi !== undefined) write(oi.val, compact.format(bar.oi));
     write(time, barTime !== null && bar !== null ? formatZonedCrosshairLabel(barTime, chart.timezone()) : '');
     write(tz, chart.timezone());
+    paintMarket();
   };
+
+  // ── the market status, when the widget has no bottom bar to show it ────
+  const hold = new MarketStatusHold();
+  let marketTimer: ReturnType<typeof setTimeout> | 0 = 0;
+  let marketWake = 0;
+  let destroyed = false;
+  function paintMarket(): void {
+    if (opts.marketStatus !== true || destroyed) return;
+    const nowSec = (opts.now ?? Date.now)() / 1000;
+    const status = sessionStateShown(chart) ? hold.read(chart.dataLayer.sessionCalendar, nowSec) : null;
+    const reading = status === null ? null : marketStatusReading({ translate: ctx.translate, locale }, status, nowSec, chart.timezone());
+    show(market, reading !== null);
+    if (reading !== null) {
+      write(market, reading.detail === '' ? reading.label : `${reading.label} \u00b7 ${reading.detail}`);
+      if (market.dataset.phase !== reading.phase) market.dataset.phase = reading.phase;
+    }
+    // Wake at the next change of phase, within the hour for a calendar
+    // replaced meanwhile, and within the minute while there is none, since
+    // setting one announces nothing. Set once per change, not on every
+    // pointer move that repaints.
+    const wake = Math.floor(status === null ? nowSec + 60 : Math.min(hold.until(), nowSec + 3600));
+    if (wake === marketWake) return;
+    if (marketTimer !== 0) clearTimeout(marketTimer);
+    marketTimer = 0;
+    marketWake = wake;
+    if (wake !== 0) marketTimer = setTimeout(() => { marketTimer = 0; marketWake = 0; paintMarket(); }, Math.max(1, wake - nowSec) * 1000 + 50);
+  }
 
   const lastBar = (): { bar: Bar | null; time: number | null } => {
     if (awaiting) return { bar: null, time: null };
@@ -212,6 +258,7 @@ export function mountStatusline(ctx: WidgetContext, host: HTMLElement, opts: Sta
   const offContext = chart.on('data:context', paint);
   const offData = chart.on('data:update', onData);
   const offResize = chart.on('resize', () => { if (following) follow(); });
+  const offZone = chart.on('timezone:changed', paint);
 
   const handle: StatuslineHandle = {
     el: host,
@@ -239,10 +286,13 @@ export function mountStatusline(ctx: WidgetContext, host: HTMLElement, opts: Sta
       paint();
     },
     destroy: () => {
+      destroyed = true;
+      if (marketTimer !== 0) clearTimeout(marketTimer);
       off();
       offContext();
       offData();
       offResize();
+      offZone();
       host.textContent = '';
     },
   };

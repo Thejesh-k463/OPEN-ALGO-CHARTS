@@ -279,6 +279,8 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   // A cell in a two-column grid is often narrower than the phone threshold,
   // so cells keep desktop chrome unless the host asks for touch controls.
   Object.assign(cellOptions, { document: doc, mobile: options.mobile ?? 'never' });
+  // Bottom bar hook: a cell has no bar of its own; the grid's one bar acts on the focused cell.
+  cellOptions.bottombar = false;
   const store = options.persist ? (options.storage === undefined ? defaultStorage() : options.storage) : null;
   const storage = new WidgetStorage(typeof options.persist === 'string' ? options.persist : 'default', store);
   const bus = new WidgetBus<ChartGridEvents>();
