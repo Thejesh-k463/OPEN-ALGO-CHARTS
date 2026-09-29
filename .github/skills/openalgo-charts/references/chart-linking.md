@@ -396,5 +396,9 @@ applies the flags beside them to every chart. Turn a flag on there only when
 every chart can follow it together (for example, symbol only when all charts show
 one instrument); all off is always safe. Refuse, per group, a document whose
 symbol-linked group holds different instruments, or whose interval-linked group
-holds different intervals, as the grid does for the whole desk today: joining a
+holds different intervals, as the chart grid does per group (since 2.5.10): joining a
 linked group converges it, which would overwrite a chart saved on another.
+The widget tier's chart grid is a worked host: `createChartGrid` keeps one `LinkGroup`
+and one `DrawingLinkGroup` per named group, writes groups only when they say more than
+the flat flags, and writes flat flags that every chart can follow (those of a group
+holding every chart, else all off). See widget.md, Chart grid.
