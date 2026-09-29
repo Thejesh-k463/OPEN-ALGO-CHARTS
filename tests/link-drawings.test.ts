@@ -124,6 +124,69 @@ describe('drawings channel membership', () => {
     expect(log).toEqual(['join', 'leave']);
     expect(group.has(a)).toBe(false);
   });
+
+  /** An adapter whose `leave` takes its own chart out of the group again, as a host tidying up might. */
+  const selfRemoving = (log: string[], group: ReturnType<typeof createLinkGroup>, chart: MemberChart): LinkDrawingsAdapter => ({
+    join: () => { log.push('a:join'); },
+    leave: () => { log.push('a:leave'); group.remove(chart); },
+  });
+
+  it('keeps the other members when a leaving adapter removes its chart again', () => {
+    const log: string[] = [];
+    const group = createLinkGroup({ drawings: true });
+    const a = new MemberChart(); const b = new MemberChart(); const c = new MemberChart();
+    group.add(a, { drawings: selfRemoving(log, group, a) });
+    group.add(b, { drawings: recorder(log, 'b') });
+    group.add(c, { drawings: recorder(log, 'c') });
+    group.remove(a);
+    expect(group.members()).toEqual([b, c]);
+    expect(log).toEqual(['a:join', 'b:join', 'c:join', 'a:leave']);
+  });
+
+  it('lets every member leave on destroy when an adapter calls back into the group', () => {
+    const log: string[] = [];
+    const group = createLinkGroup({ drawings: true });
+    const a = new MemberChart(); const b = new MemberChart(); const c = new MemberChart();
+    group.add(a, { drawings: selfRemoving(log, group, a) });
+    group.add(b, { drawings: recorder(log, 'b') });
+    group.add(c, { drawings: recorder(log, 'c') });
+    group.destroy();
+    expect(log).toEqual(['a:join', 'b:join', 'c:join', 'a:leave', 'b:leave', 'c:leave']);
+    expect(group.members()).toEqual([]);
+  });
+
+  it('never joins a member that a host callback took out, destroyed or unlinked meanwhile', () => {
+    for (const spoil of ['remove', 'destroy chart', 'destroy group'] as const) {
+      const log: string[] = [];
+      const group = createLinkGroup();
+      const a = new MemberChart(); const b = new MemberChart();
+      group.add(a, { drawings: { join: () => {
+        log.push('a:join');
+        if (spoil === 'remove') group.remove(b);
+        else if (spoil === 'destroy chart') b.isDestroyed = true;
+        else group.destroy();
+      }, leave: () => { log.push('a:leave'); } } });
+      group.add(b, { drawings: recorder(log, 'b') });
+      group.setOptions({ drawings: true });
+      // B was never joined, so nothing is left for it to leave, and the sharer never holds it.
+      group.destroy();
+      expect(log, spoil).toEqual(['a:join', 'a:leave']);
+    }
+  });
+
+  it('drops a destroyed chart even when its leaving adapter removes another member', () => {
+    const log: string[] = [];
+    const group = createLinkGroup({ drawings: true });
+    const a = new MemberChart(); const b = new MemberChart(); const c = new MemberChart();
+    group.add(a, { drawings: recorder(log, 'a') });
+    group.add(b, { drawings: recorder(log, 'b') });
+    // A host tidying up the cell of a destroyed chart takes the chart beside it out too.
+    group.add(c, { drawings: { join: () => { log.push('c:join'); }, leave: () => { log.push('c:leave'); group.remove(a); } } });
+    c.isDestroyed = true;
+    expect(() => c.emit('destroy', undefined)).not.toThrow();
+    expect(group.members()).toEqual([b]);
+    expect(log).toEqual(['a:join', 'b:join', 'c:join', 'c:leave', 'a:leave']);
+  });
 });
 
 describe('drawings channel on real charts, drawings kept per instrument', () => {
@@ -262,6 +325,36 @@ describe('drawings channel on real charts, drawings kept per instrument', () => 
     a.draw.remove(first.id);
     trend(a);
     expect(lines(b)).toEqual([first.points]);
+  });
+
+  it('reconnects a copy when sharing resumes, and the chart already sharing sets its state', () => {
+    const a = cell('INFY', 3); const b = cell('INFY', 5);
+    const { group } = link([a, b], { drawings: true });
+    const made = trend(a);
+    group.setOptions({ drawings: false });
+    // While unlinked, an edit to the copy stays on the chart that made it.
+    const lowered = made.points.map(p => ({ ...p, price: Math.round(p.price * 0.98 * 100) / 100 }));
+    b.draw.update(b.draw.drawings()[0].id, { points: lowered });
+    expect(lines(a)).toEqual([made.points]);
+    expect(lines(b)).toEqual([lowered]);
+    // Members join in the order they were added, so A is sharing when B
+    // reconnects, and B's unlinked edit gives way to A's drawing.
+    group.setOptions({ drawings: true });
+    expect(lines(b)).toEqual([made.points]);
+    const raised = made.points.map(p => ({ ...p, price: Math.round(p.price * 1.02 * 100) / 100 }));
+    a.draw.update(made.id, { points: raised });
+    expect(lines(b)).toEqual([raised]);
+  });
+
+  it('applies a deletion made while a chart was out of the group when it rejoins', () => {
+    const a = cell('INFY', 3); const b = cell('INFY', 5);
+    const { group, sharing } = link([a, b], { drawings: true });
+    const made = trend(a);
+    group.remove(b.chart);
+    a.draw.remove(made.id);
+    expect(lines(b)).toEqual([made.points]);
+    group.add(b.chart, { drawings: { join: () => sharing.add(b.chart, b.draw), leave: () => sharing.remove(b.chart) } });
+    expect(b.draw.drawings()).toEqual([]);
   });
 
   it('never carries one instrument\'s drawing onto another when a chart changes instrument alone', () => {

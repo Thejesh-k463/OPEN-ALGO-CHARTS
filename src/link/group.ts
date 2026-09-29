@@ -541,13 +541,17 @@ export class LinkGroup {
   /** Drop destroyed members, releasing the group's reference to them. */
   private _prune(): void {
     for (let i = this._members.length - 1; i >= 0; i--) {
-      if (alive(this._members[i].chart)) continue;
+      // A drawings adapter's `leave` below is host code and may remove other
+      // members, which only shifts the unvisited ones down: an index past the
+      // end is skipped, and every member still below is visited.
+      const member = this._members[i];
+      if (member === undefined || alive(member.chart)) continue;
       // No `_release`: its chart is gone, so unsubscribing and detaching
       // primitives would only touch a corpse (and `addPrimitive` on one would
       // resurrect a pane). Dropping the entry is the whole job, apart from
       // telling the host's drawing sharer, which keeps a list of its own.
-      const [dead] = this._members.splice(i, 1);
-      this._share(dead, false);
+      this._members.splice(i, 1);
+      this._share(member, false);
     }
   }
 
