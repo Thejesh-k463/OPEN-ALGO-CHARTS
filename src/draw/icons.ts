@@ -520,7 +520,10 @@ export const CHROME_ICONS: Readonly<Record<string, string>> = {
   // ── navigation, continued ───────────────────────────────────────────────
   'chevron-up': 'M3 10l5-5 5 5',
   'chevron-left': 'M10 3 5 8l5 5',
-  check: 'M3 8l3 3 7-7',
+  // The widget's menu tick moved onto whole units: its short leg ran from
+  // 3,8.5 to an elbow at 6.5,12, and on the grid that elbow is 7,12, so a
+  // menu that adopts this glyph keeps the tick it already shows.
+  check: 'M3 8l4 4 6-8',
   // Stacked, so it is not read as the dotted line style beside it.
   more: pip(8, 3) + pip(8, 8) + pip(8, 13),
   grip: pip(6, 4) + pip(10, 4) + pip(6, 8) + pip(10, 8) + pip(6, 12) + pip(10, 12),
@@ -555,7 +558,9 @@ export const CHROME_ICONS: Readonly<Record<string, string>> = {
   // rings differ: at one radius the ring is most of each glyph's ink, and
   // clock and info overlapped by 87 percent. The clock is drawn a size
   // smaller than the other two for that reason.
-  calendar: 'M2 4h12v10H2zM2 7h12M5 2v3M11 2v3M5 10h2',
+  // The rings sit a third of the way in, not near the corners, and the
+  // holiday below is the same page with the day struck off.
+  calendar: 'M2 4h12v10H2zM2 7h12M6 2v3M10 2v3M5 10h2',
   clock: ring(8, 8, 5) + 'M8 6v2h2',
   globe: ring(8, 8, 6) + 'M8 2a3 6 0 0 0 0 12a3 6 0 0 0 0-12M2 8h12',
   // The session as a day on a horizon: the sun up, rising, setting, the moon,
@@ -567,7 +572,7 @@ export const CHROME_ICONS: Readonly<Record<string, string>> = {
   'market-pre': 'M2 13h12M5 13a3 3 0 0 1 6 0M5 5l3-3 3 3',
   'market-post': 'M2 13h12M6 13a2 2 0 0 1 4 0M5 5l3 3 3-3',
   'market-closed': 'M8 2A4 4 0 1 0 12 6 4 4 0 0 1 8 2zM2 13h12',
-  'market-holiday': 'M2 4h12v10H2zM5 2v3M11 2v3M6 8l4 4M10 8l-4 4',
+  'market-holiday': 'M2 4h12v10H2zM6 2v3M10 2v3M6 8l4 4M10 8l-4 4',
 
   // ── replay ──────────────────────────────────────────────────────────────
   // The solid media set, filled through CHROME_ICON_FILLED. The pause bars
@@ -775,7 +780,8 @@ const LAYOUT_MAX = 4;
  * One to four a side: twelve units split four ways leaves a pixel of clear
  * between two lines of the 2px stroke, and five would close it up. Throws a
  * `RangeError` for anything else, and for a slot outside the grid or over
- * another.
+ * another. A chart grid takes up to eight a side, so a caller that draws the
+ * current layout falls back to the `layout` glyph past four.
  */
 export function layoutIconPath(rows: number, columns: number, slots?: readonly LayoutIconSlot[]): string {
   const count = (n: number): boolean => Number.isInteger(n) && n >= 1 && n <= LAYOUT_MAX;
