@@ -42,8 +42,9 @@ export function initGridView(doc = document) {
     // Each chart loads the history period its layout saved.
     document: doc, feed: gridFeeds({ ready }), symbol: 'AAPL', exchange: '', interval: '1d', intervals: GRID_INTERVALS,
     theme, preset: '2x2', persist: PERSIST, links: { crosshair: true, viewport: true },
-    // Touch devices get the phone controls in each chart; a mouse keeps the
-    // desktop bar even when a chart in a four-way split is narrow.
+    // Touch devices get the auto rule in each chart (compact in a phone-sized
+    // cell, desktop in a tablet-sized one); a mouse keeps the desktop bar even
+    // when a chart in a four-way split is narrow.
     mobile: coarse ? 'auto' : 'never',
     // Nothing here passes pane 0 for the price, so a chart may keep its price
     // pane below its studies, and a layout the main page saved that way opens.
