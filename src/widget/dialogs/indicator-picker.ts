@@ -19,7 +19,11 @@ import type { IndicatorApi, IndicatorDescriptor, IndicatorPolicy } from 'openalg
 import type { WorkspaceStore } from 'openalgo-charts/workspace';
 import type { WidgetContext } from '../context';
 import { button, dialogFrame, el, openPanel, type PanelHandle } from '../form';
-import { INDICATOR_TEMPLATES_CSS, openTemplatesMenu, templateStoreOf } from '../layouts-templates';
+import { templateStoreOf } from '../layouts-templates';
+import { lazyPart, partFailed, usePart } from '../lazy';
+
+/** The templates list, fetched when it first opens. Internal. */
+export const templatesPart = lazyPart(() => import('../layouts-templates-menu'));
 
 export interface IndicatorPickerOptions {
   /** Runs after each instance is added, with its handle. */
@@ -88,9 +92,16 @@ export function mountIndicatorPicker(
   const templates = opts.templates === undefined ? templateStoreOf(ctx) : opts.templates ?? undefined;
   let templatesMenu: PanelHandle | null = null;
   if (templates?.planIndicatorTemplateState !== undefined) {
+    // The list loads on first use; a press while it loads opens it once, and none opens after the picker closed.
+    let waiting = false;
     const open = button(doc, { label: widgetText(ctx, 'Templates'), icon: 'template', onClick: () => {
-      templatesMenu?.close();
-      templatesMenu = openTemplatesMenu(ctx, open, templates);
+      if (waiting) return;
+      waiting = true;
+      usePart(templatesPart, module => {
+        waiting = false;
+        templatesMenu?.close();
+        templatesMenu = module.openTemplatesMenu(ctx, open, templates);
+      }, error => { waiting = false; ctx.toast(partFailed(ctx, widgetText(ctx, 'Templates'), error), 'error'); }, () => handle.isOpen());
     } });
     open.dataset.action = 'templates';
     open.setAttribute('aria-haspopup', 'dialog');
@@ -225,8 +236,8 @@ export function mountIndicatorPicker(
   return handle;
 }
 
-/** Include beside the dialog stylesheet in the widget's static CSP stylesheet. It carries the templates popover's rules. */
-export const INDICATOR_PICKER_CSS = INDICATOR_TEMPLATES_CSS + `
+/** Include beside the dialog stylesheet in the widget's static CSP stylesheet. */
+export const INDICATOR_PICKER_CSS = `
 .oac-widget .oac-pick__running-head { margin-top: 10px; border-top: 1px solid var(--oac-bd); padding-top: 9px; }
 .oac-widget .oac-pick__running { display: grid; gap: 1px; max-height: 132px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--oac-sb-thumb) transparent; }
 .oac-widget .oac-pick__running::-webkit-scrollbar { width: 6px; }
