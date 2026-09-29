@@ -80,7 +80,7 @@ export type WidgetBuiltinMessage =
   | "Alerts"
   | "Alerts are unavailable in this host"
   | "Alerts..."
-  | "Armed"
+  | "Active"
   | "Auto-fit to the data"
   | "Fit primary prices only"
   | "Collapse indicator legends"
@@ -212,7 +212,7 @@ export type WidgetBuiltinMessage =
   | "Interval {code}"
   | "Intrabar touch"
   | "Invert"
-  | "Keep tool armed"
+  | "Keep tool active"
   | "Keyboard shortcuts"
   | "L"
   | "Label"
@@ -263,7 +263,7 @@ export type WidgetBuiltinMessage =
   | "Objects"
   | "Objects panel requires an object model"
   | "Off: one drawing per pick"
-  | "On: the tool stays armed after each drawing"
+  | "On: the tool stays active after each drawing"
   | "Once"
   | "One drawing per pick"
   | "Open interest is unavailable for this instrument."
@@ -371,7 +371,7 @@ export type WidgetBuiltinMessage =
   | "This alert was removed"
   | "This runtime cannot save files"
   | "Tools"
-  | "Tools stay armed after each drawing"
+  | "Tools stay active after each drawing"
   | "Trade"
   | "Triggered"
   | "Unavailable candle condition"
@@ -412,14 +412,14 @@ export type WidgetBuiltinMessage =
   | "{count} instances on the chart"
   | "{count} objects"
   | "{group}: chevron for the rest"
-  | "{group}: chevron for the rest. Double-click keeps it armed"
+  | "{group}: chevron for the rest. Double-click keeps it active"
   | "{name} / {plot}: {value}"
   | "{name} / {plot}: {value} to {upper}"
   | "{name} has nothing to configure"
   | "{name} settings"
   | "{name} settings are protected"
   | "{name} settings..."
-  | "{name} stays armed until Escape"
+  | "{name} stays active until Escape"
   | "{seconds}s cooldown"
   | "Drawing templates could not be loaded"
   | "The drawing template could not be saved: {error}"
@@ -458,7 +458,16 @@ export type WidgetBuiltinMessage =
   | "A freehand stroke has {count} points. Move it on the chart."
   | "Coordinates"
   | "Times are on the chart clock, {zone}."
-  | "{shown} of {count} objects";
+  | "{shown} of {count} objects"
+  // Retained so host translation catalogs written for the armed wording stay
+  // type compatible. The widget says active since 2.5.10; a union member takes
+  // no doc tag, so COMPATIBILITY.md lists these as deprecated, and 3.0.0 drops them.
+  | "Armed"
+  | "Keep tool armed"
+  | "On: the tool stays armed after each drawing"
+  | "Tools stay armed after each drawing"
+  | "{group}: chevron for the rest. Double-click keeps it armed"
+  | "{name} stays armed until Escape";
 
 /** Schema keys name descriptor metadata, never saved user values. */
 export type WidgetMessageKey = WidgetBuiltinMessage | `schema.${string}`;

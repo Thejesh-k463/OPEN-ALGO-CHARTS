@@ -248,7 +248,7 @@ export function mountAlertsPanel(ctx: WidgetContext, anchor?: HTMLElement, opts:
   frame.body.append(list, empty);
   frame.lead.appendChild(count);
   frame.actions.appendChild(create);
-  const stateNames = { armed: widgetText(ctx, 'Armed'), triggered: widgetText(ctx, 'Triggered'), expired: widgetText(ctx, 'Expired'), disabled: widgetText(ctx, 'Disabled') };
+  const stateNames = { armed: widgetText(ctx, 'Active'), triggered: widgetText(ctx, 'Triggered'), expired: widgetText(ctx, 'Expired'), disabled: widgetText(ctx, 'Disabled') };
   function sourceText(alert: Alert): string {
     const source = alert.source;
     if (source.kind === 'price') return source.upperPrice === undefined ? widgetText(ctx, 'Price {price}', { price: source.price }) : widgetText(ctx, 'Price {price} to {upper}', { price: source.price, upper: source.upperPrice });

@@ -387,6 +387,8 @@ const CLASSIFIED: readonly Classified[] = [
   { file: 'src/model/indicator-instance.ts', line: /`dashed` predates `lineStyle`/, status: 'kept', name: '`dashed`' },
   { file: 'src/widget/localization.ts', line: /Retained so existing host translation catalogs/, status: 'deprecated',
     name: 'Enter a valid expiry date and time in UTC' },
+  { file: 'src/widget/localization.ts', line: /catalogs written for the armed wording/, status: 'deprecated',
+    name: 'Keep tool armed' },
 ];
 
 /** Where COMPATIBILITY.md records each status. */

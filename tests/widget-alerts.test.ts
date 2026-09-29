@@ -454,7 +454,7 @@ describe('widget alert list', () => {
     expect(opener).not.toBeNull();
     fire(opener!, 'click');
     let row = root.querySelector(`[data-alert-id="${record.id}"]`)!;
-    expect(row.textContent).toContain('Armed');
+    expect(row.textContent).toContain('Active');
     click(row, 'toggle-alert');
     expect(w.alerts.list()[0].state).toBe('disabled');
     row = root.querySelector(`[data-alert-id="${record.id}"]`)!;

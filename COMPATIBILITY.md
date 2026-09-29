@@ -47,10 +47,10 @@ state do not belong in portable layout files.
 ## Deprecated APIs
 
 Each entry keeps working until the release in the "Removed in" column. The
-`depth_level` wire key, the widget message key and the `priceAxisMoved` event
-have no declaration a tag can sit on (a key the feed sends on the wire, one
-member of a string union, and a name `chart.on` takes as a string), so this
-table is where they are recorded.
+`depth_level` wire key, the widget message keys and the `priceAxisMoved` event
+have no declaration a tag can sit on (a key the feed sends on the wire, members
+of a string union, and a name `chart.on` takes as a string), so this table is
+where they are recorded.
 
 | Deprecated | Declared in | Replacement since | Removed in | Use instead |
 | --- | --- | --- | --- | --- |
@@ -58,6 +58,7 @@ table is where they are recorded.
 | `IndicatorHost.addIndicatorLevel` argument `level.dashed` | `src/model/indicator-instance.ts` | 1.7.1 | 3.0.0 | `level.lineStyle`, which a study always resolves and which also carries `'dotted'` |
 | `depth_level` key in a depth subscribe frame | `src/feed/openalgo-ws.ts` (`formatSubscribe`), a wire key | 2.0.1 | 3.0.0 | `depth`, the key the OpenAlgo proxy reads, which is sent beside it today |
 | Widget message key "Enter a valid expiry date and time in UTC" | `src/widget/localization.ts`, a union member | 2.4.6 | 3.0.0 | Nothing: the widget no longer shows it, so drop it from a translation catalog |
+| Widget message keys "Armed", "Keep tool armed", "On: the tool stays armed after each drawing", "Tools stay armed after each drawing", "{group}: chevron for the rest. Double-click keeps it armed" and "{name} stays armed until Escape" | `src/widget/localization.ts`, each a union member | 2.5.10 | 3.0.0 | The same keys with "active" for "armed" ("Active", "Keep tool active" and so on), which the widget shows since 2.5.10; translate those instead |
 | `ChartClickEvent` flags `shiftKey`, `ctrlKey` and `metaKey` | `src/core/chart.ts` | 2.0.0 | 3.0.0 | `modifiers.shift`, `modifiers.ctrl` and `modifiers.meta`, the same state, beside `alt` |
 | `Chart.renderer` | `src/core/chart.ts` | 2.0.0 | 3.0.0 | `Chart.rendererKind`, the same value under its settled name |
 | `Chart.movePriceAxis` | `src/core/chart.ts` | 2.5.4 | 3.0.0 | `Chart.setPriceAxisPlacement`, which moves the column and keeps the scale's id |

@@ -285,7 +285,7 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
     savePrefs();
     applyStay();
     refreshControls();
-    ctx.status(prefs.stay ? widgetText(ctx, 'Tools stay armed after each drawing') : widgetText(ctx, 'One drawing per pick'));
+    ctx.status(prefs.stay ? widgetText(ctx, 'Tools stay active after each drawing') : widgetText(ctx, 'One drawing per pick'));
   };
   const setDrawLock = (on: boolean): void => {
     latch = on === true;
@@ -301,7 +301,7 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
   const hold = (tool: string): void => {
     setDrawLock(true);
     arm(tool);
-    ctx.status(widgetText(ctx, '{name} stays armed until Escape', { name: translatedTool(tool) }));
+    ctx.status(widgetText(ctx, '{name} stays active until Escape', { name: translatedTool(tool) }));
   };
 
   // ── building ─────────────────────────────────────────────────────────
@@ -374,7 +374,7 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
       tip: () => ({
         title: translatedTool(lastOf(g)),
         chord: chordOf(lastOf(g)),
-        sub: widgetText(ctx, prefs.stay ? '{group}: chevron for the rest' : '{group}: chevron for the rest. Double-click keeps it armed', { group: g.title === undefined ? '' : widgetText(ctx, `schema.rail.${g.id}.title`, {}, g.title) }),
+        sub: widgetText(ctx, prefs.stay ? '{group}: chevron for the rest' : '{group}: chevron for the rest. Double-click keeps it active', { group: g.title === undefined ? '' : widgetText(ctx, `schema.rail.${g.id}.title`, {}, g.title) }),
         side: 'right',
       }),
       onClick: (e) => {
@@ -548,8 +548,8 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
       cls: 'oac-rail__btn--chrome',
       glyphEl: chromeGlyph(doc, 'link'),
       tip: () => ({
-        title: widgetText(ctx, 'Keep tool armed'),
-        sub: prefs.stay ? widgetText(ctx, 'On: the tool stays armed after each drawing') : widgetText(ctx, 'Off: one drawing per pick'),
+        title: widgetText(ctx, 'Keep tool active'),
+        sub: prefs.stay ? widgetText(ctx, 'On: the tool stays active after each drawing') : widgetText(ctx, 'Off: one drawing per pick'),
         side: 'right',
       }),
       onClick: () => setStayMode(!prefs.stay),
