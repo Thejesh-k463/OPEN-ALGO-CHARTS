@@ -207,6 +207,188 @@ describe('a session calendar without instrument rules', () => {
   });
 });
 
+describe('market phases', () => {
+  // NSE-style hours in IST: a 15-minute pre-open and a 30-minute closing session.
+  const nse = (): Instrument => new Instrument({ ...cash(), calendar: { ...cash().calendar, preMarketMinutes: 15, postMarketMinutes: 30 } });
+  const ist = (local: string): number => time(`${local}+05:30`);
+  const span = (phase: string, start: number, end: number) => ({ phase, start, end });
+  // US-style hours: pre-open from 04:00 and post-close to 20:00 around 09:30 to
+  // 16:00, with Thanksgiving closed and the day after it ending at 13:00.
+  const us = (extra: Record<string, unknown> = {}): SessionCalendar => new SessionCalendar({
+    timezone: 'America/New_York', sessions: ['0930-1600:23456'], preMarketMinutes: 330, postMarketMinutes: 240,
+    exceptions: { '2026-11-26': [], '2026-11-27': ['0930-1300'] }, ...extra,
+  });
+
+  it('walks a regular IST day through pre-open, the session, post-close and closed', () => {
+    const instrument = nse();
+    expect(instrument.phaseSpans(ist('2026-01-28T00:00:00'), ist('2026-01-29T00:00:00'))).toEqual([
+      span('closed', ist('2026-01-28T00:00:00'), ist('2026-01-28T09:00:00')),
+      span('pre', ist('2026-01-28T09:00:00'), ist('2026-01-28T09:15:00')),
+      span('regular', ist('2026-01-28T09:15:00'), ist('2026-01-28T15:30:00')),
+      span('post', ist('2026-01-28T15:30:00'), ist('2026-01-28T16:00:00')),
+      span('closed', ist('2026-01-28T16:00:00'), ist('2026-01-29T00:00:00')),
+    ]);
+    const at = (local: string) => instrument.phaseAt(ist(local));
+    expect(at('2026-01-28T08:59:59')).toBe('closed');
+    expect(at('2026-01-28T09:00:00')).toBe('pre');
+    expect(at('2026-01-28T09:14:59')).toBe('pre');
+    expect(at('2026-01-28T09:15:00')).toBe('regular');
+    expect(at('2026-01-28T15:29:59')).toBe('regular');
+    expect(at('2026-01-28T15:30:00')).toBe('post');
+    expect(at('2026-01-28T16:00:00')).toBe('closed');
+    // IST keeps no daylight saving: the pre-open opens at 03:30 UTC in June too.
+    expect(instrument.phaseAt(time('2026-06-17T03:29:59Z'))).toBe('closed');
+    expect(instrument.phaseAt(time('2026-06-17T03:30:00Z'))).toBe('pre');
+  });
+
+  it('moves the pre-open and post-close with a shortened day and drops them on a holiday', () => {
+    const instrument = nse();
+    expect(instrument.phaseSpans(ist('2026-01-27T09:30:00'), ist('2026-01-27T14:00:00'))).toEqual([
+      span('closed', ist('2026-01-27T09:30:00'), ist('2026-01-27T09:45:00')),
+      span('pre', ist('2026-01-27T09:45:00'), ist('2026-01-27T10:00:00')),
+      span('regular', ist('2026-01-27T10:00:00'), ist('2026-01-27T13:00:00')),
+      span('post', ist('2026-01-27T13:00:00'), ist('2026-01-27T13:30:00')),
+      span('closed', ist('2026-01-27T13:30:00'), ist('2026-01-27T14:00:00')),
+    ]);
+    // Monday the 26th is closed by an exception although Mondays open: the
+    // whole local date, midnight to midnight, is a holiday, with no pre-open.
+    expect(instrument.phaseSpans(ist('2026-01-25T12:00:00'), ist('2026-01-27T09:00:00'))).toEqual([
+      span('closed', ist('2026-01-25T12:00:00'), ist('2026-01-26T00:00:00')),
+      span('holiday', ist('2026-01-26T00:00:00'), ist('2026-01-27T00:00:00')),
+      span('closed', ist('2026-01-27T00:00:00'), ist('2026-01-27T09:00:00')),
+    ]);
+    expect(instrument.phaseAt(ist('2026-01-26T09:05:00'))).toBe('holiday');
+    expect(instrument.phaseAt(ist('2026-01-26T23:59:59'))).toBe('holiday');
+  });
+
+  it('reads a weekend as closed, and an exception closing a weekend date is no holiday', () => {
+    expect(nse().phaseAt(ist('2026-01-24T12:00:00'))).toBe('closed');
+    const saturday = new Instrument({ ...cash(), calendar: { sessions: ['0915-1530:23456'], exceptions: { '2026-01-31': [] } } });
+    expect(saturday.phaseAt(ist('2026-01-31T12:00:00'))).toBe('closed');
+  });
+
+  it('follows daylight saving in the calendar zone, per boundary', () => {
+    const calendar = us();
+    // Friday 6 March 2026, on EST (UTC-5): pre-open 09:00Z, open 14:30Z, close 21:00Z, post to 01:00Z.
+    expect(calendar.phaseSpans(time('2026-03-06T08:00:00Z'), time('2026-03-07T02:00:00Z'))).toEqual([
+      span('closed', time('2026-03-06T08:00:00Z'), time('2026-03-06T09:00:00Z')),
+      span('pre', time('2026-03-06T09:00:00Z'), time('2026-03-06T14:30:00Z')),
+      span('regular', time('2026-03-06T14:30:00Z'), time('2026-03-06T21:00:00Z')),
+      span('post', time('2026-03-06T21:00:00Z'), time('2026-03-07T01:00:00Z')),
+      span('closed', time('2026-03-07T01:00:00Z'), time('2026-03-07T02:00:00Z')),
+    ]);
+    // Monday 9 March, the day after the clocks went forward, on EDT (UTC-4):
+    // every boundary is an hour earlier in UTC and at the same wall time.
+    expect(calendar.phaseSpans(time('2026-03-09T07:00:00Z'), time('2026-03-10T01:00:00Z'))).toEqual([
+      span('closed', time('2026-03-09T07:00:00Z'), time('2026-03-09T08:00:00Z')),
+      span('pre', time('2026-03-09T08:00:00Z'), time('2026-03-09T13:30:00Z')),
+      span('regular', time('2026-03-09T13:30:00Z'), time('2026-03-09T20:00:00Z')),
+      span('post', time('2026-03-09T20:00:00Z'), time('2026-03-10T00:00:00Z')),
+      span('closed', time('2026-03-10T00:00:00Z'), time('2026-03-10T01:00:00Z')),
+    ]);
+    // And back in November: Friday on EDT, Monday on EST.
+    expect(calendar.phaseAt(time('2026-10-30T08:00:00Z'))).toBe('pre');
+    expect(calendar.phaseAt(time('2026-11-02T08:00:00Z'))).toBe('closed');
+    expect(calendar.phaseAt(time('2026-11-02T09:00:00Z'))).toBe('pre');
+    // Thanksgiving is a holiday in New York's own date, and the next day's
+    // shortened session carries its post-close from 13:00 to 17:00.
+    expect(calendar.phaseAt(time('2026-11-26T15:00:00Z'))).toBe('holiday');
+    expect(calendar.phaseAt(time('2026-11-27T18:30:00Z'))).toBe('post');
+    expect(calendar.phaseAt(time('2026-11-27T22:00:00Z'))).toBe('closed');
+    // Extended hours that run through the spring-forward night last seven
+    // hours, from 20:00 EST to 04:00 EDT, not eight.
+    const overnight = new SessionCalendar({ timezone: 'America/New_York', sessions: ['0930-1600:23456'], extendedHours: ['2000-0400'] });
+    expect(overnight.phaseSpans(time('2026-03-08T00:00:00Z'), time('2026-03-08T12:00:00Z'))).toEqual([
+      span('closed', time('2026-03-08T00:00:00Z'), time('2026-03-08T01:00:00Z')),
+      span('extended', time('2026-03-08T01:00:00Z'), time('2026-03-08T08:00:00Z')),
+      span('closed', time('2026-03-08T08:00:00Z'), time('2026-03-08T12:00:00Z')),
+    ]);
+  });
+
+  it('gives the session precedence, then pre-open, post-close and extended hours', () => {
+    const calendar = new SessionCalendar({ timezone: 'UTC', sessions: ['0900-1700:23456'], preMarketMinutes: 120,
+      postMarketMinutes: 120, extendedHours: ['0600-2000:23456'] });
+    expect(calendar.phaseSpans(time('2026-01-28T00:00:00Z'), time('2026-01-29T00:00:00Z')).map(s => [s.phase, s.start, s.end])).toEqual([
+      ['closed', time('2026-01-28T00:00:00Z'), time('2026-01-28T06:00:00Z')],
+      ['extended', time('2026-01-28T06:00:00Z'), time('2026-01-28T07:00:00Z')],
+      ['pre', time('2026-01-28T07:00:00Z'), time('2026-01-28T09:00:00Z')],
+      ['regular', time('2026-01-28T09:00:00Z'), time('2026-01-28T17:00:00Z')],
+      ['post', time('2026-01-28T17:00:00Z'), time('2026-01-28T19:00:00Z')],
+      ['extended', time('2026-01-28T19:00:00Z'), time('2026-01-28T20:00:00Z')],
+      ['closed', time('2026-01-28T20:00:00Z'), time('2026-01-29T00:00:00Z')],
+    ]);
+    // An exception closing a date closes its extended hours with it.
+    const closed = new SessionCalendar({ timezone: 'UTC', sessions: ['0900-1700:23456'], extendedHours: ['0600-2000:23456'], exceptions: { '2026-01-28': [] } });
+    expect(closed.phaseAt(time('2026-01-28T06:30:00Z'))).toBe('holiday');
+  });
+
+  it('keeps a lunch break closed, with the extended hours around the whole day', () => {
+    const split = new SessionCalendar({ timezone: 'UTC', sessions: ['0900-1130:23456', '1230-1500:23456'], preMarketMinutes: 30, postMarketMinutes: 30 });
+    expect(split.phaseSpans(time('2026-01-28T08:00:00Z'), time('2026-01-28T16:00:00Z')).map(s => s.phase))
+      .toEqual(['closed', 'pre', 'regular', 'closed', 'regular', 'post', 'closed']);
+    expect(split.phaseAt(time('2026-01-28T12:00:00Z'))).toBe('closed');
+    expect(split.phaseAt(time('2026-01-28T15:15:00Z'))).toBe('post');
+  });
+
+  it('puts the post-close of an overnight session after its close, on the next date', () => {
+    const overnight = new SessionCalendar({ timezone: 'UTC', sessions: ['2200-0200:23456'], postMarketMinutes: 60 });
+    // Friday's session opens at 22:00 and closes at 02:00 on Saturday.
+    expect(overnight.phaseAt(time('2026-01-31T01:30:00Z'))).toBe('regular');
+    expect(overnight.phaseAt(time('2026-01-31T02:30:00Z'))).toBe('post');
+    expect(overnight.phaseAt(time('2026-01-31T03:00:00Z'))).toBe('closed');
+  });
+
+  it('lays out a round-the-clock calendar as one session', () => {
+    const crypto = new SessionCalendar({ timezone: 'UTC', sessions: ['0000-0000'] });
+    expect(crypto.phaseSpans(time('2026-01-24T05:00:00Z'), time('2026-01-27T05:00:00Z')))
+      .toEqual([span('regular', time('2026-01-24T05:00:00Z'), time('2026-01-27T05:00:00Z'))]);
+  });
+
+  it('refuses a range it cannot lay out, naming its own kind', () => {
+    const instrument = nse(), calendar = us(), t = time('2026-01-28T00:00:00Z');
+    expect(() => instrument.phaseSpans(t, t)).toThrow(/Invalid instrument: phase range/);
+    expect(() => instrument.phaseSpans(t, t + 401 * 86400)).toThrow(/Invalid instrument: phase range/);
+    expect(() => calendar.phaseSpans(t + 60, t)).toThrow(/Invalid session calendar: phase range/);
+    expect(() => calendar.phaseSpans(NaN, t)).toThrow(/Invalid session calendar: invalid timestamp/);
+    expect(() => calendar.phaseAt(NaN)).toThrow(/Invalid session calendar/);
+    expect(instrument.phaseSpans(t, t + 400 * 86400).length).toBeGreaterThan(1000);
+  });
+
+  it.each([
+    [{ preMarketMinutes: -1 }, 'preMarketMinutes must be whole minutes under a day'],
+    [{ preMarketMinutes: 1440 }, 'preMarketMinutes must be whole minutes under a day'],
+    [{ postMarketMinutes: 1.5 }, 'postMarketMinutes must be whole minutes under a day'],
+    [{ postMarketMinutes: '30' }, 'postMarketMinutes must be whole minutes under a day'],
+    [{ extendedHours: ['2500-0100'] }, 'invalid extended hours'],
+    [{ extendedHours: '2000-0400' }, 'invalid list'],
+  ])('refuses extended hours %j for an instrument and a bare calendar', (patch, message) => {
+    expect(() => new Instrument({ ...cash(), calendar: { ...cash().calendar, ...patch } })).toThrow(new Error(`Invalid instrument: ${message}`));
+    expect(() => new SessionCalendar({ timezone: 'UTC', sessions: [], ...patch })).toThrow(new Error(`Invalid session calendar: ${message}`));
+  });
+
+  it('checks the extended hours after every older field, so an older fault still comes first', () => {
+    const bad = { preMarketMinutes: -1, extendedHours: ['bad'] };
+    expect(() => new Instrument({ ...cash(), symbol: '', calendar: { sessions: ['bad'], ...bad } })).toThrow(new Error('Invalid instrument: symbol'));
+    expect(() => new Instrument({ ...cash(), calendar: { sessions: ['bad'], ...bad } })).toThrow(new Error('Invalid instrument: invalid session'));
+    expect(() => new SessionCalendar({ timezone: 'Mars/City', sessions: [], ...bad })).toThrow(/unknown timezone/);
+    expect(() => new SessionCalendar({ timezone: 'UTC', sessions: ['bad'], ...bad })).toThrow(/invalid session$/);
+  });
+
+  it('keeps a calendar without extended hours in its old shape, and detaches and freezes the new fields', () => {
+    expect(Object.keys(new Instrument(cash()).metadata.calendar)).toEqual(['sessions', 'exceptions']);
+    expect(Object.keys(new SessionCalendar({ timezone: 'UTC', sessions: [] }).calendar)).toEqual(['sessions', 'exceptions']);
+    const source = { timezone: 'UTC', sessions: ['0900-1700:23456'], extendedHours: ['1800-2200:23456'], preMarketMinutes: 0, postMarketMinutes: 45 };
+    const calendar = new SessionCalendar(source);
+    source.extendedHours[0] = '0000-0000';
+    expect(calendar.calendar).toMatchObject({ extendedHours: ['1800-2200:23456'], preMarketMinutes: 0, postMarketMinutes: 45 });
+    expect(Object.isFrozen(calendar.calendar.extendedHours)).toBe(true);
+    // Zero minutes is no pre-open at all.
+    expect(calendar.phaseAt(time('2026-01-28T08:59:00Z'))).toBe('closed');
+    expect(calendar.phaseAt(time('2026-01-28T17:30:00Z'))).toBe('post');
+    expect(calendar.phaseAt(time('2026-01-28T19:00:00Z'))).toBe('extended');
+  });
+});
+
 describe('instrument chart and quantity integration', () => {
   it.each(['left', ''] as const)('applies the tick to the actual primary scale %j', priceScaleId => {
     const c = chart(priceScaleId); c.addIndicator('rsi');
