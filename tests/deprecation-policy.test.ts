@@ -387,6 +387,9 @@ const CLASSIFIED: readonly Classified[] = [
   { file: 'src/model/indicator-instance.ts', line: /`dashed` predates `lineStyle`/, status: 'kept', name: '`dashed`' },
   { file: 'src/widget/localization.ts', line: /Retained so existing host translation catalogs/, status: 'deprecated',
     name: 'Enter a valid expiry date and time in UTC' },
+  // One comment keeps several keys; each deprecation it covers is named, so a missing row fails.
+  { file: 'src/widget/localization.ts', line: /Retained so existing host translation catalogs/, status: 'deprecated',
+    name: 'Widget message keys "Dark" and "Light"' },
   { file: 'src/widget/localization.ts', line: /catalogs written for the armed wording/, status: 'deprecated',
     name: 'Keep tool armed' },
 ];
