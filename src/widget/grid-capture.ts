@@ -38,11 +38,18 @@ const LABEL_ROOM = 14;
 /**
  * The device pixel ratio the charts drew at: a screenshot's width over its
  * chart's CSS width, from the first chart that has both. One page draws every
- * chart at one ratio; `fallback` covers a grid whose charts are all unmeasured.
+ * chart at one ratio; `fallback`, the page's own ratio, covers a grid whose
+ * charts are all unmeasured.
  */
 export function captureRatio(pieces: readonly GridCapturePiece[], fallback: number): number {
   for (const piece of pieces) {
-    if (piece.image !== null && piece.image.width > 1 && piece.chart.width > 0) return piece.image.width / piece.chart.width;
+    if (piece.image === null || piece.image.width <= 1 || piece.chart.width <= 0) continue;
+    // A canvas is a whole number of device pixels, so at a fractional ratio
+    // (1.25, 1.5) the quotient reads a hair low and the picture comes out a
+    // pixel short of the grid. When the page's ratio accounts for the canvas
+    // to within that pixel, it is the exact one.
+    if (fallback > 0 && Math.abs(piece.image.width - piece.chart.width * fallback) <= 1) return fallback;
+    return piece.image.width / piece.chart.width;
   }
   return fallback > 0 ? fallback : 1;
 }

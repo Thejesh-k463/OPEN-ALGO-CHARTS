@@ -147,6 +147,18 @@ describe('chart grid layout picker', () => {
     expect(doc.activeElement).toBe(button);
   });
 
+  it('leaves the Layout control out when the host offers no layouts, and out of the arrow keys', () => {
+    const { root, doc } = makeGrid({ preset: '1x2', toolbar: true, layouts: ['nope' as ChartGridLayoutId] });
+    const layout = bar(root).querySelector('.oac-grid__layout')!;
+    expect(layout.hidden).toBe(true);
+    const max = bar(root).querySelector('.oac-grid__max')!;
+    max.focus();
+    fireKey(doc.activeElement, 'ArrowLeft');
+    expect(doc.activeElement).toBe(bar(root).querySelector('.oac-grid__capture'));
+    fireKey(doc.activeElement, 'Home');
+    expect(doc.activeElement).toBe(max);
+  });
+
   it('offers only the layouts the host lists, in its order', () => {
     const layouts: ChartGridLayoutId[] = ['2x2', '1x1', 'top-2', 'nope' as ChartGridLayoutId];
     const { root } = makeGrid({ preset: '2x2', toolbar: true, layouts });

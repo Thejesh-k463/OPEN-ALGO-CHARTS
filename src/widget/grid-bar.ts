@@ -376,6 +376,8 @@ export function mountGridBar(host: GridBarHost, el: HTMLElement): GridBarHandle 
     return { title: isChartGridLayout(id) ? widgetText(t, 'Layout: {name}', { name: layoutName(t, id) }) : widgetText(t, 'Layout'), side: 'bottom' };
   });
   layout.addEventListener('click', () => openLayoutPicker(host, layout));
+  // A host that offers no layouts gets no picker, rather than one that opens empty.
+  layout.hidden = host.layouts.length === 0;
 
   const max = button('oac-btn--icon oac-grid__max', widgetText(t, 'Maximize the chart'));
   const maxGlyph = chrome(doc, chromeIconSvg('maximize'));
@@ -406,7 +408,7 @@ export function mountGridBar(host: GridBarHost, el: HTMLElement): GridBarHandle 
   el.append(layout, max, sep(), link, sep(), capture);
   // A toolbar's own keys: the arrows, Home and End move between its controls,
   // claimed here so no chart pans with them. Tab still reaches each one.
-  const controls = [layout, max, link, capture];
+  const controls = [layout, max, link, capture].filter(control => !control.hidden);
   el.addEventListener('keydown', e => {
     const at = controls.indexOf(doc.activeElement as HTMLButtonElement);
     const to = at < 0 ? -1 : e.key === 'ArrowRight' ? (at + 1) % controls.length : e.key === 'ArrowLeft' ? (at + controls.length - 1) % controls.length

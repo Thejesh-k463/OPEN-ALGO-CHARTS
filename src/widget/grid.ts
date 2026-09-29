@@ -81,7 +81,7 @@ export interface ChartGridOptions extends Omit<WidgetOptions, 'persist' | 'stora
    * host with its own controls keeps its page as it was.
    */
   toolbar?: boolean;
-  /** The layouts the bar's picker offers, in its order. Default: every `CHART_GRID_LAYOUTS` entry. */
+  /** The layouts the bar's picker offers, in its order. Default: every `CHART_GRID_LAYOUTS` entry. Empty: the bar has no Layout control. */
   layouts?: readonly ChartGridLayoutId[];
 }
 
@@ -153,7 +153,8 @@ export interface ChartGrid {
   /**
    * Reflow into a layout. The charts that fit keep their state in reading
    * order and new ones copy the active chart's instrument; in an uneven layout
-   * the active chart takes the large slot. Weights reset to the layout's.
+   * the active chart takes the large slot, and stays even when it sat past the
+   * charts that fit. Weights reset to the layout's.
    * Throws for an id that is not in `CHART_GRID_LAYOUTS`.
    */
   setPreset(preset: ChartGridLayoutId): void;
@@ -982,6 +983,10 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
       const spec = CHART_GRID_LAYOUTS[next];
       const count = spec.slots.length;
       const kept = cells.slice(0, count);
+      const focus = focusSlot(spec);
+      // The large slot is the active chart's, so it stays even when it sits
+      // past the charts that fit; the last of those makes room for it.
+      if (focus >= 0 && active !== null && !kept.includes(active)) kept.splice(count - 1, 1, active);
       const before = active;
       // Read now: dropping a chart takes it out of its group.
       const group = before === null ? links.groups[0] ?? links.create() : before.group;
@@ -1001,12 +1006,11 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
       }
       maxed = false;
       root.dataset.maximized = 'false';
-      for (const cell of cells.slice(count)) { drop(cell); drawings.delete(cell.id); }
+      for (const cell of cells.filter(c => !kept.includes(c))) { drop(cell); drawings.delete(cell.id); }
       if (active === null || !kept.includes(active)) active = kept[0] ?? made[0];
       // In an uneven layout the chart being worked on takes the large slot;
       // the others keep their reading order around it.
       const order = [...kept, ...made];
-      const focus = focusSlot(spec);
       if (focus >= 0) { order.splice(order.indexOf(active), 1); order.splice(focus, 0, active); }
       order.forEach((cell, i) => Object.assign(cell, spec.slots[i]));
       cells = order;
@@ -1242,6 +1246,11 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
       : sync.groups.map(g => ({ id: g.id, name: g.name, channels: channelsOf(g), panes: payload.panes.filter(p => p.linkGroup === g.id) }));
     for (const entry of groups) {
       const group = links.create({ id: entry.id, name: entry.name, links: ALL_OFF }) as GridGroup<Cell>;
+      // A group is saved under the name it shows, because the schema needs one.
+      // Read back as that same name it would count as named: a desk back to
+      // one group would keep its marks and keep writing groups. It stays
+      // unnamed, and shows the name in whatever language opens it.
+      if (group.name === widgetText(text, 'Group {letter}', { letter: group.letter })) group.name = null;
       for (const pane of entry.panes) links.join(made.find(c => c.id === pane.id) as Cell, group);
       // Record the leader's choices first, then switch on: the group converges on what it just heard.
       lead(group, { symbol: true, interval: true, chartType: true });

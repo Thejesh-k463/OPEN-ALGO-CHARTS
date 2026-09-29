@@ -166,9 +166,10 @@ describe('chart grid link groups', () => {
     expect(grid.active().id).toBe(b.id);
     const menu = root.querySelector('.oac-grid__overlay [role="menu"]');
     expect(menu?.getAttribute('aria-label')).toBe('Linking');
-    // Back to one group holding every chart: the marks go.
+    // Back to one group holding every chart: the marks go, and a name brings them back.
     grid.setLinkGroup(b.id, 'a');
     grid.setLinkGroup(c.id, 'a');
+    expect(root.querySelectorAll('.oac-grid__mark')).toHaveLength(0);
     grid.renameLinkGroup('a', 'Desk');
     expect(root.querySelectorAll('.oac-grid__mark')).toHaveLength(3);
   });
@@ -324,6 +325,29 @@ describe('chart grid saved link groups', () => {
     expect(grid.applyWorkspace(undeclared).reason).toMatch(/undeclared link group zz/);
     expect(grid.cells()).toHaveLength(2);
     expect(grid.applyWorkspace(payload)).toEqual({ applied: true });
+  });
+
+  it('reads a group saved under the name the grid gave it back as unnamed, so a desk back to one group is plain again', () => {
+    const { grid: source } = makeGrid({ preset: '1x3', links: { symbol: true } });
+    source.addLinkGroup(source.cells()[2].id);
+    const payload = parseWorkspacePayload(JSON.stringify(source.getWorkspace()));
+    expect(payload.sync.groups?.map(g => g.name)).toEqual(['Group A', 'Group B']);
+    const { grid, root } = makeGrid();
+    expect(grid.applyWorkspace(payload)).toEqual({ applied: true });
+    expect(grid.linkGroups().map(g => g.name)).toEqual(['Group A', 'Group B']);
+    expect(root.querySelectorAll('.oac-grid__mark')).toHaveLength(3);
+    grid.setLinkGroup(grid.cells()[2].id, 'a');
+    expect(root.querySelectorAll('.oac-grid__mark')).toHaveLength(0);
+    const sync = grid.getWorkspace().sync;
+    expect(sync.groups).toBeUndefined();
+    expect(sync).toMatchObject({ symbol: true });
+    expect(grid.getWorkspace().panes.some(p => 'linkGroup' in p)).toBe(false);
+    // A name the user gave is kept, and so is a default name read in another language.
+    const named = JSON.parse(JSON.stringify(payload)) as WorkspacePayload;
+    named.sync.groups![1].name = 'Banks';
+    const { grid: other } = makeGrid({ translate: (key, fallback) => (key === 'Group {letter}' ? 'Gruppe {letter}' : fallback) });
+    other.applyWorkspace(named);
+    expect(other.linkGroups().map(g => g.name)).toEqual(['Group A', 'Banks']);
   });
 
   it('keeps an unlinked chart unlinked through a save and a restore', () => {

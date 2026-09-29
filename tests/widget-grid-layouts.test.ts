@@ -136,6 +136,27 @@ describe('chart grid reflow onto a layout', () => {
     expect(grid.cells().map(c => c.widget.symbol())).toEqual(['CCC', 'AAA', 'BBB']);
   });
 
+  it('keeps the active chart for the large slot when it sits past the charts that fit, and a uniform layout keeps its 2.5.9 rule', () => {
+    const { grid } = makeGrid({ preset: '2x2' });
+    grid.cells().forEach((c, i) => c.widget.setSymbol(['AAA', 'BBB', 'CCC', 'DDD'][i]));
+    const [, , third, fourth] = grid.cells();
+    grid.setActive(fourth.id);
+    const reasons: string[] = [];
+    grid.on('active', ({ id }) => reasons.push(id));
+    grid.setPreset('left-2');
+    // The chart being worked on stays, large; the last of the others that fit makes room for it.
+    expect(grid.cells().map(c => c.widget.symbol())).toEqual(['DDD', 'AAA', 'BBB']);
+    expect(grid.active().id).toBe(fourth.id);
+    expect(grid.cells()[0].widget).toBe(fourth.widget);
+    expect(third.widget.isDestroyed).toBe(true);
+    expect(reasons).toEqual([]);
+    // A uniform layout has no large slot: the charts that fit are the first ones, as before.
+    grid.setPreset('2x2');
+    grid.setActive(grid.cells()[3].id);
+    grid.setPreset('1x2');
+    expect(grid.cells().map(c => c.widget.symbol())).toEqual(['DDD', 'AAA']);
+  });
+
   it('starts an uneven layout with its own track weights, and a uniform one with even tracks', () => {
     const { grid, root } = makeGrid({ preset: '2x2' });
     grid.setPreset('left-3');

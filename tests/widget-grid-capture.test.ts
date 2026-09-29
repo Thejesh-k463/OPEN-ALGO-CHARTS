@@ -71,6 +71,14 @@ describe('grid capture composition', () => {
     expect(captureRatio([hollow, { ...hollow, chart: { left: 0, top: 0, width: 100, height: 50 }, image: image(300, 150) }], 1)).toBe(3);
     expect(captureRatio([], 0)).toBe(1);
   });
+
+  it('takes the page ratio when a fractional one accounts for the canvas to a pixel, so the picture is not a pixel short', () => {
+    // 799.5 CSS px at 1.25 is 999.4 device pixels, drawn on 999: the quotient alone reads 1.2495.
+    const piece: GridCapturePiece = { cell: { left: 0, top: 0, width: 800, height: 600 }, chart: { left: 0, top: 30, width: 799.5, height: 570.4 }, image: image(999, 713), label: '' };
+    expect(captureRatio([piece], 1.25)).toBe(1.25);
+    expect(captureRatio([piece], 1.5)).toBeCloseTo(999 / 799.5, 9);
+    expect(captureRatio([piece], 0)).toBeCloseTo(999 / 799.5, 9);
+  });
 });
 
 describe('grid capture from a grid', () => {
