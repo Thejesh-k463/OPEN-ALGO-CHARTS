@@ -369,6 +369,67 @@ describe('WidgetStorage over an asynchronous store', () => {
     });
   });
 
+  it('follows a change another user of the store makes, on each key it has not changed itself', async () => {
+    const store = new FakeAsyncStore();
+    store.map.set('oac-widget:a:drawings:NSE:INFY', '{"n":1}');
+    const storage = new WidgetStorage('a', store);
+    await storage.load();
+    store.external('oac-widget:a:drawings:NSE:INFY', '{"n":2}');
+    store.external('oac-widget:a:drawings:NSE:TCS', '{"n":3}');
+    store.external('oac-widget:b:state', '{"other":true}');
+    expect(storage.get('drawings:NSE:INFY')).toEqual({ n: 2 });
+    expect(storage.get('drawings:NSE:TCS')).toEqual({ n: 3 });
+    store.external('oac-widget:a:drawings:NSE:TCS', null);
+    expect(storage.get('drawings:NSE:TCS')).toBeNull();
+    // Its own change not landed yet goes out after, so it is the one the store keeps.
+    store.hold = true;
+    storage.set('state', { mine: true });
+    store.external('oac-widget:a:state', '{"theirs":true}');
+    await settle();
+    store.external('oac-widget:a:state', '{"theirs":true}');
+    expect(storage.get('state')).toEqual({ mine: true });
+    store.release();
+    await storage.flush();
+    expect(store.map.get('oac-widget:a:state')).toBe('{"mine":true}');
+    // Its own write, heard back as it lands, changes nothing.
+    expect(storage.get('state')).toEqual({ mine: true });
+  });
+
+  it('applies a change heard while the namespace was read over what the read returned', async () => {
+    const store = new FakeAsyncStore();
+    store.map.set('oac-widget:a:drawings:NSE:INFY', '{"n":1}');
+    store.hold = true;
+    const storage = new WidgetStorage('a', store);
+    const loading = storage.load();
+    await settle();
+    // The read has gone out; another tab's write lands before it answers with the older value.
+    const answer = [...store.map];
+    store.external('oac-widget:a:drawings:NSE:INFY', '{"n":2}');
+    store.map.set('oac-widget:a:drawings:NSE:INFY', answer[0][1]);
+    store.release();
+    await loading;
+    expect(storage.get('drawings:NSE:INFY')).toEqual({ n: 2 });
+  });
+
+  it('stops following the store once closed, and still sends what it was given', async () => {
+    const store = new FakeAsyncStore();
+    const storage = new WidgetStorage('a', store);
+    await storage.load();
+    expect(store.listeners.size).toBe(1);
+    storage.set('state', { n: 1 });
+    storage.close();
+    expect(store.listeners.size).toBe(0);
+    store.external('oac-widget:a:rail', '{"r":1}');
+    expect(storage.get('rail')).toBeNull();
+    await storage.flush();
+    expect(store.map.get('oac-widget:a:state')).toBe('{"n":1}');
+    // Closed before its read, it never listens at all.
+    const early = new WidgetStorage('b', store);
+    early.close();
+    await early.load();
+    expect(store.listeners.size).toBe(0);
+  });
+
   it('goes straight through a synchronous store, where load and flush settle at once', async () => {
     const store = new MemoryStorage();
     const storage = new WidgetStorage('a', store);
@@ -460,6 +521,29 @@ describe('createIndexedDbWidgetStorage', () => {
     expect(await store.entries('oac-widget:a:')).toEqual([]);
     store.close();
     await expect(store.setItem('oac-widget:a:state', '1')).rejects.toThrow('closed');
+  });
+
+  it('announces each write that lands to its listeners here, and to the same database in another tab', async () => {
+    const db = new FakeIndexedDb();
+    const here = idbStore(db);
+    const there = idbStore(db);
+    const heardHere: Array<[string, string | null]> = [];
+    const heardThere: Array<[string, string | null]> = [];
+    const offHere = here.subscribe((key, value) => heardHere.push([key, value]));
+    there.subscribe((key, value) => heardThere.push([key, value]));
+    await here.setItem('oac-widget:a:state', '{"n":1}');
+    expect(heardHere).toEqual([['oac-widget:a:state', '{"n":1}']]);
+    await here.removeItem('oac-widget:a:state');
+    for (let i = 0; i < 50 && heardThere.length < 2; i++) await new Promise(resolve => setTimeout(resolve, 1));
+    expect(heardThere).toEqual([['oac-widget:a:state', '{"n":1}'], ['oac-widget:a:state', null]]);
+    // Nobody listening on this page: the other tab still hears the write.
+    offHere();
+    await here.setItem('oac-widget:a:rail', '{"r":1}');
+    for (let i = 0; i < 50 && heardThere.length < 3; i++) await new Promise(resolve => setTimeout(resolve, 1));
+    expect(heardThere.slice(-1)).toEqual([['oac-widget:a:rail', '{"r":1}']]);
+    expect(heardHere).toHaveLength(2);
+    here.close();
+    there.close();
   });
 
   it('carries the journal it was given, the page storage by default', () => {
@@ -689,6 +773,23 @@ describe('the widget over an asynchronous store', () => {
     expect(JSON.parse(store.map.get('oac-widget:desk:state')!).interval).toBe('1h');
   });
 
+  it('writes nothing when a page with no change pending is hidden, so a tab left behind keeps no older layout over a newer one', async () => {
+    vi.useFakeTimers();
+    const { store } = await savedVisit();
+    const doc = fakeWidgetDocument();
+    const w = make({ feed: recordingFeed().feed, persist: 'desk', storage: store }, doc);
+    await w.ready;
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS * 2);
+    // The user moves to another tab on the same namespace and saves a layout there.
+    const newer = JSON.stringify({ ...JSON.parse(store.map.get('oac-widget:desk:state')!), interval: '1h' });
+    store.external('oac-widget:desk:state', newer);
+    (doc as unknown as { visibilityState: string }).visibilityState = 'hidden';
+    fire(doc, 'visibilitychange');
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS * 2);
+    expect(store.map.get('oac-widget:desk:state')).toBe(newer);
+    expect(store.writes().filter(c => c.startsWith('set oac-widget:desk:state'))).toEqual([]);
+  });
+
   it('applies and writes nothing when destroyed before the store answers', async () => {
     const { store } = await savedVisit();
     store.hold = true;
@@ -744,6 +845,97 @@ describe('the widget over an asynchronous store', () => {
     expect(JSON.parse(store.map.get('oac-widget:desk:drawings:NSE:SAVED')!).drawings.map((d: { id: string }) => d.id)).toEqual([lineId]);
   });
 
+  it('brings back rail preferences saved on their own, with no layout saved beside them', async () => {
+    // The rail writes its own entry at once; the layout follows only a change
+    // to the chart, so a visit that only changed the magnet leaves this.
+    const rail = { favorites: ['trend-line'], magnet: 'strong', stay: true, last: {} };
+    const sync = new MemoryStorage();
+    sync.setItem('oac-widget:desk:rail', JSON.stringify(rail));
+    const before = make({ feed: recordingFeed().feed, persist: 'desk', storage: sync, symbol: 'ONE' });
+    const store = new FakeAsyncStore();
+    store.map.set('oac-widget:desk:rail', JSON.stringify(rail));
+    const w = make({ feed: recordingFeed().feed, persist: 'desk', storage: store, symbol: 'ONE' });
+    await w.ready;
+    await settle();
+    expect(w.getState().rail).toEqual(before.getState().rail);
+    expect(w.getState().rail).toMatchObject({ favorites: ['trend-line'], magnet: 'strong', stay: true });
+    await w.context.storage.flush();
+    expect(JSON.parse(store.map.get('oac-widget:desk:rail')!)).toMatchObject({ magnet: 'strong' });
+  });
+
+  it('keeps restoring, and starts the load, when a host listener throws on what the restore announces', async () => {
+    const { store, state, lineId } = await savedVisit();
+    const { feed, requests } = recordingFeed();
+    const w = make({ feed, persist: 'desk', storage: store });
+    const heard: string[] = [];
+    const offs = (['symbol', 'interval', 'theme', 'layout'] as const).map(event =>
+      w.on(event, () => { heard.push(event); throw new Error(`the host's own ${event} bug`); }));
+    await w.ready;
+    await settle();
+    expect([w.symbol(), w.interval(), w.chartType(), w.theme()]).toEqual(['SAVED', '15m', 'line', 'light']);
+    expect(instrumentsAsked(requests)).toEqual(['SAVED 15m']);
+    expect(w.getState().panels).toEqual(state.panels);
+    expect(w.draw.drawings().map(d => d.id)).toEqual([lineId]);
+    // Each listener was still told, and the restore itself is not reported as failed.
+    expect(heard).toEqual(expect.arrayContaining(['symbol', 'interval', 'theme', 'layout']));
+    expect((w.root as unknown as FakeElement).querySelector('.oac-toast__msg')).toBeNull();
+    for (const off of offs) off();
+  });
+
+  it('opens an instrument with the lines another tab drew on it since this one loaded, and keeps them', async () => {
+    const { store, lineId } = await savedVisit();
+    const w = make({ feed: recordingFeed().feed, persist: 'desk', storage: store, symbol: 'ELSE' });
+    await w.ready;
+    await settle();
+    const saved = JSON.parse(store.map.get('oac-widget:desk:drawings:NSE:SAVED')!);
+    const theirs = { ...saved.drawings[0], id: 'drawn-in-another-tab' };
+    store.external('oac-widget:desk:drawings:NSE:SAVED', JSON.stringify({ ...saved, drawings: [...saved.drawings, theirs] }));
+    w.setSymbol('SAVED');
+    await settle();
+    expect(w.draw.drawings().map(d => d.id)).toEqual([lineId, 'drawn-in-another-tab']);
+    const bars = w.series.getData();
+    const mine = w.draw.add({ tool: 'horizontal-line', paneIndex: 0, style: {}, points: [{ time: bars[50].time, price: bars[50].close }] }).id;
+    await w.context.storage.flush();
+    expect(JSON.parse(store.map.get('oac-widget:desk:drawings:NSE:SAVED')!).drawings.map((d: { id: string }) => d.id))
+      .toEqual([lineId, 'drawn-in-another-tab', mine]);
+    w.destroy();
+    expect(store.listeners.size).toBe(0);
+  });
+
+  it('still loads the saved instrument, and says so, when applying the rest of the layout fails', async () => {
+    const { store, lineId } = await savedVisit();
+    store.hold = true;
+    const { feed, requests } = recordingFeed();
+    const w = make({ feed, persist: 'desk', storage: store });
+    vi.spyOn(w.history, 'ignore').mockImplementationOnce(() => { throw new Error('a broken layout step'); });
+    await settle();
+    expect(store.calls).toEqual(['entries oac-widget:desk:']);
+    store.release();
+    await w.ready;
+    await settle();
+    expect(instrumentsAsked(requests)).toEqual(['SAVED 15m']);
+    expect((w.root as unknown as FakeElement).querySelector('.oac-toast__msg')?.textContent)
+      .toBe('The saved layout could not be restored: a broken layout step');
+    expect((w.root.style as unknown as { visibility: string }).visibility).toBe('');
+    // The drawings follow the instrument shown all the same.
+    expect(w.draw.drawings().map(d => d.id)).toEqual([lineId]);
+  });
+
+  it('reports a layout the engine throws on, rather than drop it in silence with a listener throw', async () => {
+    const { store } = await savedVisit();
+    store.hold = true;
+    const { feed, requests } = recordingFeed();
+    const w = make({ feed, persist: 'desk', storage: store });
+    vi.spyOn(w.chart, 'restoreState').mockImplementationOnce(() => { throw new Error('the engine refused it'); });
+    await settle();
+    store.release();
+    await w.ready;
+    await settle();
+    expect((w.root as unknown as FakeElement).querySelector('.oac-toast__msg')?.textContent)
+      .toBe('The saved layout could not be restored: the engine refused it');
+    expect(instrumentsAsked(requests)).toEqual(['SAVED 15m']);
+  });
+
   it('waits for the saved layout before a reload or a go-to it is asked for early', async () => {
     const { store } = await savedVisit();
     store.hold = true;
@@ -789,36 +981,54 @@ describe('the widget over an asynchronous store', () => {
 
   it('stays on localStorage, as before, on a page whose IndexedDB cannot be opened', async () => {
     vi.useFakeTimers();
-    const g = globalThis as { indexedDB?: unknown; localStorage?: unknown };
+    const g = globalThis as { indexedDB?: unknown; localStorage?: unknown; addEventListener?: unknown; removeEventListener?: unknown };
     const db = new FakeIndexedDb();
     db.failOpen = new Error('InvalidStateError: IndexedDB is off in this window');
     const page = new PageStorage();
-    const { store } = await savedVisit();
+    const { store, lineId } = await savedVisit();
     for (const [k, v] of store.map) page.setItem(k, v);
     g.indexedDB = db;
     g.localStorage = page;
+    // The page's own storage events: what another tab's write fires here.
+    const storageListeners = new Set<(event: unknown) => void>();
+    g.addEventListener = (type: string, fn: (event: unknown) => void) => { if (type === 'storage') storageListeners.add(fn); };
+    g.removeEventListener = (type: string, fn: (event: unknown) => void) => { if (type === 'storage') storageListeners.delete(fn); };
     try {
       const { feed, requests } = recordingFeed();
-      const w = make({ feed, persist: 'desk' });
+      const w = make({ feed, persist: 'desk', symbol: 'ELSE' });
       const statuses: string[] = [];
       w.on('status', e => statuses.push(`${e.kind} ${e.text}`));
       await w.ready;
       await vi.advanceTimersByTimeAsync(10);
-      expect([w.symbol(), w.interval(), w.chartType(), w.theme()]).toEqual(['SAVED', '15m', 'line', 'light']);
-      expect(instrumentsAsked(requests)).toEqual(['SAVED 15m']);
+      expect([w.symbol(), w.interval(), w.chartType(), w.theme()]).toEqual(['ELSE', '15m', 'line', 'light']);
+      expect(instrumentsAsked(requests)).toEqual(['ELSE 15m']);
       // Nothing to report: the layout is kept where it always was.
       expect(statuses.filter(s => s.startsWith('error'))).toEqual([]);
       w.setInterval('1h');
       await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 10);
       expect(JSON.parse(page.getItem('oac-widget:desk:state')!).interval).toBe('1h');
+      // Another tab on the same fallback adds a line to SAVED: its storage event reaches the copy here.
+      const key = 'oac-widget:desk:drawings:NSE:SAVED';
+      const saved = JSON.parse(page.getItem(key)!);
+      const next = JSON.stringify({ ...saved, drawings: [...saved.drawings, { ...saved.drawings[0], id: 'from-another-tab' }] });
+      page.setItem(key, next);
+      for (const fn of storageListeners) fn({ storageArea: page, key, newValue: next });
+      w.setSymbol('SAVED');
+      await vi.advanceTimersByTimeAsync(10);
+      expect(w.draw.drawings().map(d => d.id)).toEqual([lineId, 'from-another-tab']);
       // A second chart on the page asks the database no more.
       const opens = db.opens;
       const other = make({ feed, persist: 'other' });
       await other.ready;
       expect(db.opens).toBe(opens);
+      w.destroy();
+      other.destroy();
+      expect(storageListeners.size).toBe(0);
     } finally {
       delete g.indexedDB;
       delete g.localStorage;
+      delete g.addEventListener;
+      delete g.removeEventListener;
     }
   });
 });

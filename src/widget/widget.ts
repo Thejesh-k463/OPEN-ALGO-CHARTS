@@ -33,8 +33,8 @@ import {
 } from 'openalgo-charts';
 import { DrawingController, type DrawingDocumentStore, type InstrumentDrawings } from 'openalgo-charts/draw';
 import {
-  WidgetBus, WidgetStorage, createOverlayStack, createTipController, h, widgetDialog,
-  type AsyncStorageLike, type OverlayOptions, type StorageLike, type WidgetBusEvents, type WidgetContext, type WidgetDialogName,
+  WidgetStorage, createOverlayStack, createTipController, h, widgetDialog,
+  type AsyncStorageLike, type OverlayOptions, type StorageLike, type WidgetBus, type WidgetBusEvents, type WidgetContext, type WidgetDialogName,
 } from './context';
 import { defaultWidgetStore } from './storage';
 import { ChartHistory } from './history';
@@ -68,8 +68,8 @@ import type { AccountStateSource } from 'openalgo-charts/trade';
 import { dataVariantLabel } from './data-status';
 import { installKeys, keyScopes, trackPointer, type KeysHost } from './widget-keys';
 import {
-  applySavedLayout, flushOnPageHide, readSaved, reportStorage, restoreWhenLoaded, restoreWidgetState, saveNow, scheduleSave, scopeDrawings,
-  stripView as stripSavedView, type PersistHost,
+  ShellBus, applySavedLayout, flushOnPageHide, readSaved, reportStorage, restoreWhenLoaded, restoreWidgetState, saveNow, scheduleSave,
+  scopeDrawings, stripView as stripSavedView, type PersistHost,
 } from './widget-persist';
 
 /** The intervals offered when the host names none: the registry's codes are appended. */
@@ -432,7 +432,7 @@ class WidgetImpl implements Widget {
 
   private readonly _doc: Document;
   private readonly _opts: WidgetOptions;
-  private readonly _bus = new WidgetBus<WidgetBusEvents>();
+  private readonly _bus = new ShellBus();
   private readonly _storage: WidgetStorage;
   private readonly _keymap: Keymap;
   private readonly _toasts: Toaster;
@@ -1162,8 +1162,10 @@ class WidgetImpl implements Widget {
   public destroy(): void {
     if (this._destroyed) return;
     this._saveNow();
-    // Sends an asynchronous store's writes now, journaled in case the page is going too.
+    // Sends an asynchronous store's writes now, journaled in case the page is
+    // going too, and stops following other tabs' changes to it.
     void this._storage.flush();
+    this._storage.close();
     this._destroyed = true;
     this._cancelNavigation();
     this._navigator.destroy();

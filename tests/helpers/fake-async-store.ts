@@ -18,6 +18,8 @@ export class FakeAsyncStore implements AsyncStorageLike {
   public failEntries: Error | null = null;
   public failWrites: Error | null = null;
   public silent = false;
+  /** Who listens for the changes other users of the store make. */
+  public readonly listeners = new Set<(key: string, value: string | null) => void>();
   private readonly held: Array<() => void> = [];
 
   public entries(prefix: string): Promise<Array<[string, string]>> {
@@ -42,6 +44,18 @@ export class FakeAsyncStore implements AsyncStorageLike {
       if (this.failWrites !== null) throw this.failWrites;
       this.map.delete(key);
     });
+  }
+
+  public subscribe(listener: (key: string, value: string | null) => void): () => void {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
+  }
+
+  /** Another tab writing to the store: the value lands, and every listener hears of it. */
+  public external(key: string, value: string | null): void {
+    if (value === null) this.map.delete(key);
+    else this.map.set(key, value);
+    for (const listener of [...this.listeners]) listener(key, value);
   }
 
   /** Answer the calls held so far, in the order they were made. */

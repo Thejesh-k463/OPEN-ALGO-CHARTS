@@ -245,6 +245,16 @@ export interface AsyncStorageLike {
    * are lost with the page.
    */
   readonly journal?: StorageLike | null;
+  /**
+   * Hear each change other users of the store make once it has landed:
+   * another tab on the same database, or another widget on the page. The
+   * widget keeps its copy of the namespace current with it, as a synchronous
+   * store's reads are, so an instrument whose drawings another tab changed
+   * opens with them rather than overwriting them with an older copy. A null
+   * value is a removal. Returns the call that stops listening. Without it,
+   * the copy knows only what it read at load and what it wrote itself.
+   */
+  subscribe?(listener: (key: string, value: string | null) => void): () => void;
 }
 
 /** A write or a read an asynchronous store refused, as `WidgetStorageOptions.onError` receives it. */
@@ -288,7 +298,9 @@ const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
  * in memory: `load` fills it once, and each change is sent behind it, the
  * changes to one key made within one task coalesced into one write. A write
  * made before `load` settles waits for it and wins over the stored value,
- * because it is the newer of the two.
+ * because it is the newer of the two. A store that can say so (`subscribe`)
+ * keeps the copy current with the writes other tabs land, as a synchronous
+ * store's reads always were, until `close`.
  */
 export class WidgetStorage {
   private readonly _store: StorageLike | null;
@@ -310,6 +322,10 @@ export class WidgetStorage {
   private _drain: Promise<void> | null = null;
   private _queued = false;
   private _journaled = false;
+  /** Changes other users made, heard while the namespace was being read, applied over what it returned. */
+  private readonly _heard = new Map<string, string | null>();
+  private _unsubscribe: (() => void) | null = null;
+  private _closed = false;
 
   public constructor(namespace: string, store: StorageLike | AsyncStorageLike | null, options: WidgetStorageOptions = {}) {
     this._ns = STORAGE_PREFIX + namespace + ':';
@@ -371,6 +387,18 @@ export class WidgetStorage {
   }
 
   /**
+   * Stop following the changes other users of an asynchronous store make.
+   * Changes already taken are still sent. The widget calls it when it is
+   * destroyed; a copy nobody reads again need not follow the store.
+   */
+  public close(): void {
+    this._closed = true;
+    const off = this._unsubscribe;
+    this._unsubscribe = null;
+    try { off?.(); } catch { /* a store that fails to let go holds only a listener that now does nothing */ }
+  }
+
+  /**
    * Send every change made so far now, and settle once each has landed or
    * failed. Before the sends it copies them to the store's journal, which is
    * what makes it the call for a page going away. Never rejects.
@@ -398,6 +426,10 @@ export class WidgetStorage {
   }
 
   private async _read(store: AsyncStorageLike): Promise<void> {
+    // Before the read goes out, so a change landing while it runs is heard.
+    if (!this._closed && typeof store.subscribe === 'function') {
+      try { this._unsubscribe = store.subscribe((key, text) => this._hear(key, text)); } catch { /* the copy then knows what it read */ }
+    }
     let rows: ReadonlyArray<readonly [string, string]> = [];
     try {
       rows = await within(Promise.resolve().then(() => store.entries(this._ns)), LOAD_TIMEOUT_MS);
@@ -422,7 +454,14 @@ export class WidgetStorage {
         const [key, text] = row;
         if (typeof key === 'string' && key.startsWith(this._ns) && typeof text === 'string' && !this._pending.has(key)) this._mirror.set(key, text);
       }
+      // Heard while the read ran, so at least as new as what it returned.
+      for (const [key, text] of this._heard) {
+        if (this._pending.has(key)) continue;
+        if (text === null) this._mirror.delete(key);
+        else this._mirror.set(key, text);
+      }
     }
+    this._heard.clear();
     this._loaded = true;
     if (!this._memoryOnly && (this._pending.size > 0 || this._journaled)) void this._send();
   }
@@ -463,6 +502,20 @@ export class WidgetStorage {
       if (this._pending.size > 0 && !this._memoryOnly) void this._send();
     });
     return drain;
+  }
+
+  /**
+   * A change another user of the store made, once it landed. A key this copy
+   * has changed and not seen land keeps its own value: that write goes out
+   * after, so it is the one the store keeps.
+   */
+  private _hear(key: unknown, text: unknown): void {
+    if (this._closed || this._memoryOnly || typeof key !== 'string' || !key.startsWith(this._ns)) return;
+    if (text !== null && typeof text !== 'string') return;
+    if (this._pending.has(key) || this._sending.has(key) || this._refused.has(key)) return;
+    if (!this._loaded) { this._heard.set(key, text); return; }
+    if (text === null) this._mirror.delete(key);
+    else this._mirror.set(key, text);
   }
 
   private _writeJournal(journal: StorageLike | null | undefined): void {

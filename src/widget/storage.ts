@@ -8,7 +8,7 @@
  * the store here is an `AsyncStorageLike`: `WidgetStorage` reads a namespace
  * from it once and writes behind.
  *
- * Four decisions worth recording:
+ * Five decisions worth recording:
  *
  * - **A namespace this database has never held takes what an earlier release
  *   left in the page's storage.** The first read of an empty namespace copies
@@ -23,18 +23,28 @@
  *   removed by the next load.
  * - **Another tab upgrading or deleting the database is let through.** The
  *   connection closes when asked, and the next call opens a new one.
+ * - **Each write that lands is announced**, to the other widgets on the page
+ *   and, over a broadcast channel named after the database, to other tabs.
+ *   The widget answers reads from a copy it took at load; without this, a tab
+ *   opened earlier would show an instrument without the lines another tab
+ *   drew on it since, and its next change there would write over them. A
+ *   synchronous store never had that gap, since every read went to it.
  * - **The default falls back to `localStorage` when the database cannot be
  *   read at all**, so a browser that offers IndexedDB but refuses it keeps
  *   persisting as earlier releases did. A host that names this store gets
  *   IndexedDB or a reported failure, never a quiet change of store.
  */
-import { defaultStorage, type AsyncStorageLike, type StorageLike } from './context';
+import { STORAGE_PREFIX, defaultStorage, type AsyncStorageLike, type StorageLike } from './context';
 
 /** The database the widget keeps its preferences and layouts in when the host names none. */
 const DATABASE = 'openalgo-charts-widget';
 const STORE = 'entries';
 /** Where a namespace's copy from the page's storage is recorded; outside every `oac-widget:` range. */
 const COPIED = 'copied:';
+/** The broadcast channel a database announces its landed writes on, by database name. */
+const CHANNEL = 'oac-widget-store:';
+
+type ChangeListener = (key: string, value: string | null) => void;
 
 export interface IndexedDbWidgetStorageOptions {
   /**
@@ -52,7 +62,13 @@ export interface IndexedDbWidgetStorageOptions {
 }
 
 export interface IndexedDbWidgetStorage extends AsyncStorageLike {
-  /** Release the connection. Later calls reject. */
+  /**
+   * Hear each write that lands: this store's own, and those of any other
+   * store over the same database in another tab. Returns the call that stops
+   * listening.
+   */
+  subscribe(listener: (key: string, value: string | null) => void): () => void;
+  /** Release the connection and stop listening. Later calls reject. */
   close(): void;
 }
 
@@ -71,6 +87,44 @@ export function createIndexedDbWidgetStorage(factory: IDBFactory, name: string =
   const legacy = options.migrateFrom === undefined ? pageStorage() : options.migrateFrom;
   let opening: Promise<IDBDatabase> | null = null;
   let closed = false;
+  const listeners = new Set<ChangeListener>();
+  // Open while someone on this page listens; a write landing with nobody
+  // listening here is still announced to other tabs, on a channel of its own.
+  let channel: BroadcastChannel | null = null;
+
+  const tell = (key: string, value: string | null): void => {
+    for (const listener of [...listeners]) {
+      try { listener(key, value); } catch { /* one listener's failure is not the write's */ }
+    }
+  };
+  const announce = (key: string, value: string | null): void => {
+    tell(key, value);
+    const Channel = broadcastChannel();
+    if (Channel === null) return;
+    try {
+      if (channel !== null) { channel.postMessage({ key, value }); return; }
+      const once = new Channel(CHANNEL + name);
+      once.postMessage({ key, value });
+      once.close();
+    } catch { /* another tab then learns of it at its next load, as without a channel */ }
+  };
+  const listen = (): void => {
+    const Channel = broadcastChannel();
+    if (channel !== null || Channel === null || closed) return;
+    try {
+      channel = new Channel(CHANNEL + name);
+      channel.onmessage = (event: MessageEvent) => {
+        const data = event.data as { key?: unknown; value?: unknown } | null;
+        if (typeof data?.key === 'string' && (typeof data.value === 'string' || data.value === null)) tell(data.key, data.value);
+      };
+    } catch { channel = null; }
+  };
+  const stopListening = (): void => {
+    if (channel === null) return;
+    channel.onmessage = null;
+    channel.close();
+    channel = null;
+  };
 
   const open = (): Promise<IDBDatabase> => {
     if (closed) return Promise.reject(new Error('The widget storage is closed'));
@@ -134,15 +188,31 @@ export function createIndexedDbWidgetStorage(factory: IDBFactory, name: string =
         };
       };
     }),
-    setItem: (key, value) => run<void>('readwrite', store => { store.put(value, key); }),
-    removeItem: key => run<void>('readwrite', store => { store.delete(key); }),
+    setItem: (key, value) => run<void>('readwrite', store => { store.put(value, key); }).then(() => announce(key, value)),
+    removeItem: key => run<void>('readwrite', store => { store.delete(key); }).then(() => announce(key, null)),
+    subscribe: listener => {
+      listeners.add(listener);
+      listen();
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0) stopListening();
+      };
+    },
     close: () => {
       closed = true;
+      listeners.clear();
+      stopListening();
       const pending = opening;
       opening = null;
       void pending?.then(db => db.close(), () => {});
     },
   };
+}
+
+/** The page's `BroadcastChannel`, or null where it has none. */
+function broadcastChannel(): typeof BroadcastChannel | null {
+  const Channel = (globalThis as { BroadcastChannel?: typeof BroadcastChannel }).BroadcastChannel;
+  return typeof Channel === 'function' ? Channel : null;
 }
 
 /** Every key under `prefix` and its value in a web storage; nothing when it cannot be read. */
@@ -205,6 +275,20 @@ function orPageStorage(idb: IndexedDbWidgetStorage): AsyncStorageLike {
   };
   return {
     journal: idb.journal,
+    // The database's own announcements while it is the store; on the page's
+    // storage, the storage event it fires in this tab for another tab's write.
+    subscribe: listener => {
+      const off = idb.subscribe((key, value) => { if (use !== 'page') listener(key, value); });
+      const win = globalThis as { addEventListener?: Window['addEventListener']; removeEventListener?: Window['removeEventListener'] };
+      const changed = (event: StorageEvent): void => {
+        if (use === 'page' && event.storageArea === page && event.key?.startsWith(STORAGE_PREFIX) === true) listener(event.key, event.newValue);
+      };
+      try { win.addEventListener?.('storage', changed); } catch { /* no other tab to hear from */ }
+      return () => {
+        off();
+        try { win.removeEventListener?.('storage', changed); } catch { /* never added */ }
+      };
+    },
     entries: prefix => use === 'page' ? Promise.resolve(legacyEntries(page, prefix)) : idb.entries(prefix).then(
       rows => { use = 'idb'; return rows; },
       (error: unknown) => {

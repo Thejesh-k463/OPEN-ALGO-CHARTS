@@ -33,7 +33,7 @@ import {
   InstrumentDrawings, instrumentDrawingsKey, memoryDrawingStore, migrateUnscopedDrawings,
   type DrawingDocumentStore, type DrawingInstrument,
 } from 'openalgo-charts/draw';
-import type { WidgetStorage, WidgetStorageError } from './context';
+import { WidgetBus, type WidgetBusEvents, type WidgetStorage, type WidgetStorageError } from './context';
 import { widgetText } from './localization';
 import { sanitizePanelDockState } from './panel-dock';
 import { RAIL_PREFS_KEY, type RailPrefs } from './rail';
@@ -368,9 +368,16 @@ export function flushOnPageHide(this: PersistHost): void {
   }
   if (later) {
     // A phone closes a page it has hidden without a pagehide, so hiding is
-    // the last moment such a page is sure to see.
+    // the last moment such a page is sure to see. Only a save still pending
+    // is written: a tab the user merely leaves for another on the same
+    // namespace would otherwise write its older layout over the one saved
+    // there, at every switch.
     const doc = this._doc;
-    const hidden = (): void => { if (doc.visibilityState === 'hidden') { this._saveNow(); void this._storage.flush(); } };
+    const hidden = (): void => {
+      if (doc.visibilityState !== 'hidden') return;
+      if (this._saveTimer !== 0) this._saveNow();
+      void this._storage.flush();
+    };
     doc.addEventListener('visibilitychange', hidden);
     this._cleanups.push(() => doc.removeEventListener('visibilitychange', hidden));
   }
@@ -391,9 +398,13 @@ export function restoreWhenLoaded(this: PersistHost): Promise<void> {
   this.root.style.visibility = 'hidden';
   return this._storage.load().then(() => {
     if (this._destroyed) return;
-    try { applyLoaded.call(this, start); }
+    try { this._bus.shelter(() => applyLoaded.call(this, start)); }
     catch (error) {
+      this._restoring = false;
       this._toasts.toast(widgetText(this.context, 'The saved layout could not be restored: {error}', { error: error instanceof Error ? error.message : String(error) }), 'error');
+      // The drawings follow the instrument shown, and the chart loads it,
+      // rather than stay empty. A second failure is the one just reported.
+      try { releaseDrawings.call(this); startHeldLoad.call(this); } catch { /* reported above */ }
     } finally {
       this._restoring = false;
       this._holdDrawings = false;
@@ -403,10 +414,46 @@ export function restoreWhenLoaded(this: PersistHost): Promise<void> {
 }
 
 /**
+ * The shell's own bus, which can hold back its listeners' throws while a late
+ * restore runs. A host's listener that throws is its own bug, and must not
+ * leave that restore half applied or its held load never started: the next
+ * save would write the half over the whole layout. The setters let such a
+ * throw reach the host's own call; a late restore has no call above it, and
+ * `ready` never rejects, so there it is dropped, as the engine drops one from
+ * its own events, after every other listener has run. An error of the
+ * restore's own still reaches its report.
+ */
+export class ShellBus extends WidgetBus<WidgetBusEvents> {
+  private _sheltered = false;
+
+  public override emit<K extends keyof WidgetBusEvents & string>(event: K, payload: WidgetBusEvents[K]): void {
+    if (!this._sheltered) { super.emit(event, payload); return; }
+    try { super.emit(event, payload); } catch { /* a host listener's own bug; the others have run */ }
+  }
+
+  /** Run `body` with its listeners' throws held back. */
+  public shelter(body: () => void): void {
+    const outer = this._sheltered;
+    this._sheltered = true;
+    try { body(); } finally { this._sheltered = outer; }
+  }
+}
+
+/** The load the constructor held, unless one for the instrument shown is already out. */
+function startHeldLoad(this: PersistHost): void {
+  const controller = this.dataController;
+  const request = controller?.getState().request ?? null;
+  const loading = request !== null && request.symbol === this._symbol && request.exchange === this._exchange
+    && request.interval === this._interval && dataVariantKey(request.variant) === dataVariantKey(this._variant);
+  if (controller !== null && this._symbol !== '' && !loading) void this.reload();
+}
+
+/**
  * The saved facts, drawings and layout, as the constructor applies them from
  * a synchronous store: a fact the host passed as an option stays, and so does
- * one the user or the host has changed since the shell was built. The load
- * for the instrument that results goes out last.
+ * one the user or the host has changed since the shell was built. Then the
+ * held load goes out, and the changes are announced last, as the setters
+ * announce theirs. Runs inside `ShellBus.shelter`.
  */
 function applyLoaded(this: PersistHost, start: StartFacts): void {
   const wanted = this._saveWanted;
@@ -435,37 +482,35 @@ function applyLoaded(this: PersistHost, start: StartFacts): void {
       migrateUnscopedDrawings(o.drawingStore ?? storedDrawings(this._storage), savedKey(saved), saved.chart.drawings);
     }
     releaseDrawings.call(this);
+    // The rail read its own entry while the copy was empty. It is its own
+    // key, written whether or not a layout ever was, and a synchronous store
+    // hands it to the rail at mount either way; a layout's own rail, applied
+    // next, wins over it there too.
+    const rail = this._storage.get(RAIL_PREFS_KEY);
+    if (rail !== null && this._rail !== null) this._rail.restorePrefs(rail);
     if (saved === null) return;
     const type = saved.chartType;
     if (o.chartType === undefined && this.chartType() === start.chartType && type !== start.chartType && registeredChartTypes().includes(type)) this.setChartType(type);
     if (o.theme === undefined && this._themeName === start.theme && saved.theme !== start.theme) this.setTheme(saved.theme);
-    // The rail read its own entry while the copy was empty.
-    const rail = this._storage.get(RAIL_PREFS_KEY);
-    if (rail !== null && this._rail !== null) this._rail.restorePrefs(rail);
     applySavedLayout.call(this, saved);
   });
-  // Announced once everything is in place, as the setters announce theirs.
-  if (this._interval !== before.interval) this._bus.emit('interval', { interval: this._interval });
-  if (moved) {
-    this._bus.emit('symbol', { symbol: this._symbol, exchange: this._exchange });
-    this.chart.emit('symbol', { symbol: this._symbol, exchange: this._exchange });
-  }
-  if (dataVariantKey(this._variant) !== dataVariantKey(before.variant)) this._bus.emit('variant', { variant: this._variant });
   if (saved !== null) {
     this._rail?.refresh();
     this._statusline?.refresh();
-    this._bus.emit('layout', { reason: 'restore', chartType: this.chartType() });
   }
   this._restoring = false;
   this._saveWanted = false;
   // Only a change made meanwhile is written: applying what is stored changes
   // nothing worth writing, and a layout this build refused stays stored.
   if (wanted) this._scheduleSave();
-  const controller = this.dataController;
-  const request = controller?.getState().request ?? null;
-  const loading = request !== null && request.symbol === this._symbol && request.exchange === this._exchange
-    && request.interval === this._interval && dataVariantKey(request.variant) === dataVariantKey(this._variant);
-  if (controller !== null && this._symbol !== '' && !loading) void this.reload();
+  startHeldLoad.call(this);
+  if (this._interval !== before.interval) this._bus.emit('interval', { interval: this._interval });
+  if (moved) {
+    this._bus.emit('symbol', { symbol: this._symbol, exchange: this._exchange });
+    this.chart.emit('symbol', { symbol: this._symbol, exchange: this._exchange });
+  }
+  if (dataVariantKey(this._variant) !== dataVariantKey(before.variant)) this._bus.emit('variant', { variant: this._variant });
+  if (saved !== null) this._bus.emit('layout', { reason: 'restore', chartType: this.chartType() });
 }
 
 /**

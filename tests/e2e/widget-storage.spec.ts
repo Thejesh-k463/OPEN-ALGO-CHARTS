@@ -121,6 +121,24 @@ test('the last change before the page goes away survives through the journal whe
   await expect.poll(() => page.evaluate(() => localStorage.getItem('oac-widget-journal:journal'))).toBeNull();
 });
 
+test('two tabs on one namespace: a line drawn in one is there when the other opens its instrument, and neither loses it', async ({ page, context }, info) => {
+  await mount(page, 'ns=tabs&symbol=INFY');
+  const other = await context.newPage();
+  await mount(other, 'ns=tabs&symbol=TCS');
+  const line = await page.evaluate(() => (window as any).fixture.drawSupport());
+  await expect.poll(async () => (await stored(page, 'oac-widget:tabs:drawings:NSE:INFY'))?.drawings?.length).toBe(1);
+  // The other tab read the namespace before the line existed; it hears of it once it lands.
+  await expect.poll(() => other.evaluate(() => (window as any).fixture.widget.context.storage.get('drawings:NSE:INFY') !== null)).toBe(true);
+  await other.evaluate(() => (window as any).fixture.widget.setSymbol('INFY'));
+  await expect.poll(() => drawings(other)).toEqual([line]);
+  await other.waitForFunction(() => (window as any).fixture.loaded() > 0);
+  await expect.poll(() => magenta(other)).toBeGreaterThan(150);
+  await other.screenshot({ path: info.outputPath('other-tab-dark-desktop.png') });
+  const second = await other.evaluate(() => (window as any).fixture.drawSupport());
+  await expect.poll(async () => (await stored(page, 'oac-widget:tabs:drawings:NSE:INFY'))?.drawings?.map((d: any) => d.id)).toEqual([line, second]);
+  await other.close();
+});
+
 test('a host that passes localStorage keeps it, and the widget restores before createWidget returns', async ({ page }) => {
   await mount(page, 'ns=kept&symbol=INFY&storage=local');
   await page.locator('.oac-topbar [data-interval="5m"]').click();
