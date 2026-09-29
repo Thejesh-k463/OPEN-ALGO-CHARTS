@@ -211,6 +211,53 @@ test('the phone layout hides the bar and lists its controls in the More sheet', 
   expect(errors).toEqual([]);
 });
 
+test('on a narrow bar the ranges give way and scroll, never the status, the clock or the toggles', async ({ page }, info) => {
+  for (const width of [560, 700]) {
+    const errors = await open(page, 'mobile=never', { width, height: 520 });
+    const bar = (await page.locator('.oac-bottombar').boundingBox())!;
+    expect(bar.width).toBe(width);
+    for (const selector of ['.oac-bottombar__clock', '.oac-bottombar__icon[data-scale="auto"]', '.oac-bottombar__icon[data-scale="log"]', '.oac-bottombar__icon[data-scale="percent"]']) {
+      const box = (await page.locator(selector).boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(bar.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(bar.x + bar.width + 0.5);
+    }
+    // The status reads whole, beside the clock rather than under it.
+    await expect(page.locator('.oac-bottombar__status b')).toHaveText('Market open');
+    expect(await page.locator('.oac-bottombar__status').evaluate(el => el.scrollWidth <= Math.ceil(el.getBoundingClientRect().width))).toBe(true);
+    const status = (await page.locator('.oac-bottombar__status').boundingBox())!;
+    const clock = (await page.locator('.oac-bottombar__clock').boundingBox())!;
+    expect(status.x + status.width).toBeLessThanOrEqual(clock.x);
+    // The last range is still reachable: the keyboard scrolls it into view.
+    await page.locator('.oac-bottombar__range[data-range="ALL"]').focus();
+    const all = (await page.locator('.oac-bottombar__range[data-range="ALL"]').boundingBox())!;
+    const ranges = (await page.locator('.oac-bottombar__ranges').boundingBox())!;
+    expect(all.x + all.width).toBeLessThanOrEqual(ranges.x + ranges.width + 0.5);
+    await info.attach(`narrow bar ${width}`, { body: await page.screenshot(), contentType: 'image/png' });
+    expect(errors).toEqual([]);
+  }
+});
+
+test('a widget with no top bar keeps the bar in the phone layout, where no More sheet takes it', async ({ page }, info) => {
+  const errors = await open(page, 'mobile=always&topbar=off', { width: 390, height: 844 });
+  const bar = page.locator('.oac-bottombar');
+  await expect(bar).toBeVisible();
+  await expect(page.locator('[data-mobile-action="more"]')).toHaveCount(0);
+  const barBox = (await bar.boundingBox())!;
+  const chart = (await page.locator('.oac-chart').boundingBox())!;
+  const footer = (await page.locator('.oac-mobile__footer').boundingBox())!;
+  expect(barBox.height).toBe(28);
+  // Under the chart, above the phone footer, which keeps the bottom edge.
+  expect(Math.abs(barBox.y - (chart.y + chart.height))).toBeLessThanOrEqual(1);
+  expect(Math.abs(footer.y - (barBox.y + barBox.height))).toBeLessThanOrEqual(1);
+  expect(footer.y + footer.height).toBeCloseTo(844, 0);
+  // Toasts rise above both.
+  expect(await page.locator('.oac-toasts').evaluate(el => getComputedStyle(el).bottom)).toBe('82px');
+  await page.locator('.oac-bottombar__range[data-range="1D"]').click();
+  await expect.poll(() => widget<string | null>(page, 'w.range()')).toBe('1D');
+  await info.attach('phone without a top bar', { body: await page.screenshot(), contentType: 'image/png' });
+  expect(errors).toEqual([]);
+});
+
 test('under a grid one bar acts on the focused chart', async ({ page }, info) => {
   const errors = await open(page, 'grid=1');
   const grid = <T>(fn: string): Promise<T> => page.evaluate(`(() => { const g = window.__grid; return ${fn}; })()`) as Promise<T>;

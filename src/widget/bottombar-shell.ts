@@ -233,6 +233,9 @@ function wire(host: BottombarHost, before: HTMLElement): ShellBottombar {
   let controls: BottombarControls | undefined;
   if (opts.bottombar !== false) {
     const el = h(host.context.document, 'div', 'oac-bottombar');
+    // Without a top bar the phone layout has no More sheet to take the bar's
+    // controls, so the bar stays there instead of hiding.
+    if (opts.topbar === false) el.classList.add('is-kept');
     host.root.insertBefore(el, before);
     host.root.classList.add('has-bottombar');
     const bar = mountBottombar(host.context, el, {

@@ -181,6 +181,7 @@
       const widget = createWidget(document.getElementById('t'), {
         ...common,
         mobile: params.get('mobile') ?? 'auto',
+        topbar: params.get('topbar') !== 'off',
         bottombar: params.get('bar') !== 'off',
       });
       widget.on('data', (e) => { if (e.error) errors.push(e.error); window.__loaded = e.bars; });

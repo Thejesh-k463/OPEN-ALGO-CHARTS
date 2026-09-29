@@ -317,6 +317,9 @@ describe('the market status and the clock', () => {
     const status = root.querySelector('.oac-bottombar__status')!;
     expect(status.hidden).toBe(false);
     expect(status.dataset.phase).toBe('regular');
+    // A status region: a valid holder of its full reading as a name, and a phase change is announced.
+    expect(status.getAttribute('role')).toBe('status');
+    expect(status.getAttribute('aria-label')).toBe('Market open, closes 15:30');
     expect(status.querySelector('b')!.textContent).toBe('Market open');
     expect(status.querySelector('.oac-bottombar__detail')!.textContent).toBe('closes 15:30');
     expect(root.querySelector('.oac-bottombar__time')!.textContent).toBe('15:25:00');
@@ -426,6 +429,13 @@ describe('the phone layout', () => {
     expect(w.chart.timezone()).toBe('Europe/London');
   });
 
+  it('keeps the bar in the phone layout of a widget with no top bar, which has no More sheet to take it', () => {
+    const { root } = make({ mobile: 'always', topbar: false });
+    expect(root.querySelector('[data-mobile-action="more"]')).toBeNull();
+    expect(bar(root).classList.contains('is-kept')).toBe(true);
+    expect(bar(make({ mobile: 'always' }).root).classList.contains('is-kept')).toBe(false);
+  });
+
   it('leaves the rows out with the bar off', () => {
     const { root } = make({ mobile: 'always', bottombar: false });
     root.querySelector('[data-mobile-action="more"]')!.click();
@@ -475,6 +485,23 @@ describe('a bar over a host\'s own chart', () => {
       expect(axis(b.w).mode).toBe('logarithmic');
       expect(axis(a.w).mode).toBe('linear');
     } finally { handle.destroy(); }
+  });
+
+  it('closes its open menu and acts on nothing once destroyed', () => {
+    const { w, doc } = make({ bottombar: false });
+    const root = w.root as unknown as FakeElement;
+    const host = doc.createElement('div');
+    root.appendChild(host);
+    const handle = mountBottombar(w.context, host as unknown as HTMLElement);
+    host.querySelector('.oac-bottombar__clock')!.click();
+    expect(root.querySelector('.oac-menu')).not.toBeNull();
+    handle.destroy();
+    // The menu lives in the host's overlay layer, which outlives the bar.
+    expect(root.querySelector('.oac-menu')).toBeNull();
+    handle.controls.setTimezone('Europe/London');
+    handle.controls.toggleScale('log');
+    expect(w.chart.timezone()).toBe('Asia/Kolkata');
+    expect(axis(w).mode).toBe('linear');
   });
 
   it('stops its clock when destroyed', () => {

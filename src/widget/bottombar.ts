@@ -228,6 +228,8 @@ export function mountBottombar(ctx: BottombarContext, host: HTMLElement, opts: B
     return ctx.chart ? { chart: ctx.chart } : null;
   };
   const chartOf = (): Chart | null => {
+    // A destroyed bar acts on nothing, whatever a host still holding its controls calls.
+    if (destroyed) return null;
     const chart = target()?.chart ?? null;
     return chart !== null && !chart.isDestroyed ? chart : null;
   };
@@ -244,7 +246,7 @@ export function mountBottombar(ctx: BottombarContext, host: HTMLElement, opts: B
     ranges: () => (target()?.setRange ? ranges : []),
     range: () => target()?.range?.() ?? null,
     setRange: (id) => {
-      const t = target();
+      const t = destroyed ? null : target();
       const range = ranges.find(r => r.id === id);
       if (t?.setRange === undefined || range === undefined || t.chart.isDestroyed) return;
       const mine = ++request;
@@ -379,7 +381,9 @@ export function mountBottombar(ctx: BottombarContext, host: HTMLElement, opts: B
 
   host.appendChild(h(doc, 'span', 'oac-bottombar__spacer'));
 
-  const status = h(doc, 'span', 'oac-bottombar__status');
+  // A status region: it can carry the full reading as its name while a narrow
+  // bar hides the detail, and a change of phase is announced, not only recoloured.
+  const status = h(doc, 'span', 'oac-bottombar__status', { role: 'status' });
   const statusGlyph = h(doc, 'span', 'oac-bottombar__phase');
   const statusLabel = h(doc, 'b');
   const statusDetail = h(doc, 'span', 'oac-bottombar__detail');
@@ -428,6 +432,7 @@ export function mountBottombar(ctx: BottombarContext, host: HTMLElement, opts: B
     return t?.interval?.() ?? t?.chart.getDataContext()?.interval;
   }
 
+  let closeZones: (() => void) | null = null;
   function openZones(anchor: HTMLElement): void {
     const chart = chartOf();
     if (chart === null) return;
@@ -445,7 +450,7 @@ export function mountBottombar(ctx: BottombarContext, host: HTMLElement, opts: B
     // openMenu is typed for the widget's context but reads only the document,
     // the overlay opener and the translations, which every bar context has;
     // a custom host's context is the rest of a WidgetContext it never needed.
-    openMenu(ctx as unknown as WidgetContext, anchor, rows, {
+    closeZones = openMenu(ctx as unknown as WidgetContext, anchor, rows, {
       find: widgetText(ctx, 'schema.ui.bottombar.findZone', {}, 'Find a zone'),
       ariaLabel: widgetText(ctx, 'schema.ui.bottombar.timezones', {}, 'Timezone'),
     });
@@ -572,6 +577,9 @@ export function mountBottombar(ctx: BottombarContext, host: HTMLElement, opts: B
       if (destroyed) return;
       destroyed = true;
       request++;
+      // Its menu and tip live in the host's overlay layer, which outlives the bar.
+      closeZones?.();
+      if (ctx.tips.target() !== null && host.contains(ctx.tips.target())) ctx.tips.hide();
       if (timer !== 0) clearTimeout(timer);
       timer = 0;
       for (const offChart of chartOffs.splice(0)) offChart();
@@ -588,7 +596,13 @@ export function mountBottombar(ctx: BottombarContext, host: HTMLElement, opts: B
  * The bar's rules, scoped under `.oac-widget` like the rest of the chrome.
  * A widget root carrying the bar takes a fourth row for it, between the chart
  * and the status line; the phone layout hides it, its controls having moved
- * into the sheets.
+ * into the sheets. A bar marked `is-kept` has no sheet to move into (a widget
+ * without a top bar has no More sheet), so it stays under the chart there and
+ * the phone footer takes the last row.
+ *
+ * On a narrow bar the ranges give way and scroll; the status, the clock and
+ * the scale toggles are never cut. The narrowest bar shows the status by its
+ * glyph, its reading kept as the status region's name.
  */
 const v = (name: string): string => `var(--oac-${name})`;
 export const BOTTOMBAR_CSS = `
@@ -596,13 +610,16 @@ export const BOTTOMBAR_CSS = `
 .oac-widget.has-bottombar > .oac-bottombar { grid-row: 3; }
 .oac-widget.has-bottombar > .oac-statusline { grid-row: 4; }
 .oac-widget.has-bottombar:not(.is-mobile) > .oac-toasts { bottom: calc(${v('status-h')} + ${BOTTOMBAR_HEIGHT + 10}px); }
-.oac-widget.is-mobile > .oac-bottombar { display: none; }
+.oac-widget.is-mobile > .oac-bottombar:not(.is-kept) { display: none; }
+.oac-widget.is-mobile:has(> .oac-bottombar.is-kept) .oac-mobile__footer { grid-row: 4; }
+.oac-widget.is-mobile:has(> .oac-bottombar.is-kept) > .oac-toasts { bottom: calc(${54 + BOTTOMBAR_HEIGHT}px + env(safe-area-inset-bottom)); }
 .oac-widget .oac-bottombar { container: oac-bottombar / inline-size; display: flex; align-items: center; gap: 2px;
   height: ${BOTTOMBAR_HEIGHT}px; min-width: 0; padding: 0 6px; background: ${v('panel')}; border-top: 1px solid ${v('bd-soft')};
   color: ${v('mut')}; font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; }
 .oac-widget .oac-bottombar .oac-sep { height: 16px; }
 .oac-widget .oac-bottombar__group { display: inline-flex; align-items: center; gap: 1px; min-width: 0; }
-.oac-widget .oac-bottombar__ranges { flex: 0 1 auto; overflow-x: auto; scrollbar-width: none; }
+.oac-widget .oac-bottombar__ranges { flex: 0 1 auto; min-width: 56px; overflow-x: auto; scrollbar-width: none; }
+.oac-widget .oac-bottombar__scale { flex: none; }
 .oac-widget .oac-bottombar__ranges::-webkit-scrollbar { width: 0; height: 0; }
 .oac-widget .oac-bottombar button { display: inline-flex; align-items: center; gap: 5px; flex: none; height: 22px;
   padding: 0 7px; background: transparent; border: 1px solid transparent; border-radius: 5px; color: ${v('mut')};
@@ -614,12 +631,12 @@ export const BOTTOMBAR_CSS = `
 .oac-widget .oac-bottombar .oac-glyph > svg { width: 14px; height: 14px; }
 .oac-widget .oac-bottombar__icon { width: 24px; padding: 0; justify-content: center; }
 .oac-widget .oac-bottombar__spacer { flex: 1 1 auto; min-width: 6px; }
-.oac-widget .oac-bottombar__status { display: inline-flex; align-items: center; gap: 5px; min-width: 0; padding: 0 5px; overflow: hidden; }
+.oac-widget .oac-bottombar__status { display: inline-flex; flex: none; align-items: center; gap: 5px; padding: 0 5px; }
 .oac-widget .oac-bottombar__status > b { flex: none; color: ${v('tx')}; font-weight: 600; }
 .oac-widget .oac-bottombar__phase { display: inline-grid; flex: none; color: ${v('faint')}; }
 .oac-widget .oac-bottombar__status[data-phase="regular"] .oac-bottombar__phase { color: ${v('up')}; }
 .oac-widget .oac-bottombar__status:is([data-phase="pre"], [data-phase="post"], [data-phase="extended"]) .oac-bottombar__phase { color: ${v('amber')}; }
-.oac-widget .oac-bottombar__detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: ${v('faint')}; }
+.oac-widget .oac-bottombar__detail { color: ${v('faint')}; }
 .oac-widget .oac-bottombar__clock { color: ${v('tx')}; }
 .oac-widget .oac-bottombar__time { font-weight: 500; }
 .oac-widget .oac-bottombar__clock > small { color: ${v('faint')}; font-size: 10.5px; font-weight: 600; }
@@ -636,6 +653,9 @@ export const BOTTOMBAR_CSS = `
 }
 @container oac-bottombar (max-width: 600px) {
   .oac-widget .oac-bottombar__clock > small { display: none; }
+}
+@container oac-bottombar (max-width: 360px) {
+  .oac-widget .oac-bottombar__status > b { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .oac-widget .oac-bottombar button { transition: none; }
