@@ -347,6 +347,7 @@ Color swatches stay compact. Theme overrides should target these tokens.
 | `styleNonce` | `string` | none | Response CSP nonce for the shared widget and dialog stylesheet. Style-attribute policy remains the host's responsibility. |
 | `keyboardRoute` | `() => boolean \| undefined` | none | For hosts with several widgets: false silences this widget's chords and chart shortcuts, true sends them here, undefined keeps the usual rule (pointer or focus, or always for a `shortcuts` scope of `global`). Applies to a `ShortcutManager` instance too, shared or not. The chart grid sets it per cell. |
 | `shortcutsEditor` | `boolean` | true | (since 2.5.10) The `?` panel lets the user change the widget's and the chart's chords, saved under `KEYMAP_KEY` when `persist` is on and applied at mount (over an asynchronous store, once it has answered). False lists them only and applies no saved chords. Leave the engine's `shortcuts.persist` off on a widget. |
+| `captureRows` | `() => ReadonlyArray<MenuRow \| string>` | none | (since 2.5.10) More rows at the end of the capture menu, read each time it opens; a string starts a group. The chart grid fills it with Every chart rows; not a `ChartGridOptions` field. |
 
 Confirm defaults against `WidgetOptions` in the typings rather than assuming.
 
@@ -756,30 +757,50 @@ const report = grid.applyWorkspace(parseWorkspacePayload(fileText)); // { applie
 ```
 
 - `ChartGridOptions` is `WidgetOptions` (every cell's options) minus `keyboardRoute`,
-  with its own `feed` (below), plus `preset` (`ChartGridPreset`, default `1x1`), `links` (`LinkOptions`), `compactWidth`
-  (default 640 CSS px, 0 off), and grid-level `persist`/`storage`. `symbol`, `exchange`,
-  `interval` and `chartType` seed the first cell. Cells default to `mobile: 'never'`,
-  because a cell in a split is often narrower than the phone threshold.
+  `drawingStore` and `captureRows`, with its own `feed` (below), plus `preset` (any
+  `ChartGridLayoutId`, default `1x1`), `links` (`LinkOptions`: the first group's channels
+  and every new group's), `compactWidth` (default 640 CSS px, 0 off), grid-level
+  `persist`/`storage`, and (since 2.5.10) `toolbar` (the grid bar, default false) and
+  `presets` (the layout ids its picker offers, in order; default every `CHART_GRID_LAYOUTS`
+  entry; an empty list leaves the Layout control out). `layouts` keeps its widget meaning:
+  a `LayoutsController` the host passes drives every chart's Layouts menu, and without one
+  no chart saves a layout of its own. `symbol`, `exchange`, `interval` and `chartType` seed
+  the first cell. Cells default to `mobile: 'never'`, because a cell in a split is often
+  narrower than the phone threshold.
 - `feed` is one `DataFeed` for every chart, or a function
   `(chart: { id, historyPeriod? }) => DataFeed` called once per chart as it is built, for a
   source that answers by period: the grid keeps each pane's `historyPeriod` (from an
   applied payload, or copied from the active chart when a preset adds charts) and writes
   it back in `getWorkspace()`, but only such a function honours it. Return the same feed
   object for charts that should share one request pool.
-- `CHART_GRID_PRESETS`: `1x1`, `1x2`, `1x3`, `2x1`, `3x1`, `2x2` as `[rows, columns]`.
-  `setPreset` keeps surviving cells in reading order (same widget instances), builds new
-  ones on the active chart's instrument, destroys the rest and resets weights. No span
-  editing; spans from a saved payload are drawn and splitters stop where a span crosses.
+- Layouts (since 2.5.10): `CHART_GRID_LAYOUTS` maps each `ChartGridLayoutId` to a
+  `ChartGridLayoutSpec` (`rows`, `columns`, `slots` of `ChartGridLayoutSlot` in reading
+  order, `rowWeights`, `columnWeights`), 26 layouts from 1 to 16 charts: the uniform `1x1`
+  to `4x4` (also `CHART_GRID_PRESETS` as `[rows, columns]`, 16 entries, the 2.5.9 six
+  first) and the uneven `left-2`, `right-2`, `top-2`, `bottom-2`, `left-3`, `top-3`,
+  `left-4`, `top-4`, `corner-5`, `corner-7` (`ChartGridUnevenLayout`).
+  `CHART_GRID_LAYOUT_NAMES` gives each English name, which is also its message key.
+  `setPreset(id)` keeps surviving cells in reading order (same widget instances); in an
+  uneven layout the active chart takes the large slot, and stays even when it sat past
+  the charts that fit. It builds new cells on the active chart's instrument in its link
+  group, destroys the rest and resets weights to the layout's; an unknown id throws. Spans
+  from a saved payload are drawn and splitters stop where a span crosses.
 - `ChartGridCell` (`id`, `widget`, `element`, `row`, `column`, `rowSpan`, `columnSpan`,
-  `historyPeriod`);
-  `cells()`, `active()`, `setActive(id, { focus })`, `layout()` (`ChartGridLayout`),
-  `linkOptions()`, `setLinks(patch)` (switching symbol or interval on adopts the active
-  chart's), `theme()`, `setTheme()`, `compact()`, `restored()`, `destroy()`.
+  `historyPeriod`, `linkGroup`); `cells()`, `active()`, `setActive(id, { focus })`,
+  `layout()` (`ChartGridLayout`), `linkOptions()` (the active chart's group),
+  `setLinks(patch)` (the active chart's group, or every group when it is in none;
+  switching symbol, interval or chart type on adopts the active chart's), `maximize(id?)`,
+  `restore()`, `maximized()`, `swap(a, b)`, `linkGroups()`, `setLinkGroup(cell, group |
+  null)`, `addLinkGroup(cell, { name?, links? })`, `setGroupLinks(group, patch)`,
+  `renameLinkGroup(group, name)`, `shareDrawings(cell)`, `takeScreenshot()`,
+  `downloadScreenshot(filename?)`, `theme()`, `setTheme()`, `compact()`, `restored()`,
+  `destroy()`.
 - Events (`ChartGridEvents`, `ChartGridEventName`): `active` (from `setActive`, and when
   a preset or an applied workspace moves the active chart), `layout` (`preset`,
-  `weights`, `workspace`, `compact`), `links`, `theme`.
-- Persistence (`persist`): preset, link, theme, active chart, instrument, keyboard
-  splitter and drawing add or remove changes are written before the task ends. Pans,
+  `weights`, `workspace`, `compact`, `maximize`, `swap`), `links` (the active chart's
+  channels after a link, group or active chart change), `theme`.
+- Persistence (`persist`): preset, link, group, theme, active chart, instrument, swap,
+  keyboard splitter and drawing add or remove changes are written before the task ends. Pans,
   zooms and drags are debounced (`SAVE_DEBOUNCE_MS`) and flushed when the page hides
   (`visibilitychange`), on `pagehide` and on `destroy`. A stored desk that fails to
   restore (a study or chart type registered later, say) is not overwritten: the grid
@@ -801,7 +822,8 @@ const report = grid.applyWorkspace(parseWorkspacePayload(fileText)); // { applie
   rail magnet/stay and `historyPeriod` when the chart has one. `volume` is written false
   and `comparisons` empty: a widget draws neither. `applyWorkspace` checks the whole
   payload first (size, slots, overlap, weights, intervals, chart types, studies, text
-  history periods, no comparisons, linked symbols or intervals that agree),
+  history periods, no comparisons, within each link group, linked symbols, intervals and
+  chart types that agree),
   builds and restores every new cell off screen, and on the first failure destroys them,
   aborting their history requests, and returns `{ applied: false, reason }` with the old
   cells untouched. Pass untrusted input through `parseWorkspacePayload` first.
@@ -818,6 +840,30 @@ const report = grid.applyWorkspace(parseWorkspacePayload(fileText)); // { applie
   and BSE) reaches the followers.
 - Below `compactWidth` only the active cell shows, with a tab strip to switch; splitters
   hide. `CHART_GRID_CSS` is part of `WIDGET_COMPONENT_CSS`.
+- Grid bar (since 2.5.10, `toolbar: true`): Layout picker (tiles from `layoutIconPath`
+  over each layout's slots, one row per chart count, arrows, Home, End, a caption naming
+  the focused tile), Maximize, Link menu (groups, Not linked, New group, Rename group,
+  channel toggles including Nearest bar, Share this chart's drawings) and Capture
+  (download, copy). Menus live in an overlay layer over the whole grid with the widget's
+  own controls.
+- Maximize is a view, not saved: other cells stay alive, the maximized chart keeps its
+  window through the resize, and a preset or applied workspace restores. `swap` trades
+  places and spans and keeps the page order equal to the reading order. Drag a cell's bar
+  background onto another cell to swap; double click it to maximize. Chords on each
+  cell's keymap (group Chart grid): Alt+Enter maximize or restore, Escape restore
+  (layered), Alt+Shift+Arrow activate the neighbour, Mod+Shift+Arrow swap with it.
+- Link groups: up to 16, each a `LinkGroup` plus a `DrawingLinkGroup`; a chart is in one
+  or none. Letters A to P are kept for life and across save and restore. Each cell's bar
+  shows a mark with the letter on a hue once more than the starting group exists. Saved
+  as `sync.groups` and `pane.linkGroup` only when groups say more than the flat flags; the
+  flat flags are then those of a group holding every chart, else all off. A group nobody
+  named is saved under the name it shows and reads back unnamed. Drawings made before the
+  switch stay private until `shareDrawings`.
+- Capture: `takeScreenshot()` composes each chart's own screenshot at its place at the
+  device ratio and returns null while one chart is shown; `downloadScreenshot()` returns
+  false on no image or a tainted canvas.
+- Dense cells: below 560 by 340 CSS px, in any layout, a cell hides its rail and keeps a
+  one-row top bar; maximize brings the full chrome back.
 
 ## Layouts controller (since 2.5.10)
 
