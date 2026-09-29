@@ -141,7 +141,7 @@ const widget = createWidget('#terminal', {
   feed: new OpenAlgoDataFeed({ baseUrl: 'http://127.0.0.1:5000', apiKey: 'YOUR_KEY' }),
   symbol: 'RELIANCE', exchange: 'NSE', interval: '5m',
   theme: 'dark',
-  mobile: 'auto', // compact controls at 640 CSS px or less, or on a coarse pointer
+  mobile: 'auto', // compact controls up to 640 CSS px wide, or a phone on its side (coarse pointer, up to 960 px wide and under 600 px tall)
   persist: true,
   onOrder: (order) => broker.place(order),   // the right-click menu offers order entry only when this is set
 });
