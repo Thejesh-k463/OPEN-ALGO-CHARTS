@@ -4,7 +4,8 @@ export {
   parseIndicatorTemplate, parseIndicatorTemplatePayload, parseIndicatorStates, migrateWidgetWorkspace,
 } from './documents';
 export { WorkspaceRepository, WorkspaceConflictError, parseWorkspaceCatalog } from './repository';
-export type { WorkspaceCatalog, WorkspaceStorage, WorkspaceRepositoryOptions, WorkspaceOperationOptions, WorkspaceOpenOptions } from './repository';
+export type { WorkspaceCatalog, WorkspaceStorage, WorkspaceStore, WorkspaceRepositoryOptions, WorkspaceOperationOptions, WorkspaceOpenOptions } from './repository';
+export { createMemoryWorkspaceStorage } from './memory';
 export { createIndexedDbWorkspaceStorage } from './indexed-db';
 export type { IndexedDbWorkspaceStorage, IndexedDbCatalogStorage } from './indexed-db';
 export {

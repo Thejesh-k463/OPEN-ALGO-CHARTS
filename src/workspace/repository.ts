@@ -9,8 +9,16 @@ export interface WorkspaceCatalog {
   recentWorkspaceIds: string[]; activeWorkspaceId: string | null; autosave: boolean;
 }
 
-/** Cancellation is effective until the storage transaction commits. */
-export interface WorkspaceOperationOptions { signal?: AbortSignal }
+export interface WorkspaceOperationOptions {
+  /** Cancellation is effective until the storage transaction commits. */
+  signal?: AbortSignal;
+  /**
+   * Refuse the change with `WorkspaceConflictError` when the catalog has moved
+   * past this revision. Pass the revision the change was prepared from, so a
+   * layout another session saved in the meantime is never overwritten unseen.
+   */
+  expectedRevision?: number;
+}
 export interface WorkspaceOpenOptions extends WorkspaceOperationOptions {
   /** Reject if a grid was prepared from a catalog that has since changed. */
   expectedRevision?: number;
@@ -22,6 +30,39 @@ export interface WorkspaceStorage {
   write(namespace: string, catalog: WorkspaceCatalog, expectedRevision: number, options?: WorkspaceOperationOptions): Promise<void>;
 }
 export interface WorkspaceRepositoryOptions { now?: () => number; id?: () => string }
+
+/**
+ * What a layouts control calls, and nothing more. `WorkspaceRepository`
+ * implements it, with `importDocument` and `exportDocument` besides; a host
+ * that keeps layouts on its own server can implement it directly. The widget
+ * tier takes this contract as a type, so a widget host loads the workspace
+ * tier only when it passes one.
+ *
+ * A change given `expectedRevision` is refused with an error named
+ * `WorkspaceConflictError` unless the catalog is at that revision, and a
+ * change that commits moves the catalog forward by exactly one revision.
+ */
+export interface WorkspaceStore {
+  load(): Promise<WorkspaceCatalog>;
+  /**
+   * Called with a detached copy of the catalog after each change this store
+   * commits, before that change's promise resolves: a control learns the
+   * revision its next change is checked against here. Returns the unsubscribe.
+   */
+  subscribe(listener: (catalog: WorkspaceCatalog) => void): () => void;
+  createWorkspace(name: string, input: WorkspacePayload, options?: WorkspaceOperationOptions): Promise<WorkspaceDocument>;
+  saveWorkspace(id: string, input: WorkspacePayload, options?: WorkspaceOperationOptions): Promise<WorkspaceDocument>;
+  /** Record the active layout and the recent list. It restores nothing: the caller applies the document. */
+  openWorkspace(id: string, options?: WorkspaceOpenOptions): Promise<WorkspaceDocument>;
+  createTemplate(name: string, input: IndicatorTemplateInput, options?: WorkspaceOperationOptions): Promise<IndicatorTemplateDocument>;
+  saveTemplate(id: string, input: IndicatorTemplateInput, options?: WorkspaceOperationOptions): Promise<IndicatorTemplateDocument>;
+  rename(kind: WorkspaceKind, id: string, name: string, options?: WorkspaceOperationOptions): Promise<void>;
+  duplicate(kind: WorkspaceKind, id: string, name: string, options?: WorkspaceOperationOptions): Promise<WorkspaceDocument | IndicatorTemplateDocument>;
+  remove(kind: WorkspaceKind, id: string, options?: WorkspaceOperationOptions): Promise<void>;
+  /** Store the autosave preference. It starts no timer: the control that holds a layout saves it. */
+  setAutosave(enabled: boolean, options?: WorkspaceOperationOptions): Promise<void>;
+}
+
 export class WorkspaceConflictError extends Error {
   constructor() { super('The saved workspace changed in another session. Reload and retry.'); this.name = 'WorkspaceConflictError'; }
 }
@@ -57,15 +98,21 @@ function documentOf(input: unknown): Document {
   throw new WorkspaceDocumentError('Unsupported document kind');
 }
 
+const copy = <T>(value: T): T => readJson(value) as T;
+
 /**
- * Named configuration with serialized, revision-checked writes. Create a new
- * repository when the account changes; an in-flight operation keeps its owner.
+ * Named configuration with serialized, revision-checked writes. Each change is
+ * applied to the catalog as stored at that moment, so an edit made in another
+ * session survives; a change given `expectedRevision`, or a write racing
+ * another session, is refused as a conflict instead. Create a new repository
+ * when the account changes; an in-flight operation keeps its owner.
  */
-export class WorkspaceRepository {
+export class WorkspaceRepository implements WorkspaceStore {
   private readonly _storage: WorkspaceStorage;
   private readonly _namespace: string;
   private readonly _now: () => number;
   private readonly _id: () => string;
+  private readonly _listeners = new Set<(catalog: WorkspaceCatalog) => void>();
   private _queue: Promise<void> = Promise.resolve();
 
   constructor(storage: WorkspaceStorage, namespace: string, options: WorkspaceRepositoryOptions = {}) {
@@ -85,7 +132,12 @@ export class WorkspaceRepository {
     return this._read();
   }
 
-  async createWorkspace(name: string, input: WorkspacePayload): Promise<WorkspaceDocument> {
+  subscribe(listener: (catalog: WorkspaceCatalog) => void): () => void {
+    this._listeners.add(listener);
+    return () => { this._listeners.delete(listener); };
+  }
+
+  async createWorkspace(name: string, input: WorkspacePayload, options?: WorkspaceOperationOptions): Promise<WorkspaceDocument> {
     const payload = parseWorkspacePayload(input);
     const title = string(name, 'name', 120);
     return this._transact(catalog => {
@@ -93,20 +145,20 @@ export class WorkspaceRepository {
       const doc = parseWorkspaceDocument({ ...payload, kind: 'workspace', version: 1, id: this._newId(catalog), name: title, createdAt: now, updatedAt: now });
       catalog.workspaces.push(doc);
       return doc;
-    });
+    }, options);
   }
 
-  async saveWorkspace(id: string, input: WorkspacePayload): Promise<WorkspaceDocument> {
+  async saveWorkspace(id: string, input: WorkspacePayload, options?: WorkspaceOperationOptions): Promise<WorkspaceDocument> {
     const payload = parseWorkspacePayload(input);
     return this._transact(catalog => {
       const existing = this._find(catalog, 'workspace', id) as WorkspaceDocument;
       const doc = parseWorkspaceDocument({ ...existing, ...payload, updatedAt: this._updatedAt(existing) });
       catalog.workspaces[catalog.workspaces.indexOf(existing)] = doc;
       return doc;
-    });
+    }, options);
   }
 
-  async createTemplate(name: string, input: IndicatorTemplateInput): Promise<IndicatorTemplateDocument> {
+  async createTemplate(name: string, input: IndicatorTemplateInput, options?: WorkspaceOperationOptions): Promise<IndicatorTemplateDocument> {
     const payload = parseIndicatorTemplatePayload(input);
     const title = string(name, 'name', 120);
     return this._transact(catalog => {
@@ -115,11 +167,11 @@ export class WorkspaceRepository {
         createdAt: now, updatedAt: now, ...payload });
       catalog.templates.push(doc);
       return doc;
-    });
+    }, options);
   }
 
   /** Update reusable study settings without changing the saved template identity. */
-  async saveTemplate(id: string, input: IndicatorTemplateInput): Promise<IndicatorTemplateDocument> {
+  async saveTemplate(id: string, input: IndicatorTemplateInput, options?: WorkspaceOperationOptions): Promise<IndicatorTemplateDocument> {
     const payload = parseIndicatorTemplatePayload(input);
     return this._transact(catalog => {
       const existing = this._find(catalog, 'indicator-template', id) as IndicatorTemplateDocument;
@@ -127,24 +179,24 @@ export class WorkspaceRepository {
         id: existing.id, name: existing.name, createdAt: existing.createdAt, updatedAt: this._updatedAt(existing), ...payload });
       catalog.templates[catalog.templates.indexOf(existing)] = doc;
       return doc;
-    });
+    }, options);
   }
 
-  async rename(kind: WorkspaceKind, id: string, name: string): Promise<void> {
+  async rename(kind: WorkspaceKind, id: string, name: string, options?: WorkspaceOperationOptions): Promise<void> {
     const title = string(name, 'name', 120);
     return this._transact(catalog => {
       const doc = this._find(catalog, kind, id);
       doc.name = title;
       doc.updatedAt = this._updatedAt(doc);
-    });
+    }, options);
   }
 
-  async duplicate(kind: WorkspaceKind, id: string, name: string): Promise<WorkspaceDocument | IndicatorTemplateDocument> {
+  async duplicate(kind: WorkspaceKind, id: string, name: string, options?: WorkspaceOperationOptions): Promise<WorkspaceDocument | IndicatorTemplateDocument> {
     const title = string(name, 'name', 120);
-    return this._transact(catalog => this._insert(catalog, this._find(catalog, kind, id), title));
+    return this._transact(catalog => this._insert(catalog, this._find(catalog, kind, id), title), options);
   }
 
-  async remove(kind: WorkspaceKind, id: string): Promise<void> {
+  async remove(kind: WorkspaceKind, id: string, options?: WorkspaceOperationOptions): Promise<void> {
     return this._transact(catalog => {
       this._find(catalog, kind, id);
       if (kind === 'indicator-template') catalog.templates = catalog.templates.filter(item => item.id !== id);
@@ -153,29 +205,26 @@ export class WorkspaceRepository {
         catalog.recentWorkspaceIds = catalog.recentWorkspaceIds.filter(item => item !== id);
         if (catalog.activeWorkspaceId === id) catalog.activeWorkspaceId = catalog.recentWorkspaceIds[0] ?? null;
       }
-    });
+    }, options);
   }
 
-  async openWorkspace(id: string, options: WorkspaceOpenOptions = {}): Promise<WorkspaceDocument> {
-    const expected = options.expectedRevision === undefined ? undefined
-      : number(options.expectedRevision, 'expected revision', 0, Number.MAX_SAFE_INTEGER, true);
+  async openWorkspace(id: string, options?: WorkspaceOpenOptions): Promise<WorkspaceDocument> {
     return this._transact(catalog => {
-      if (expected !== undefined && catalog.revision !== expected) throw new WorkspaceConflictError();
       const doc = this._find(catalog, 'workspace', id) as WorkspaceDocument;
       catalog.activeWorkspaceId = doc.id;
       catalog.recentWorkspaceIds = [doc.id, ...catalog.recentWorkspaceIds.filter(item => item !== doc.id)].slice(0, 10);
       return doc;
-    }, options.signal);
+    }, options);
   }
 
-  async setAutosave(enabled: boolean): Promise<void> {
+  async setAutosave(enabled: boolean, options?: WorkspaceOperationOptions): Promise<void> {
     const value = boolean(enabled, 'autosave');
-    return this._transact(catalog => { catalog.autosave = value; });
+    return this._transact(catalog => { catalog.autosave = value; }, options);
   }
 
-  async importDocument(input: unknown): Promise<WorkspaceDocument | IndicatorTemplateDocument> {
+  async importDocument(input: unknown, options?: WorkspaceOperationOptions): Promise<WorkspaceDocument | IndicatorTemplateDocument> {
     const doc = documentOf(input);
-    return this._transact(catalog => this._insert(catalog, doc, doc.name));
+    return this._transact(catalog => this._insert(catalog, doc, doc.name), options);
   }
 
   async exportDocument(kind: WorkspaceKind, id: string): Promise<string> {
@@ -188,11 +237,16 @@ export class WorkspaceRepository {
     return input === null ? emptyCatalog() : parseWorkspaceCatalog(input);
   }
 
-  private _transact<T>(mutate: (catalog: WorkspaceCatalog) => T, signal?: AbortSignal): Promise<T> {
+  private _transact<T>(mutate: (catalog: WorkspaceCatalog) => T, options: WorkspaceOperationOptions = {}): Promise<T> {
+    const { signal } = options;
+    // A malformed revision is the caller's mistake: refused before the queue, never read against storage.
+    const expected = options.expectedRevision === undefined ? undefined
+      : number(options.expectedRevision, 'expected revision', 0, Number.MAX_SAFE_INTEGER, true);
     const operation = this._queue.then(async () => {
       signal?.throwIfAborted();
       const catalog = await this._read();
       signal?.throwIfAborted();
+      if (expected !== undefined && catalog.revision !== expected) throw new WorkspaceConflictError();
       const expectedRevision = catalog.revision;
       const result = mutate(catalog);
       catalog.revision++;
@@ -200,7 +254,11 @@ export class WorkspaceRepository {
       const next = parseWorkspaceCatalog(catalog);
       signal?.throwIfAborted();
       await this._storage.write(this._namespace, next, expectedRevision, { signal });
-      return result === undefined ? result : readJson(result) as T;
+      for (const listener of Array.from(this._listeners)) {
+        // A host listener failing is reported, but the write has committed and resolves.
+        try { listener(copy(next)); } catch (error) { queueMicrotask(() => { throw error; }); }
+      }
+      return result === undefined ? result : copy(result);
     });
     this._queue = operation.then(() => {}, () => {});
     return operation;
