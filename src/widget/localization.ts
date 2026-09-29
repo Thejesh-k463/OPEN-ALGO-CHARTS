@@ -478,6 +478,7 @@ export type WidgetBuiltinMessage =
   | "{chord} belongs to {names}, which cannot change. Press another."
   | "{chord} belongs to the browser. Press another."
   | "{chord} types into the chart. Add {mod} or {alt}."
+  | "{chord} presses the focused control. Add {mod} or {alt}."
   | "That key cannot be used here. Press another."
   | "Nothing changed."
   // Retained so host translation catalogs written for the armed wording stay

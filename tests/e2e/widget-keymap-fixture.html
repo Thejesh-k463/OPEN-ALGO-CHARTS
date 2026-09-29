@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><style>html,body{margin:0;height:100%;background:#0d0e12}body.light{background:#f5f6f8}#t{position:absolute;inset:0}</style></head>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><style>html,body{margin:0;height:100%;background:#0d0e12}body.light{background:#f5f6f8}#t,#u{position:absolute;inset:0}body.two #t{right:50%}body.two #u{left:50%}</style></head>
 <body>
   <div id="t"></div>
   <script type="module">
@@ -44,13 +44,25 @@
     document.body.classList.toggle('light', theme === 'light');
     const errors = [];
     window.__widgetErrors = errors;
-    const widget = createWidget(document.getElementById('t'), {
+    const make = (el, name) => createWidget(el, {
       feed, symbol: 'FIXTURE', exchange: 'NSE', interval: '5m', theme,
       rail: { favorites: ['trend-line'] },
-      persist: params.has('persist') ? 'keymap-fixture' : false,
+      persist: params.has('persist') ? name : false,
     });
+    const widget = make(document.getElementById('t'), 'keymap-fixture');
     widget.on('data', (e) => { if (e.error) errors.push(e.error); window.__loaded = e.bars; });
     window.__widget = widget;
+    // `?two` puts a second chart beside the first, as a page or a grid does:
+    // both keymaps then listen on the one document.
+    if (params.has('two')) {
+      document.body.classList.add('two');
+      const el = document.createElement('div');
+      el.id = 'u';
+      document.body.appendChild(el);
+      const second = make(el, 'keymap-fixture-2');
+      second.on('data', (e) => { if (e.error) errors.push(e.error); window.__loaded2 = e.bars; });
+      window.__second = second;
+    }
     window.__ready = true;
   </script>
 </body>

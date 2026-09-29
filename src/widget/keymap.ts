@@ -370,6 +370,14 @@ export interface KeymapGroup {
 
 type Entry = { -readonly [K in keyof KeyBinding]: KeyBinding[K] };
 
+/**
+ * Keymaps recording a chord right now. Every chart on a page listens on the
+ * same document and the one attached first sees a key first, so it stands
+ * aside while a neighbour records: a chord typed into one chart's editor must
+ * not also pick a tool in the chart beside it.
+ */
+const RECORDING = new Set<Keymap>();
+
 const fail = (reason: NonNullable<KeyRebindResult['reason']>, conflicts: readonly KeyChordUse[] = []): KeyRebindResult => ({ ok: false, reason, conflicts });
 const sameList = (a: readonly string[] | null, b: readonly string[] | null): boolean =>
   a === b || (a !== null && b !== null && a.length === b.length && a.every((c, i) => c === b[i]));
@@ -390,6 +398,8 @@ export class Keymap {
   private _chartBaseline: Map<string, string[] | null> | null = null;
   private _capture: KeyAction | null = null;
   private _detach: (() => void) | null = null;
+  /** The node `attach` listens on, which is what makes another keymap a neighbour. */
+  private _target: object | null = null;
   private _nextId = 1;
 
   public constructor(opts: KeymapOptions = {}) {
@@ -514,13 +524,19 @@ export class Keymap {
   /**
    * Hand the next key presses to `fn` ahead of every binding, for a control
    * that records a chord. Each press is prevented and stopped outright, so no
-   * binding, no open dialog's Escape and no chart shortcut sees it; `fn`
+   * binding, no open dialog's Escape and no chart shortcut sees it, and
+   * another keymap attached to the same node claims nothing meanwhile; `fn`
    * returns false to let one through (Tab moving the focus). Returns the
    * release. A second capture replaces the first.
    */
   public capture(fn: KeyAction): () => void {
     this._capture = fn;
-    return () => { if (this._capture === fn) this._capture = null; };
+    RECORDING.add(this);
+    return () => {
+      if (this._capture !== fn) return;
+      this._capture = null;
+      RECORDING.delete(this);
+    };
   }
 
   /** Whether a control is recording a chord right now. */
@@ -537,6 +553,9 @@ export class Keymap {
       if (e.stopImmediatePropagation !== undefined) e.stopImmediatePropagation();
       else e.stopPropagation?.();
       return true;
+    }
+    if (this._target !== null) {
+      for (const k of RECORDING) if (k !== this && k._target === this._target) return false;
     }
     const combo = eventKeyCombo(e);
     if (combo === '') return false;
@@ -566,7 +585,8 @@ export class Keymap {
     this._detach?.();
     const fn = ((e: Event) => { this.handle(e as unknown as KeyEventLike); }) as EventListener;
     target.addEventListener('keydown', fn, true);
-    this._detach = () => { target.removeEventListener('keydown', fn, true); this._detach = null; };
+    this._target = target;
+    this._detach = () => { target.removeEventListener('keydown', fn, true); this._detach = null; this._target = null; };
     return this._detach;
   }
 
@@ -941,6 +961,7 @@ export class Keymap {
   public destroy(): void {
     this._detach?.();
     this._capture = null;
+    RECORDING.delete(this);
     this._bindings.length = 0;
     this._byCombo.clear();
     this._overrides.clear();

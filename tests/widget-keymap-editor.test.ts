@@ -221,6 +221,17 @@ describe('the shortcuts panel as an editor', () => {
   const change = (root: FakeElement, command: string): FakeElement => row(root, command).querySelector('.oac-keys__change') as FakeElement;
   const reset = (root: FakeElement, command: string): FakeElement => row(root, command).querySelector('.oac-keys__reset') as FakeElement;
 
+  it('opens with the focus on the panel itself, so the list starts at its top', () => {
+    const m = make();
+    const panel = open(m);
+    // The first control is a Change halfway down; focusing it would scroll the first groups away.
+    expect(m.doc.activeElement).toBe(panel);
+    m.w.context.overlays.closeAll();
+    // The plain list keeps its old landing place, the first control there is.
+    openShortcutsPanel(m.w.context, { edit: false });
+    expect(m.doc.activeElement).toBe(m.root.querySelector('.oac-keys-dialog .oac-dialog__head .oac-btn'));
+  });
+
   it('offers Change on the rows a user may move and none on the fixed ones', () => {
     const m = make();
     const panel = open(m);
@@ -298,6 +309,12 @@ describe('the shortcuts panel as an editor', () => {
     expect(status(m.root)).toMatch(/belongs to the browser/);
     fireKey(panel, 'g', { code: 'KeyG' });
     expect(status(m.root)).toMatch(/types into the chart/);
+    // Space alone presses the focused button: bound, it would take that from every control.
+    fireKey(panel, ' ', { code: 'Space' });
+    expect(status(m.root)).toMatch(/presses the focused control/);
+    fireKey(panel, ' ', { shiftKey: true, code: 'Space' });
+    expect(status(m.root)).toMatch(/presses the focused control/);
+    expect(m.w.context.keymap.chord('undo')).toBe('Mod+z');
     expect(row(m.root, 'undo').classList.contains('is-listening')).toBe(true);
     fireKey(panel, 'u', { altKey: true, code: 'KeyU' });
     expect(m.w.context.keymap.chord('undo')).toBe('Alt+u');
@@ -386,6 +403,41 @@ describe('the shortcuts panel as an editor', () => {
     open(m);
     expect(asked).toContain('{count} chart shortcuts struck through: a drawing tool uses the same chord here and takes precedence.');
     expect(asked.some((k) => /arms a drawing tool/.test(k))).toBe(false);
+  });
+
+  it('keeps the focus on its control when a change made elsewhere redraws the rows', () => {
+    const m = make();
+    open(m);
+    change(m.root, 'undo').focus();
+    // A host, or a neighbouring chart sharing the chords, moves another command.
+    m.w.context.keymap.rebind('tool:trend-line', 'Alt+Y');
+    expect(chordOf(m.root, 'tool:trend-line')).toBe(m.w.context.keymap.format('Alt+Y'));
+    expect(m.doc.activeElement).toBe(change(m.root, 'undo'));
+    expect(change(m.root, 'undo').isConnected).toBe(true);
+    // A Reset that the change leaves with nothing to reset hands the focus to its row's Change.
+    m.w.context.keymap.rebind('undo', 'Alt+U');
+    reset(m.root, 'undo').focus();
+    m.w.context.keymap.reset('undo');
+    expect(reset(m.root, 'undo').disabled).toBe(true);
+    expect(m.doc.activeElement).toBe(change(m.root, 'undo'));
+  });
+
+  it('a chord recorded in one widget does not fire in another on the same page', () => {
+    const doc = fakeWidgetDocument();
+    const a = make({}, doc);
+    const b = make({}, doc);
+    // The pointer rests over the first chart while the user records in the second.
+    fire(a.root, 'pointerenter');
+    openShortcutsPanel(b.w.context);
+    change(b.root, 'tool:trend-line').click();
+    fireKey(b.root.querySelector('.oac-keys-dialog') as FakeElement, 'h', { altKey: true, code: 'KeyH' });
+    expect(b.root.querySelector('.oac-keys__conflict')).not.toBeNull();
+    expect(a.w.draw.activeTool()).toBeNull();
+    // Recording over, the first chart answers to its chords again.
+    (b.root.querySelector('.oac-keys__conflict') as FakeElement).querySelectorAll('button')[0].click();
+    b.w.context.overlays.closeAll();
+    fireKey(a.chartEl, 'h', { altKey: true, code: 'KeyH' });
+    expect(a.w.draw.activeTool()).toBe('horizontal-line');
   });
 
   it('lists the chords only when a host asks for no editing', () => {

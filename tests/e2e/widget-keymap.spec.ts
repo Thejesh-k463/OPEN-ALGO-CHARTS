@@ -130,6 +130,10 @@ test('works from the keyboard alone: Enter records, Escape cancels without closi
   await expect(undo).toHaveClass(/is-listening/);
   await page.keyboard.press('KeyG');
   await expect(page.locator(`${DIALOG} .oac-keys__status`)).toContainText('types into the chart');
+  // Space alone would take the press from every button; the refused press must not click the focused Cancel either.
+  await page.keyboard.press('Space');
+  await expect(page.locator(`${DIALOG} .oac-keys__status`)).toContainText('presses the focused control');
+  await expect(undo).toHaveClass(/is-listening/);
   await page.keyboard.press('Alt+KeyU');
   await expect(undo.locator('kbd')).toHaveText('Alt+U');
   await expect(undo.locator('.oac-keys__change')).toBeFocused();
@@ -171,6 +175,35 @@ test('rebinds a chart command with the physical key through the chart shortcut m
   await expect.poll(span).toBeGreaterThan(zoomed + 50);
 });
 
+test('a chord recorded in one chart does not fire in the chart beside it', async ({ page }) => {
+  const errors = await mount(page, '?two');
+  await page.waitForFunction(() => (window as any).__loaded2 > 0);
+  const charts = page.locator('.oac-widget .oac-chart');
+  const at = async (i: number): Promise<void> => {
+    const box = await charts.nth(i).boundingBox();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  };
+  await at(1);
+  await page.keyboard.press('Shift+Slash');
+  const dialog = page.locator('#u .oac-keys-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(page.locator('#t .oac-keys-dialog')).toHaveCount(0);
+  await dialog.locator('.oac-keys__row[data-command="tool:trend-line"] .oac-keys__change').click();
+  // The pointer rests on the first chart, which is attached first and sees the key first.
+  await at(0);
+  await page.keyboard.press('Alt+KeyH');
+  await expect(dialog.locator('.oac-keys__conflict')).toContainText('Alt+H is used by Horizontal Line');
+  expect(await activeTool(page)).toBeNull();
+  // Recording over, the first chart answers to its own chords again.
+  await dialog.locator('.oac-keys__conflict').getByRole('button', { name: 'Cancel' }).click();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await at(0);
+  await page.keyboard.press('Alt+KeyH');
+  expect(await activeTool(page)).toBe('horizontal-line');
+  expect(errors).toEqual([]);
+});
+
 test('fits a phone-width widget in one column, with every control reachable', async ({ page }) => {
   await mount(page, '');
   await page.setViewportSize({ width: 390, height: 760 });
@@ -178,6 +211,9 @@ test('fits a phone-width widget in one column, with every control reachable', as
   await page.keyboard.press('Shift+Slash');
   const dialog = page.locator(DIALOG);
   await expect(dialog).toBeVisible();
+  // It opens at the top of the list: the focus is on the panel, not on a Change further down.
+  await expect(dialog).toBeFocused();
+  expect(await page.locator(`${DIALOG} .oac-dialog__body`).evaluate((el) => el.scrollTop)).toBe(0);
   const box = await dialog.boundingBox();
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(390);

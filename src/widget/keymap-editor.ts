@@ -183,7 +183,12 @@ export function openShortcutsPanel(ctx: WidgetContext, opts: ShortcutsPanelOptio
       : '{count} chart shortcuts struck through: a drawing tool uses the same chord here and takes precedence.', { count: shadowed });
     note.hidden = shadowed === 0;
     drawFoot();
-    if (focus !== undefined) controls.get(focus.command)?.[focus.part]?.focus();
+    if (focus !== undefined) {
+      // A Reset with nothing left to reset cannot hold the focus; its row's Change can.
+      const c = controls.get(focus.command);
+      const want = c?.[focus.part];
+      (want !== undefined && !want.disabled ? want : c?.change)?.focus();
+    }
   };
 
   const conflictNotice = (p: Extract<Pending, { kind: 'conflict' }>): HTMLElement => {
@@ -269,11 +274,13 @@ export function openShortcutsPanel(ctx: WidgetContext, opts: ShortcutsPanelOptio
     if (combo === '') return;
     if (UNREADABLE.test(combo)) { say(widgetText(ctx, 'That key cannot be used here. Press another.')); return; }
     const chord = km.format(combo);
-    // Letters and digits alone start typing a symbol or an interval on the chart.
-    if (/^(Shift\+)?[a-z0-9]$/.test(combo)) {
-      say(widgetText(ctx, '{chord} types into the chart. Add {mod} or {alt}.', { chord, mod: km.isMac ? 'Cmd' : 'Ctrl', alt: km.isMac ? 'Opt' : 'Alt' }));
-      return;
-    }
+    // Letters and digits alone start typing a symbol or an interval on the
+    // chart, and Space alone presses the focused button: a binding there
+    // would run in place of every control in the widget.
+    const mod = km.isMac ? 'Cmd' : 'Ctrl';
+    const alt = km.isMac ? 'Opt' : 'Alt';
+    if (/^(Shift\+)?[a-z0-9]$/.test(combo)) { say(widgetText(ctx, '{chord} types into the chart. Add {mod} or {alt}.', { chord, mod, alt })); return; }
+    if (/^(Shift\+)?Space$/.test(combo)) { say(widgetText(ctx, '{chord} presses the focused control. Add {mod} or {alt}.', { chord, mod, alt })); return; }
     const chart = command.startsWith('chart:');
     const code = chart ? eventToCombo(e, km.isMac) : '';
     if (chart && code === '') { say(widgetText(ctx, 'That key cannot be used here. Press another.')); return; }
@@ -307,13 +314,27 @@ export function openShortcutsPanel(ctx: WidgetContext, opts: ShortcutsPanelOptio
   });
 
   // A change made elsewhere (another chart in a grid, the host) redraws the
-  // rows; the panel's own changes redraw with the focus placed, so they skip it.
-  const offChange = km.onChange(() => { if (!own) draw(); });
+  // rows; the panel's own changes redraw with the focus placed, so they skip
+  // it. The redraw replaces the focused control, so the focus follows it to
+  // the new one rather than dropping out of the dialog.
+  const focused = (): { command: string; part: 'change' | 'reset' | 'replace' } | undefined => {
+    const at = doc.activeElement;
+    for (const [command, c] of controls) {
+      for (const part of ['change', 'reset', 'replace'] as const) if (c[part] !== undefined && c[part] === at) return { command, part };
+    }
+    return undefined;
+  };
+  const offChange = km.onChange(() => { if (!own) draw(focused()); });
 
   draw();
   const close = ctx.openOverlay(el, {
     placement: 'center',
     dismissOnOutside: true,
+    // The first control is a Change halfway down the list, and focusing it
+    // would scroll the first groups out of sight: the panel itself takes the
+    // focus, so it opens at the top and a reader hears its name, and Tab
+    // walks the controls from there.
+    initialFocus: edit ? el : undefined,
     onClose: () => { stopCapture(); offChange(); },
   });
   x.addEventListener('click', close);

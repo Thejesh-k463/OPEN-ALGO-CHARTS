@@ -574,4 +574,39 @@ describe('capture', () => {
     fireKey(el, 't', { altKey: true });
     expect(bound).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps a neighbour on the same document quiet while one keymap records', () => {
+    // Two charts on one page, as in a grid: the first attached sees a key
+    // first, so it has to stand aside for the second one's recorder.
+    const doc = fakeWidgetDocument();
+    const el = doc.createElement('div');
+    doc.body.appendChild(el);
+    const first = new Keymap();
+    const second = new Keymap();
+    const picked = vi.fn();
+    first.register('Alt+H', picked);
+    first.attach(doc as unknown as Document);
+    second.attach(doc as unknown as Document);
+    const seen: string[] = [];
+    const release = second.capture((e) => { seen.push(e.key); });
+    fireKey(el, 'h', { altKey: true, code: 'KeyH' });
+    expect(seen).toEqual(['h']);
+    expect(picked).not.toHaveBeenCalled();
+    release();
+    fireKey(el, 'h', { altKey: true, code: 'KeyH' });
+    expect(picked).toHaveBeenCalledTimes(1);
+    // A recorder torn down with its keymap does not leave the neighbour quiet.
+    second.capture(() => {});
+    second.destroy();
+    fireKey(el, 'h', { altKey: true, code: 'KeyH' });
+    expect(picked).toHaveBeenCalledTimes(2);
+    // A keymap on another document is not a neighbour.
+    const other = new Keymap();
+    const elsewhere = fakeWidgetDocument();
+    other.attach(elsewhere as unknown as Document);
+    const offOther = other.capture(() => {});
+    fireKey(el, 'h', { altKey: true, code: 'KeyH' });
+    expect(picked).toHaveBeenCalledTimes(3);
+    offOther();
+  });
 });
