@@ -297,6 +297,39 @@ test('the main page hands a layout it cannot draw to the grid view, which opens 
   expect(errors).toEqual([]);
 });
 
+test('a hand-off from the main page is not replaced by the saved desk that was open', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  // A saved desk held as the open layout, which a plain reload of the grid view opens again.
+  await page.goto(ORIGIN + '/examples/yfinance/grid.html?test=1');
+  await page.waitForFunction(() => (window as any).__grid?.cells().length === 4);
+  await page.locator('.oac-grid__saved').click();
+  const menu = page.locator('.oac-grid__overlay .oac-layouts');
+  await menu.locator('[data-action="save-as"]').click();
+  await menu.locator('.oac-layouts__input').fill('Four markets');
+  await menu.locator('[data-action="submit-name"]').click();
+  await expect(page.locator('.oac-grid__saved')).toHaveText('Four markets');
+  await page.goto(ORIGIN + '/examples/yfinance/index.html?test=1');
+  await page.waitForFunction(() => (window as any).__oac?.app.chart && !(window as any).__oac.app.loading);
+  const desk = deskOf([handPane('a', 'AAPL'), handPane('b', 'MSFT'), handPane('c', 'TSLA'), handPane('d', 'NVDA')]);
+  await page.getByRole('button', { name: 'Layouts', exact: true }).click();
+  await page.locator('#ws-file').setInputFiles({ name: 'desk.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(desk)) });
+  await page.getByRole('button', { name: 'Open in grid view' }).click();
+  await page.waitForURL(/grid\.html/);
+  await expect(page.locator('#grid-status')).toContainText('Opened the layout from the main view: 4 charts');
+  // The menu lists the saved desk once its store has been read, which is when
+  // the desk that was open would be opened again; give that time to land.
+  await page.locator('.oac-grid__saved').click();
+  await expect(menu.locator('.oac-layouts__row-name', { hasText: 'Four markets' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(1500);
+  // The page was opened by the hand-off, without the test hook, so the charts are read from their symbol boxes.
+  expect(await page.locator('.oac-grid__cell').getByRole('textbox', { name: 'Symbol' }).evaluateAll(boxes => boxes.map(box => (box as HTMLInputElement).value)))
+    .toEqual(['AAPL', 'MSFT', 'TSLA', 'NVDA']);
+  await expect(page.locator('.oac-grid__saved')).toHaveText('Layouts');
+  expect(errors).toEqual([]);
+});
+
 test('a one or two chart layout the grid view exports opens on the main page', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));

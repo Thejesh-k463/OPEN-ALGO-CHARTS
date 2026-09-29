@@ -20,7 +20,8 @@
  *   with no control to say so, would change a host's page behind its back.
  * - **The last layout reopens once the grid's own desk has landed**, so the
  *   two never race, and a layout replaces the persisted desk as opening it
- *   from the menu would.
+ *   from the menu would. A desk opened before it could (a host's hand-off
+ *   from another page, a file, the menu) is the newer choice, and stays.
  */
 import { isReplaying } from 'openalgo-charts';
 import type { WorkspacePayload, WorkspaceStore } from 'openalgo-charts/workspace';
@@ -42,6 +43,8 @@ export interface GridSavedHost {
   readonly layouts?: LayoutsController | false;
   /** The active chart's context over the grid's own layer: the menu opens there, and reports go to its status line. */
   context(): WidgetContext;
+  /** Whether a desk was opened on the grid (`applyWorkspace`) since it was built. */
+  opened(): boolean;
 }
 
 /** What the grid holds of its saved layouts; internal. */
@@ -105,7 +108,7 @@ export function attachGridSaved(host: GridSavedHost): GridSaved | null {
   // control's mark says so, and its name says it in words.
   if (own !== null) {
     void host.ready.then(() => (destroyed ? null : own.reload())).then(async catalog => {
-      if (destroyed || catalog == null || catalog.activeWorkspaceId === null) return;
+      if (destroyed || catalog == null || catalog.activeWorkspaceId === null || host.opened()) return;
       const opened = await own.open(catalog.activeWorkspaceId);
       if (!opened.applied && !destroyed) report(text('notReopened', 'The last layout could not open here: {error}', { error: opened.reason ?? '' }));
     }).catch((error: unknown) => {

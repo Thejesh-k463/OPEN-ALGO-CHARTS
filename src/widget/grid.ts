@@ -108,8 +108,9 @@ export interface ChartGridOptions extends Omit<WidgetOptions, 'persist' | 'stora
    * or a host's own `WorkspaceStore`. With the grid bar (`toolbar`) the grid
    * keeps a layouts controller over every chart: a Layouts control in the bar
    * saves and opens the desk, autosave follows it, and the layout that was
-   * active when the page last closed opens once `ready` settles. Without the
-   * bar the charts get their templates only. Taken as a type only.
+   * active when the page last closed opens once `ready` settles, unless the
+   * host has applied a workspace by then. Without the bar the charts get their
+   * templates only. Taken as a type only.
    */
   workspaces?: WorkspaceStore;
   /**
@@ -359,7 +360,11 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
    * are built without an instrument, so none of them asks the feed for one.
    */
   let restoring = !storage.loaded;
-  /** A workspace the host applied while the store was read: it wins over the stored one. */
+  /**
+   * A workspace was applied through `applyWorkspace`: one applied while the
+   * store was read wins over the stored desk, and one applied before the saved
+   * layouts reopen the last layout wins over that.
+   */
   let given = false;
   const bus = new WidgetBus<ChartGridEvents>();
   const links = new GridLinks<Cell>(options.links);
@@ -1224,8 +1229,8 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
 
     applyWorkspace(payload) {
       const report = apply(payload, new Map());
-      // A desk applied before the store answered is the newer one: the stored one does not replace it.
-      if (restoring && report.applied) given = true;
+      // The newer desk: neither the stored one nor the last saved layout replaces it.
+      if (report.applied) given = true;
       return report;
     },
 
@@ -1435,7 +1440,7 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   if (options.toolbar === true) {
     saved = attachGridSaved({
       grid, ready, workspaces: options.workspaces, layouts: options.layouts,
-      context: () => overGrid((active as Cell).widget.context),
+      context: () => overGrid((active as Cell).widget.context), opened: () => given,
     });
   }
   if (barEl !== null) bar = mountGridBar(barHost, barEl);

@@ -351,8 +351,9 @@ bookkeeping or which chart had the focus, so panning, a closing bar or a click o
 another chart is no unsaved change; an opened desk makes its first chart active. A
 change still in autosave's quiet period is written when the page hides. The layout that
 was active when the page last closed opens once `ready` settles, over the desk the grid
-restored itself. No chart has a Layouts button of its own, and every chart's indicator
-picker offers the store's templates.
+restored itself, unless a workspace was applied by then (a hand-off from another page, a
+file): that desk is the newer choice and stays. No chart has a Layouts button of its
+own, and every chart's indicator picker offers the store's templates.
 
 `layouts` passes a controller the host built over the grid instead, which the bar
 drives and the grid never reopens or destroys, and `layouts: false` leaves the control

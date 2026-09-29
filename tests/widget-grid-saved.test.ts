@@ -170,6 +170,23 @@ describe('the chart grid saved layouts', () => {
     expect(control(root).textContent).toBe('Morning');
   });
 
+  it('leave a desk the host opens as ready settles, rather than reopen the last layout over it', async () => {
+    const repos = account();
+    const first = make({ workspaces: repos() });
+    first.grid.cells()[1].widget.setSymbol('BBB');
+    await saveAs(first.root, 'Morning');
+    first.grid.destroy();
+    const { grid, root } = make({ workspaces: repos() });
+    await grid.ready;
+    // A hand-off from another page, which the reference host opens here.
+    const handed = grid.getWorkspace();
+    handed.panes.forEach(pane => { pane.symbol = 'HHH'; });
+    expect(grid.applyWorkspace(handed).applied).toBe(true);
+    await settle();
+    expect(symbols(grid)).toEqual(['HHH', 'HHH']);
+    expect(control(root).textContent).toBe('Layouts');
+  });
+
   it('drive a controller the host passes from the bar alone, never reopening or ending it', async () => {
     const repo = account()();
     let target: ChartGrid | null = null;
