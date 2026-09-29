@@ -37,6 +37,8 @@ async function initialize(page: Page) {
       branding:false,animZoom:false,animAutoscale:false,timeNavigator:false,
       mobile:window.innerWidth<=640?'auto':'never',
     });
+    // The saved preferences land once the widget's store (IndexedDB) has answered.
+    await widget.ready;
     const chart=widget.chart;
     const bars=Array.from({length:96},(_,index)=>{
       const close=100+index*3+(index>=48?250:0);
