@@ -228,6 +228,10 @@ called with a detached catalog copy after each commit, before that change's prom
 resolves, and returns the unsubscribe. The repository implements `WorkspaceStore`, the
 contract the widget tier's `createLayoutsController` takes. `createMemoryWorkspaceStorage(seed?)`
 keeps the same compare-and-write contract in memory, for tests and previews.
+`WorkspaceStore` also has two optional members since 2.5.10, `captureIndicatorTemplate(chart)`
+and `planIndicatorTemplateState(chart, input, mode, options?)`, which `WorkspaceRepository`
+implements; the widget's indicator picker reaches templates through them, so the widget
+tier never loads this tier on its own.
 
 `setAutosave` stores a preference. Hosts must debounce actual saves, suppress
 them during restoration and replay, cancel pending timers on account changes,
