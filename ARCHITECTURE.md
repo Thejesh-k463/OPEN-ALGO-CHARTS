@@ -222,7 +222,8 @@ src/
     ├── keymap-editor.ts     # the ? panel: lists every chord, records a new one, names conflicts, resets (loads on first use)
     ├── lazy.ts              # the parts that load on first use: one shared load, a failure reported and forgotten
     ├── grid.ts              # createChartGrid: cells, focus, splitters, maximize, swap, workspace
-    ├── grid-layouts.ts / grid-links.ts / grid-bar.ts / grid-cells.ts / grid-capture.ts / grid-text.ts / grid-styles.ts
+    ├── grid-layouts.ts / grid-links.ts / grid-cells.ts / grid-capture.ts / grid-text.ts / grid-styles.ts
+    ├── grid-bar.ts / grid-menus.ts # the grid bar and its menus (load on first use)
     ├── grid-saved.ts        # the desk's saved layouts
     ├── grid-payload.ts      # the workspace check, each chart's drawings
     ├── rail.ts / topbar.ts / statusline.ts / toast.ts

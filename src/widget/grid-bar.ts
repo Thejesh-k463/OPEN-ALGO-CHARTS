@@ -1,7 +1,12 @@
 /**
- * The chart grid's bar and its menus: the layout picker, maximize, the link
- * menu, whole-grid capture and, when the grid keeps them, the desk's saved
- * layouts (the widget's own Layouts menu, grid-saved.ts).
+ * The chart grid's bar: the layout picker, maximize, the link menu,
+ * whole-grid capture and, when the grid keeps them, the desk's saved layouts
+ * (the widget's own Layouts menu, grid-saved.ts).
+ *
+ * The bar is the host's choice (`toolbar`), so it loads when a grid asks for
+ * it (lazy.ts), into a strip the grid has already laid out at the bar's
+ * height; its menus load when one first opens (grid-menus.ts). Every widget
+ * outside such a grid fetches neither.
  *
  * The grid has no widget of its own, so it has no overlay stack to open a
  * menu in. It keeps one over its whole area instead (`createOverlayStack` on
@@ -17,9 +22,11 @@ import { glyphSvg } from './form';
 import { CHART_GRID_LAYOUTS, isChartGridLayout, type ChartGridLayoutId } from './grid-layouts';
 import type { ChartGridLinkGroup, LinkChannel } from './grid-links';
 import type { GridSaved } from './grid-saved';
-import { chartCount, layoutName } from './grid-text';
+import { layoutName } from './grid-text';
+import { groupMark } from './grid-cells';
 import { layoutNeedsAttention } from './layouts-widget';
 import { widgetText, type WidgetTranslationOptions } from './localization';
+import { addWidgetStyles } from './styles';
 
 /** What the bar and its menus read from the grid and ask it to do. */
 export interface GridBarHost {
@@ -55,6 +62,8 @@ export interface GridBarHost {
   };
   /** The desk's saved layouts, when the grid keeps them: the bar then has a Layouts control. */
   readonly saved?: Pick<GridSaved, 'controller' | 'open' | 'status'>;
+  /** Open one of the bar's menus under `anchor` (grid-menus.ts, loaded on first use). */
+  openMenu(which: 'layouts' | 'link' | 'capture', anchor: HTMLElement): void;
 }
 
 export interface GridBarHandle {
@@ -65,8 +74,6 @@ export interface GridBarHandle {
 }
 
 const txt = (host: GridBarHost): WidgetTranslationOptions => host.text;
-/** Ids for the notes menus point their held-back rows at; one page may hold several grids. */
-let notes = 0;
 
 /** A layout's tile: its own slots drawn on the chrome grid. */
 export function layoutTileSvg(id: ChartGridLayoutId): string {
@@ -74,294 +81,19 @@ export function layoutTileSvg(id: ChartGridLayoutId): string {
   return glyphSvg(layoutIconPath(spec.rows, spec.columns, spec.slots));
 }
 
-const chrome = (doc: Document, svg: string): HTMLSpanElement => {
+/** A chrome glyph for a bar control or a menu row. Internal. */
+export const chrome = (doc: Document, svg: string): HTMLSpanElement => {
   const span = h(doc, 'span', 'oac-glyph oac-glyph--chrome', { 'aria-hidden': 'true' });
   span.innerHTML = svg;
   return span;
 };
-
-/** The glyph each channel row carries, from the chrome registry. */
-const CHANNEL_ICON: Readonly<Record<LinkChannel, string>> = {
-  crosshair: chromeIconSvg('crosshair'), viewport: chromeIconSvg('time-range'), symbol: chromeIconSvg('search'),
-  interval: chromeIconSvg('clock'), chartType: chromeIconSvg('chart-candlestick'), appearance: chromeIconSvg('palette'),
-  drawings: chromeIconSvg('drawing-sync'),
-};
-const CHANNEL_LABEL = {
-  crosshair: 'Crosshair', viewport: 'Time range', symbol: 'Symbol', interval: 'Interval',
-  chartType: 'Chart type', appearance: 'Appearance', drawings: 'Drawings',
-} as const;
-
-/** A group's mark: its letter on its colour. The letter carries the meaning; the colour only helps. */
-export function groupMark(doc: Document, group: Pick<ChartGridLinkGroup, 'letter'> | null): HTMLSpanElement {
-  const mark = h(doc, 'span', 'oac-grid__chip', { 'aria-hidden': 'true' });
-  if (group === null) {
-    mark.dataset.group = 'none';
-    mark.innerHTML = chromeIconSvg('unlink');
-  } else {
-    mark.dataset.group = group.letter;
-    mark.textContent = group.letter;
-  }
-  return mark;
-}
-
-// ── menus ────────────────────────────────────────────────────────────────
-
-interface MenuItem {
-  kind: 'radio' | 'check' | 'action';
-  label: string;
-  sub?: string;
-  checked?: boolean;
-  disabled?: boolean;
-  icon?: HTMLElement;
-  /** Leave the menu open after the choice, so several toggles take one visit. */
-  stay?: boolean;
-  onSelect(): void;
-}
-
-/**
- * A menu of radio, check and action rows over the grid. `build` is read again
- * after every row that keeps the menu open, so a toggle repaints in place and
- * the focus stays on the row that was pressed.
- */
-function openRows(host: GridBarHost, anchor: HTMLElement, label: string, build: () => Array<MenuItem | string>,
-  extra?: (menu: HTMLElement, repaint: () => void) => void, note?: string | null): () => void {
-  const doc = host.doc;
-  const menu = h(doc, 'div', 'oac-menu oac-grid__menu', { role: 'menu', 'aria-label': label });
-  const noteId = `oac-grid-note-${++notes}`;
-  let close: () => void = () => {};
-  const paint = (focusAt = -1): void => {
-    menu.textContent = '';
-    let index = 0;
-    for (const item of build()) {
-      if (typeof item === 'string') {
-        const head = h(doc, 'div', 'oac-head', { role: 'presentation' });
-        head.textContent = item;
-        menu.appendChild(head);
-        continue;
-      }
-      const row = h(doc, 'button', 'oac-menu__row', {
-        type: 'button', role: item.kind === 'radio' ? 'menuitemradio' : item.kind === 'check' ? 'menuitemcheckbox' : 'menuitem',
-        'aria-disabled': String(item.disabled === true),
-      });
-      if (item.kind !== 'action') row.setAttribute('aria-checked', String(item.checked === true));
-      if (item.kind === 'check') {
-        // A box with the chrome tick, not a native checkbox: a row is one button, and a control inside a button is not allowed.
-        const box = h(doc, 'span', 'oac-grid__box', { 'aria-hidden': 'true' });
-        box.innerHTML = chromeIconSvg('check');
-        row.appendChild(box);
-      }
-      if (item.icon !== undefined) row.appendChild(item.icon);
-      const name = h(doc, 'span', 'oac-menu__label');
-      name.textContent = item.label;
-      row.appendChild(name);
-      if (item.sub !== undefined) {
-        const sub = h(doc, 'span', 'oac-menu__sub');
-        sub.textContent = item.sub;
-        row.appendChild(sub);
-      }
-      if (item.disabled === true && note != null) row.setAttribute('aria-describedby', noteId);
-      const at = index++;
-      row.addEventListener('click', e => {
-        e.stopPropagation();
-        if (item.disabled === true) return;
-        if (item.stay !== true) close();
-        item.onSelect();
-        if (item.stay === true) paint(at);
-      });
-      menu.appendChild(row);
-    }
-    if (note != null) {
-      // Said once under the rows it holds back, rather than squeezed beside each label.
-      const line = h(doc, 'div', 'oac-grid__note', { role: 'none', id: noteId });
-      line.textContent = note;
-      menu.appendChild(line);
-    }
-    extra?.(menu, () => paint());
-    if (focusAt >= 0) menu.querySelectorAll<HTMLElement>('.oac-menu__row')[focusAt]?.focus();
-  };
-  paint();
-  menu.addEventListener('keydown', e => {
-    const rows = Array.from(menu.querySelectorAll<HTMLElement>('.oac-menu__row'));
-    const at = rows.indexOf(doc.activeElement as HTMLElement);
-    const to = e.key === 'ArrowDown' ? (at + 1) % rows.length : e.key === 'ArrowUp' ? (at - 1 + rows.length) % rows.length
-      : e.key === 'Home' ? 0 : e.key === 'End' ? rows.length - 1 : -1;
-    if (to < 0 || rows.length === 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    rows[to].focus();
-  });
-  close = host.overlays.open(menu, { anchor, placement: 'below',
-    initialFocus: menu.querySelector<HTMLElement>('.oac-menu__row[aria-checked="true"]') ?? undefined });
-  return close;
-}
-
-/**
- * The layout picker: one row of tiles per chart count, the current layout
- * checked. Left and Right walk the tiles in order, Up and Down move between
- * rows at the same place, Home and End go to either end.
- */
-export function openLayoutPicker(host: GridBarHost, anchor: HTMLElement): () => void {
-  const doc = host.doc;
-  const menu = h(doc, 'div', 'oac-grid__picker', { role: 'menu', 'aria-label': widgetText(txt(host), 'Layouts') });
-  const rows: HTMLElement[][] = [];
-  const current = host.layout();
-  const byCount = new Map<number, ChartGridLayoutId[]>();
-  for (const id of host.layouts) {
-    const count = CHART_GRID_LAYOUTS[id].slots.length;
-    byCount.set(count, [...(byCount.get(count) ?? []), id]);
-  }
-  let close: () => void = () => {};
-  /**
-   * The tiles are pictures, so a line under them names the one under the
-   * pointer or the focus, and the current layout otherwise. A tooltip would
-   * cover the next row of tiles; screen readers hear each tile's own label.
-   */
-  const describe = (id: ChartGridLayoutId): string =>
-    widgetText(txt(host), '{name}, {count} charts', { name: layoutName(txt(host), id), count: CHART_GRID_LAYOUTS[id].slots.length });
-  const caption = h(doc, 'div', 'oac-grid__picker-caption', { 'aria-hidden': 'true' });
-  const rest = (): void => { caption.textContent = current !== null && isChartGridLayout(current) ? describe(current) : ''; };
-  for (const [count, ids] of byCount) {
-    const group = h(doc, 'div', 'oac-grid__picker-row', { role: 'group', 'aria-label': chartCount(txt(host), count) });
-    const head = h(doc, 'span', 'oac-grid__picker-count', { 'aria-hidden': 'true' });
-    head.textContent = String(count);
-    group.appendChild(head);
-    const tiles: HTMLElement[] = [];
-    for (const id of ids) {
-      const name = layoutName(txt(host), id);
-      const tile = h(doc, 'button', 'oac-grid__tile', {
-        type: 'button', role: 'menuitemradio', 'aria-checked': String(id === current), 'aria-label': name,
-      });
-      tile.dataset.layout = id;
-      tile.appendChild(chrome(doc, layoutTileSvg(id)));
-      const say = (): void => { caption.textContent = describe(id); };
-      tile.addEventListener('pointerenter', say);
-      tile.addEventListener('focus', say);
-      tile.addEventListener('click', e => { e.stopPropagation(); close(); host.setLayout(id); });
-      tiles.push(tile);
-      group.appendChild(tile);
-    }
-    rows.push(tiles);
-    menu.appendChild(group);
-  }
-  rest();
-  menu.appendChild(caption);
-  menu.addEventListener('pointerleave', () => { if (!menu.contains(doc.activeElement)) rest(); });
-  const flat = rows.flat();
-  menu.addEventListener('keydown', e => {
-    const at = flat.indexOf(doc.activeElement as HTMLElement);
-    if (at < 0) return;
-    const row = rows.findIndex(r => r.includes(flat[at]));
-    const col = rows[row].indexOf(flat[at]);
-    let next: HTMLElement | undefined;
-    if (e.key === 'ArrowRight') next = flat[(at + 1) % flat.length];
-    else if (e.key === 'ArrowLeft') next = flat[(at - 1 + flat.length) % flat.length];
-    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      const to = rows[(row + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length];
-      next = to[Math.min(col, to.length - 1)];
-    } else if (e.key === 'Home') next = flat[0];
-    else if (e.key === 'End') next = flat[flat.length - 1];
-    if (next === undefined) return;
-    e.preventDefault();
-    e.stopPropagation();
-    next.focus();
-  });
-  close = host.overlays.open(menu, { anchor, placement: 'below',
-    initialFocus: flat.find(t => t.getAttribute('aria-checked') === 'true') ?? flat[0] ?? undefined });
-  return close;
-}
-
-/**
- * The link menu for the active chart: which group it is in, a new group,
- * a name for the group, and the group's channels. Toggles leave the menu
- * open, so a user linking three channels opens it once.
- */
-export function openLinkMenu(host: GridBarHost, anchor: HTMLElement): () => void {
-  const doc = host.doc, t = txt(host);
-  let renaming = false;
-  const rows = (): Array<MenuItem | string> => {
-    const current = host.links.current();
-    const out: Array<MenuItem | string> = [widgetText(t, 'Link group')];
-    out.push({ kind: 'radio', label: widgetText(t, 'Not linked'), checked: current === null, icon: groupMark(doc, null), stay: true,
-      onSelect: () => host.links.setGroup(null) });
-    for (const group of host.links.groups()) {
-      out.push({ kind: 'radio', label: group.name, sub: chartCount(t, group.cells.length), checked: current?.id === group.id,
-        icon: groupMark(doc, group), stay: true, onSelect: () => host.links.setGroup(group.id) });
-    }
-    out.push({ kind: 'action', label: widgetText(t, 'New group'), icon: chrome(doc, chromeIconSvg('plus')), stay: true, onSelect: () => host.links.newGroup() });
-    out.push({ kind: 'action', label: widgetText(t, 'Rename group'), icon: chrome(doc, chromeIconSvg('rename')), disabled: current === null,
-      sub: current === null ? widgetText(t, 'Link this chart to a group first') : undefined, stay: true, onSelect: () => { renaming = true; } });
-    if (current === null) return out;
-    out.push(widgetText(t, 'Links in {group}', { group: current.name }));
-    const o = current.links;
-    for (const channel of ['crosshair', 'viewport', 'symbol', 'interval', 'chartType', 'appearance', 'drawings'] as const) {
-      out.push({ kind: 'check', label: widgetText(t, CHANNEL_LABEL[channel]), checked: o[channel], stay: true,
-        icon: chrome(doc, CHANNEL_ICON[channel]), sub: channel === 'drawings' ? widgetText(t, 'same instrument only') : undefined,
-        onSelect: () => host.links.setChannel(channel, !o[channel]) });
-      if (channel === 'crosshair') {
-        out.push({ kind: 'check', label: widgetText(t, 'Nearest bar'), sub: widgetText(t, 'where a chart has no bar at that time'),
-          checked: o.whenMissing === 'nearest', disabled: !o.crosshair, stay: true, icon: h(doc, 'span', 'oac-grid__indent'),
-          onSelect: () => host.links.setChannel('nearest', o.whenMissing !== 'nearest') });
-      }
-    }
-    out.push({ kind: 'action', label: widgetText(t, 'Share this chart\'s drawings'), icon: chrome(doc, chromeIconSvg('drawing-sync')),
-      disabled: !o.drawings, sub: o.drawings ? undefined : widgetText(t, 'Switch Drawings on first'), onSelect: () => host.links.share() });
-    return out;
-  };
-  // Renaming swaps the rows for a field, in the same menu, so Escape and the
-  // focus return behave as they do for the rows.
-  const form = (menu: HTMLElement, repaint: () => void): void => {
-    const current = host.links.current();
-    if (!renaming || current === null) return;
-    menu.textContent = '';
-    const wrap = h(doc, 'div', 'oac-grid__rename');
-    const input = h(doc, 'input', undefined, { type: 'text', 'aria-label': widgetText(t, 'Group name'), maxlength: '120' });
-    input.value = current.name;
-    const done = (save: boolean): void => {
-      if (save && input.value.trim() !== '') host.links.rename(current.id, input.value.trim());
-      renaming = false;
-      repaint();
-      menu.querySelector<HTMLElement>('.oac-menu__row[aria-checked="true"]')?.focus();
-    };
-    // Enter saves; Escape closes the menu like any other, leaving the name as it was.
-    input.addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); done(true); }
-    });
-    const save = h(doc, 'button', 'oac-btn oac-btn--primary', { type: 'button' });
-    save.textContent = widgetText(t, 'Save');
-    save.addEventListener('click', e => { e.stopPropagation(); done(true); });
-    const cancel = h(doc, 'button', 'oac-btn', { type: 'button' });
-    cancel.textContent = widgetText(t, 'Cancel');
-    cancel.addEventListener('click', e => { e.stopPropagation(); done(false); });
-    wrap.append(input, cancel, save);
-    menu.appendChild(wrap);
-    input.focus();
-    input.select();
-  };
-  return openRows(host, anchor, widgetText(t, 'Linking'), rows, form);
-}
-
-/** Download or copy one image of every chart; greyed with the reason while the grid shows one chart. */
-export function openCaptureMenu(host: GridBarHost, anchor: HTMLElement): () => void {
-  const t = txt(host);
-  const blocked = host.capture.blocked();
-  const copy = host.capture.canCopy();
-  return openRows(host, anchor, widgetText(t, 'Capture every chart'), () => [
-    { kind: 'action', label: widgetText(t, 'Download PNG of every chart'), disabled: blocked !== null,
-      icon: chrome(host.doc, chromeIconSvg('download')), onSelect: () => host.capture.download() },
-    { kind: 'action', label: widgetText(t, 'Copy image of every chart'), disabled: blocked !== null || !copy,
-      sub: blocked !== null ? undefined : copy ? widgetText(t, 'paste it anywhere') : widgetText(t, 'needs https or localhost'),
-      icon: chrome(host.doc, chromeIconSvg('copy')), onSelect: () => host.capture.copy() },
-  ], undefined, blocked);
-}
 
 // ── the bar ──────────────────────────────────────────────────────────────
 
 /** Mount the grid bar into `el`. */
 export function mountGridBar(host: GridBarHost, el: HTMLElement): GridBarHandle {
   const doc = host.doc, t = txt(host);
-  el.classList.add('oac-widget', 'oac-grid__bar');
-  el.setAttribute('role', 'toolbar');
-  el.setAttribute('aria-label', widgetText(t, 'Chart grid'));
+  addWidgetStyles(doc, GRID_BAR_CSS);
   const button = (className: string, label: string): HTMLButtonElement =>
     h(doc, 'button', `oac-btn ${className}`, { type: 'button', 'aria-label': label });
   const chev = (): HTMLElement => {
@@ -380,7 +112,7 @@ export function mountGridBar(host: GridBarHost, el: HTMLElement): GridBarHandle 
     const id = host.layout();
     return { title: isChartGridLayout(id) ? widgetText(t, 'Layout: {name}', { name: layoutName(t, id) }) : widgetText(t, 'Layout'), side: 'bottom' };
   });
-  layout.addEventListener('click', () => openLayoutPicker(host, layout));
+  layout.addEventListener('click', () => host.openMenu('layouts', layout));
   // A host that offers no layouts gets no picker, rather than one that opens empty.
   layout.hidden = host.layouts.length === 0;
 
@@ -401,13 +133,13 @@ export function mountGridBar(host: GridBarHost, el: HTMLElement): GridBarHandle 
     const group = host.links.current();
     return { title: widgetText(t, 'Link: {name}', { name: group === null ? widgetText(t, 'Not linked') : group.name }), side: 'bottom' };
   });
-  link.addEventListener('click', () => openLinkMenu(host, link));
+  link.addEventListener('click', () => host.openMenu('link', link));
 
   const capture = button('oac-btn--icon oac-grid__capture', widgetText(t, 'Capture every chart'));
   capture.setAttribute('aria-haspopup', 'menu');
   capture.appendChild(chrome(doc, chromeIconSvg('capture-grid')));
   host.tips.attach(capture, () => ({ title: widgetText(t, 'Capture every chart'), sub: host.capture.blocked() ?? undefined, side: 'bottom' }));
-  capture.addEventListener('click', () => openCaptureMenu(host, capture));
+  capture.addEventListener('click', () => host.openMenu('capture', capture));
 
   const sep = (): HTMLElement => h(doc, 'span', 'oac-sep', { role: 'separator' });
   el.append(layout, max, sep(), link, sep(), capture);
@@ -485,3 +217,14 @@ export function mountGridBar(host: GridBarHost, el: HTMLElement): GridBarHandle 
     destroy: () => { offSaved?.(); el.textContent = ''; },
   };
 }
+
+/** The bar's own rules, added to the widget sheet when it loads; its strip is laid out by `CHART_GRID_CSS`. */
+const GRID_BAR_CSS = `
+.oac-grid__bar .oac-grid__bar-text { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }
+.oac-grid__bar-mark { display: inline-flex; }
+.oac-grid__spacer { flex: 1 1 auto; }
+.oac-grid__saved { min-width: 0; }
+.oac-grid__saved[data-attention="true"]::after { content: ''; width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--oac-amber); }
+/* A phone's bar keeps the glyph and the mark; the held layout's name stays in the tip and the accessible name. */
+@container oac-grid-bar (max-width: 520px) { .oac-grid__saved > .oac-grid__bar-text { display: none; } }
+`;

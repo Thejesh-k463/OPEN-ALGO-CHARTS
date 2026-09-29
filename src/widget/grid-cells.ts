@@ -1,7 +1,8 @@
 /**
  * Moving between the grid's charts and moving the charts themselves: the
  * grid's chords, the neighbour a chord or a swap reaches, and dragging a
- * chart by its bar onto another chart's place.
+ * chart by its bar onto another chart's place; and the mark a chart shows for
+ * its link group.
  *
  * The chords go on each chart's own keymap, in a Chart grid section of its
  * shortcuts panel, so they are listed with every other chord and checked
@@ -9,8 +10,24 @@
  * (`keyboardRoute`), so a chord acts once whatever the pointer rests on.
  * None uses Alt with a bare arrow, which is the browser's back and forward.
  */
+import { chromeIconSvg } from 'openalgo-charts/draw';
+import { h } from './context';
+import type { ChartGridLinkGroup } from './grid-links';
 import type { Keymap } from './keymap';
 import { widgetText, type WidgetTranslationOptions } from './localization';
+
+/** A group's mark: its letter on its colour. The letter carries the meaning; the colour only helps. */
+export function groupMark(doc: Document, group: Pick<ChartGridLinkGroup, 'letter'> | null): HTMLSpanElement {
+  const mark = h(doc, 'span', 'oac-grid__chip', { 'aria-hidden': 'true' });
+  if (group === null) {
+    mark.dataset.group = 'none';
+    mark.innerHTML = chromeIconSvg('unlink');
+  } else {
+    mark.dataset.group = group.letter;
+    mark.textContent = group.letter;
+  }
+  return mark;
+}
 
 export type GridDirection = 'left' | 'right' | 'up' | 'down';
 

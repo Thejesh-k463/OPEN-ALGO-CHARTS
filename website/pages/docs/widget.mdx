@@ -849,14 +849,14 @@ The standalone script (`openalgo-charts.standalone.js`) is base-only and cannot 
 widget: a tier loaded beside it would import its own second engine. See
 [Use from a CDN](/docs/cdn).
 
-Some of the widget loads on first use. The shortcuts panel, the Layouts menu and the
-indicator templates list are not in `openalgo-charts.widget.mjs` but in files beside it
-(`openalgo-charts.widget.<part>.mjs`), fetched with `import()` the first time a user
-opens one. A part resolves against the tier's own URL, so `dist/` or a CDN path needs
-nothing more, and a bundler splits it the same way. Under a Content Security Policy,
-`script-src` must allow the tier's origin, as it already must for the tier itself; a
-part's rules join the widget's stylesheet and keep its nonce. A part that cannot load
-says so in a toast and is fetched again the next time.
+Some of the widget loads on first use. The shortcuts panel, the Layouts menu, the
+indicator templates list and a chart grid's bar and menus are not in
+`openalgo-charts.widget.mjs` but in files beside it (`openalgo-charts.widget.<part>.mjs`),
+fetched with `import()` the first time they are needed. A part resolves against the
+tier's own URL, so `dist/` or a CDN path needs nothing more, and a bundler splits it the
+same way. Under a Content Security Policy, `script-src` must allow the tier's origin, as
+it already must for the tier itself; a part's rules join the widget's stylesheet and keep
+its nonce. A part that cannot load says so in a toast and is fetched again the next time.
 
 ## Size
 

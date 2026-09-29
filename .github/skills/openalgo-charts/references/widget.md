@@ -857,8 +857,9 @@ const report = grid.applyWorkspace(parseWorkspacePayload(fileText)); // { applie
   and BSE) reaches the followers.
 - Below `compactWidth` only the active cell shows, with a tab strip to switch; splitters
   hide. `CHART_GRID_CSS` is part of `WIDGET_COMPONENT_CSS`.
-- Grid bar (since 2.5.10, `toolbar: true`): Layout picker (tiles from `layoutIconPath`
-  over each layout's slots, one row per chart count, arrows, Home, End, a caption naming
+- Grid bar (since 2.5.10, `toolbar: true`; it loads into a strip laid out at its height,
+  and its menus load when one first opens, see Packaging facts): Layout picker (tiles
+  from `layoutIconPath` over each layout's slots, one row per chart count, arrows, Home, End, a caption naming
   the focused tile), Maximize, Link menu (groups, Not linked, New group, Rename group,
   channel toggles including Nearest bar, Share this chart's drawings) and Capture
   (download, copy), and with `workspaces` a Layouts control at its end: the widget's

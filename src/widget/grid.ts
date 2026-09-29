@@ -58,10 +58,15 @@ import {
   ALL_OFF, GridLinks, channelsOf, describeGroups, instrument,
   type ChartGridLinkGroup, type GridGroup, type LinkChannel,
 } from './grid-links';
-import { mountGridBar, openLinkMenu, groupMark, type GridBarHandle, type GridBarHost } from './grid-bar';
+import type { GridBarHandle, GridBarHost } from './grid-bar';
 import { captureRatio, composeGridCapture, type CaptureBox, type GridCapturePiece } from './grid-capture';
-import { installGridKeys, installHeaderDrag, neighbour } from './grid-cells';
+import { groupMark, installGridKeys, installHeaderDrag, neighbour } from './grid-cells';
 import { KEYMAP_KEY } from './keymap';
+import { lazyPart, partFailed, usePart } from './lazy';
+
+/** The grid bar, fetched when a grid shows it, and its menus, fetched when one first opens (lazy.ts). Internal. */
+export const gridBarPart = lazyPart(() => import('./grid-bar'));
+export const gridMenusPart = lazyPart(() => import('./grid-menus'));
 
 export { CHART_GRID_PRESETS, type ChartGridPreset } from './grid-layouts';
 
@@ -396,7 +401,8 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   const tabs = h(doc, 'div', 'oac-grid__tabs', { role: 'tablist', 'aria-label': widgetText(text, 'Charts') });
   const body = h(doc, 'div', 'oac-grid__cells');
   tabs.hidden = true;
-  const barEl = options.toolbar === true ? h(doc, 'div') : null;
+  // The strip is laid out at the bar's height now, so the charts keep their size when the bar arrives.
+  const barEl = options.toolbar === true ? h(doc, 'div', 'oac-widget oac-grid__bar', { role: 'toolbar', 'aria-label': widgetText(text, 'Chart grid') }) : null;
   // The bottom bar's rules are scoped under `.oac-widget`, like every piece of the widget's chrome.
   const footEl = options.bottombar === true ? h(doc, 'div', 'oac-widget oac-grid__foot') : null;
   root.append(...(barEl === null ? [] : [barEl]), tabs, body, ...(footEl === null ? [] : [footEl]));
@@ -673,7 +679,7 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
       if (plain) { c.mark?.remove(); c.mark = null; return; }
       if (c.mark === null) {
         const mark = c.mark = h(doc, 'button', 'oac-grid__mark', { type: 'button', 'aria-haspopup': 'menu' });
-        mark.addEventListener('click', () => { grid.setActive(c.id); openLinkMenu(barHost, mark); });
+        mark.addEventListener('click', () => { grid.setActive(c.id); barHost.openMenu('link', mark); });
         const head = c.widget.root.querySelector('.oac-topbar');
         if (head !== null) head.prepend(mark);
         else { mark.classList.add('oac-grid__mark--float'); c.element.appendChild(mark); }
@@ -990,6 +996,12 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
     },
     capture: { blocked: captureBlocked, download: downloadAll, copy: copyAll, canCopy },
     get saved() { return saved ?? undefined; },
+    openMenu: (which, anchor) => usePart(gridMenusPart, module => {
+      if (which === 'layouts') module.openLayoutPicker(barHost, anchor);
+      else if (which === 'link') module.openLinkMenu(barHost, anchor);
+      else module.openCaptureMenu(barHost, anchor);
+    }, error => report(partFailed(text, widgetText(text, which === 'layouts' ? 'Layouts' : which === 'link' ? 'Linking' : 'Capture every chart'), error), 'error'),
+    () => !destroyed && anchor.isConnected),
   };
   let bar: GridBarHandle | null = null;
   let foot: BottombarHandle | null = null;
@@ -1443,7 +1455,10 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
       context: () => overGrid((active as Cell).widget.context), opened: () => given,
     });
   }
-  if (barEl !== null) bar = mountGridBar(barHost, barEl);
+  if (barEl !== null) {
+    usePart(gridBarPart, module => { bar = module.mountGridBar(barHost, barEl); },
+      error => report(partFailed(text, widgetText(text, 'Chart grid'), error), 'error'), () => !destroyed);
+  }
   measure();
   return grid;
 }

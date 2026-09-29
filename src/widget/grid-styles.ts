@@ -2,7 +2,8 @@
  * The chart grid's rules. Kept apart from grid.ts so the shared component
  * sheet can carry them without importing the grid, which imports the shell.
  * Every colour is a widget token, written on the grid root by the grid, apart
- * from the link group hues, which have one value per theme here.
+ * from the link group hues, which have one value per theme here. The bar's
+ * menus bring their own rules when they load (grid-menus.ts).
  */
 
 /** Link group hues, by letter: eight, repeated for groups I to P. The letter always says which group. */
@@ -60,54 +61,15 @@ export const CHART_GRID_CSS = `
 /* A label goes where its glyph shows: a host's chart type with none keeps its name. */
 .oac-grid__cell[data-dense="true"] .oac-topbar > .oac-btn > span:not(.oac-glyph):not(.oac-chev):not([hidden] + span) { display: none; }
 
-/* The grid's own chrome takes the widget's controls; these rules only place it. */
-.oac-widget.oac-grid__bar { position: relative; display: flex; align-items: center; gap: 4px; flex: none; height: auto; min-height: 0;
-  padding: 4px 6px; background: var(--oac-panel); border-bottom: 1px solid var(--oac-bd-soft); overflow: visible;
-  container: oac-grid-bar / inline-size; }
-.oac-grid__bar .oac-grid__bar-text { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }
-.oac-grid__bar-mark { display: inline-flex; }
-.oac-grid__spacer { flex: 1 1 auto; }
-.oac-grid__saved { min-width: 0; }
-.oac-grid__saved[data-attention="true"]::after { content: ''; width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--oac-amber); }
-/* A phone's bar keeps the glyph and the mark; the held layout's name stays in the tip and the accessible name. */
-@container oac-grid-bar (max-width: 520px) { .oac-grid__saved > .oac-grid__bar-text { display: none; } }
+/* The grid's own chrome takes the widget's controls; these rules only place it. The bar's strip
+   holds its height (a control and its padding) before the bar loads into it (grid-bar.ts). */
+.oac-widget.oac-grid__bar { position: relative; display: flex; align-items: center; gap: 4px; flex: none; height: auto;
+  min-height: calc(var(--oac-ctl-h) + 9px); padding: 4px 6px; background: var(--oac-panel); border-bottom: 1px solid var(--oac-bd-soft);
+  overflow: visible; container: oac-grid-bar / inline-size; }
 /* One bar under the charts: the widget's own strip, acting on the active chart. */
 .oac-widget.oac-grid__foot { display: block; flex: none; height: auto; min-height: 0; }
 .oac-widget.oac-grid__overlay { position: absolute; inset: 0; display: block; background: transparent; pointer-events: none;
   z-index: 80; overflow: visible; }
-.oac-widget .oac-grid__menu { max-width: 380px; }
-.oac-grid__menu .oac-menu__row > .oac-glyph { color: var(--oac-mut); }
-.oac-grid__indent { width: 16px; flex: none; }
-.oac-grid__menu .oac-menu__row[role="menuitemcheckbox"]::before { display: none; }
-.oac-grid__menu .oac-menu__row[role="menuitemcheckbox"][aria-checked="true"] { color: var(--oac-tx); }
-.oac-grid__box { display: grid; place-items: center; width: 15px; height: 15px; flex: none; border: 1px solid var(--oac-bd);
-  border-radius: 4px; background: var(--oac-elev); }
-.oac-grid__box > svg { width: 11px; height: 11px; fill: none; stroke: var(--oac-bg); stroke-width: 2.4; stroke-linecap: round;
-  stroke-linejoin: round; opacity: 0; }
-.oac-grid__menu .oac-menu__row[aria-checked="true"] > .oac-grid__box { background: var(--oac-acc); border-color: var(--oac-acc); }
-.oac-grid__menu .oac-menu__row[aria-checked="true"] > .oac-grid__box > svg { opacity: 1; }
-.oac-grid__menu .oac-menu__row[aria-disabled="true"] > .oac-grid__box { opacity: .45; }
-.oac-grid__menu .oac-menu__row[role="menuitem"]::before { content: ''; width: 6px; margin: 0 2px 0 -2px; flex: none; }
-.oac-grid__rename { display: flex; align-items: center; gap: 6px; padding: 4px; }
-.oac-grid__rename > input { flex: 1 1 auto; min-width: 140px; }
-
-/* The layout picker: one row of tiles per chart count. */
-.oac-grid__picker { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px 6px 6px; max-height: calc(100% - 16px);
-  overflow-y: auto; background: var(--oac-panel); border: 1px solid var(--oac-bd); border-radius: 10px; box-shadow: var(--oac-shadow); outline: none; }
-.oac-grid__picker-row { display: flex; align-items: center; gap: 3px; }
-.oac-grid__picker-count { width: 20px; margin-right: 4px; text-align: right; color: var(--oac-faint); font-size: 11px;
-  font-variant-numeric: tabular-nums; }
-.oac-grid__tile { display: grid; place-items: center; width: 34px; height: 30px; padding: 0; border: 1px solid transparent;
-  border-radius: 6px; background: transparent; color: var(--oac-mut); transition: background .1s, color .1s; }
-.oac-grid__tile > .oac-glyph > svg { width: 22px; height: 22px; stroke-width: 1.5; }
-.oac-grid__tile:hover, .oac-grid__tile:focus-visible { background: var(--oac-elev-2); color: var(--oac-tx); }
-.oac-grid__tile:focus-visible { outline: 2px solid var(--oac-ring); outline-offset: -2px; }
-.oac-grid__tile[aria-checked="true"] { background: var(--oac-on-bg); border-color: var(--oac-on-bd); color: var(--oac-acc-2); }
-.oac-grid__picker-caption { min-height: 16px; margin: 4px 0 0; padding: 5px 2px 0 28px; border-top: 1px solid var(--oac-bd-soft);
-  color: var(--oac-mut); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.oac-grid__note { max-width: 260px; padding: 6px 8px 4px 31px; border-top: 1px solid var(--oac-bd-soft); margin-top: 3px;
-  color: var(--oac-faint); font-size: 11.5px; line-height: 1.4; }
-
 /* A link group mark: the letter on a panel, the group's hue as a stripe. */
 .oac-grid__chip { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px;
   padding: 0 4px 0 6px; border-radius: 4px; background: var(--oac-elev-2); color: var(--oac-tx-strong);
@@ -123,6 +85,6 @@ export const CHART_GRID_CSS = `
 ${hues('dark', HUES_DARK)}
 ${hues('light', HUES_LIGHT)}
 @media (prefers-reduced-motion: reduce) {
-  .oac-grid__split, .oac-grid__tile { transition: none; }
+  .oac-grid__split { transition: none; }
 }
 `;

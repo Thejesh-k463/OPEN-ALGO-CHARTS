@@ -2,9 +2,10 @@
  * The parts of the widget that load on first use.
  *
  * A plain widget never opens the shortcuts editor, the Layouts menu or the
- * indicator templates list, so none of them rides in the tier's own file:
- * the build writes each one beside it (rollup.config.js) and `import()`
- * fetches it the first time someone asks for it. Once a part has arrived it is used at once, as if it had been
+ * indicator templates list, and never shows a grid's bar or its menus, so
+ * none of them rides in the tier's own file: the build writes each one
+ * beside it (rollup.config.js) and `import()` fetches it the first time
+ * someone asks for it. Once a part has arrived it is used at once, as if it had been
  * bundled in; until then the request waits for it. A load that fails is reported where the user asked,
  * and forgotten, so the next request tries again rather than failing for the
  * rest of the page's life.
