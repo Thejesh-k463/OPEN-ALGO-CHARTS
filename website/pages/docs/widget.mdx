@@ -344,9 +344,11 @@ while the body scrolls. This also applies to a small chart inside a wide desktop
 ## Mobile widget controls
 
 The `mobile` option defaults to `'auto'`: compact controls activate when the widget
-container is at most 640 CSS px wide or its primary pointer is coarse. This keeps the
-controls on a phone in landscape. Use `'always'` for a permanently touch-oriented host
-or `'never'` to keep desktop chrome at every width.
+container is at most 640 CSS px wide, or, with a coarse primary pointer, at most 960
+px wide and under 600 px tall. A phone keeps them in landscape, while a tablet in
+either orientation and a touch laptop keep the desktop chrome. Use `'always'` for a
+permanently touch-oriented host or `'never'` to keep desktop chrome at every width.
+See [Mobile & Touch](/docs/mobile#packaged-mobile-widget-controls) for the full table.
 
 ```ts
 const widget = createWidget('#terminal', {
@@ -402,7 +404,7 @@ passes through to `createChart` unchanged.
 | `rail` | `boolean` \| `RailOptions` | The drawing rail. `false` hides it; `tools` restricts which registered tool ids appear (the order follows the rail's own groups); `favorites` seeds the pins when nothing is stored. |
 | `topbar` | `boolean` | The symbol, interval, chart type, indicators, capture, settings and theme controls. |
 | `statusline` | `boolean` | The status line under the chart: the readings of the bar under the pointer, and of the latest bar, updated live, while the pointer is away. |
-| `mobile` | `'auto'` \| `'always'` \| `'never'` | Responsive widget controls. Default `'auto'`, active at a container width of 640 CSS px or less or when the primary pointer is coarse. |
+| `mobile` | `'auto'` \| `'always'` \| `'never'` | Responsive widget controls. Default `'auto'`, active at a container width of 640 CSS px or less, or up to 960 px wide and under 600 px tall with a coarse primary pointer. |
 | `indicators` | `boolean` | The Indicators button and picker. Turn it off for a host that manages indicators itself. |
 | `persist` | `boolean` \| `string` | `true` saves the state under the `default` namespace (`oac-widget:default:state`) and restores it on the next `createWidget`; a string names the namespace, for more than one widget per origin. |
 | `storage` | `StorageLike` \| `null` | The store behind `persist`. Default: the page's `localStorage`. |
