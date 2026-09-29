@@ -1767,7 +1767,12 @@ test('compact touch controls draw, undo and navigate in portrait and landscape',
   expect(landscapeChart?.height).toBeGreaterThan(200);
   expect(await page.evaluate(() => (window as any).__oac.draw.drawings().length)).toBe(1);
 
+  // A phone on its side keeps the touch bar; a tablet of the same width
+  // class and a taller screen gets the rail back (the container-size rule).
   await page.setViewportSize({ width: 1024, height: 600 });
+  await expect(bar).toBeHidden();
+  await expect(page.locator('#rail')).toBeVisible();
+  await page.setViewportSize({ width: 932, height: 430 });
   await expect(bar).toBeVisible();
   await page.getByRole('button', { name: 'Replay this session bar by bar' }).click();
   await expect(page.locator('#replaypick')).toBeVisible();

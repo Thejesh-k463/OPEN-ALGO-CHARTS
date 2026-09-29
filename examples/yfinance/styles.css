@@ -792,13 +792,28 @@ body[data-fullscreen-pane="2"] #chart2 { left: 42px; }
   font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
 .axrow.is-open { background: var(--elev-2); }
 
+/* ── bottom bar ─────────────────────────────────────────────────
+   The widget tier's strip under the chart, beside the rail. Its root is a
+   layer over the whole stage, so the bar's menus and tips open over the
+   chart; only the strip itself takes the pointer. The chart, its state card
+   and the replay controls stand clear of it. */
+.host-bottombar.oac-widget { z-index: 23; }
+.host-bottombar > .oac-bottombar { position: absolute; left: 0; right: 0; bottom: 0; pointer-events: auto; }
+.stage.has-rail .host-bottombar > .oac-bottombar { left: 42px; }
+.stage.has-bottombar .inspect-layout, .stage.has-bottombar .chartstate { bottom: 28px; }
+.stage.has-bottombar #replaybar, .stage.has-bottombar #replaypick { bottom: 58px; }
+
 /* ── small screens and touch ────────────────────────────────────
    Below 900px the rail becomes a strip along the bottom of the stage, its
    flyouts and the popup menus become sheets, and every dialog takes the
-   whole screen. On a coarse pointer (with or without the narrow width)
-   every control grows to a 40px target; the colour squares keep their
-   26px face inside a transparent 40px frame, so the standard's small
-   swatch and the finger's target are the same control. */
+   whole screen. The phone shell (a touch bar in place of the rail) follows
+   the widget's container-size rule rather than the pointer alone: a narrow
+   window, or a phone on its side, which is a coarse pointer at most 960px
+   wide and under 600px tall. A tablet or a touch laptop keeps the rail. Any
+   coarse pointer, whatever the width, still grows every control to a 40px
+   target; the colour squares keep their 26px face inside a transparent
+   40px frame, so the standard's small swatch and the finger's target are
+   the same control. */
 @media (max-width: 900px) {
   .shellbar { padding: 6px 8px; gap: 4px; }
   .status { flex-basis: 100%; max-width: none; justify-content: flex-start; }
@@ -828,17 +843,20 @@ body[data-fullscreen-pane="2"] #chart2 { left: 42px; }
   .toasts { right: 8px; }
   .chartstate__card { max-width: calc(100% - 24px); }
 }
-@media (max-width: 900px), (pointer: coarse) {
+@media (max-width: 900px), (pointer: coarse) and (max-width: 960px) and (max-height: 599px) {
   body[data-fullscreen-pane="2"] #chart2 { left: 0; bottom: 50px; }
-  :root { --h: 40px; }
   .shellbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: 2px 8px; }
   .shellbar::-webkit-scrollbar { width: 0; height: 0; }
   .shellbar > * { flex: none; }
   .shellbar .status { flex: 0 0 180px; max-width: 180px; }
   .rail { display: none; }
   .stage.has-rail #chart, .stage.has-rail .chartstate { left: 0; bottom: 52px; }
-  #replaybar, #replaypick { bottom: 62px; }
+  .stage.has-rail .inspect-layout { left: 0; bottom: 52px; }
+  #replaybar, #replaypick, .stage.has-bottombar #replaybar, .stage.has-bottombar #replaypick { bottom: 62px; }
   .toasts { bottom: 60px; }
+  /* The touch bar takes the bottom bar's place. Two classes on the root, to
+     outrank the widget sheet's own display rule, which loads after this one. */
+  .host-bottombar.oac-widget > .oac-bottombar { display: none; }
   .mobilebar { position: absolute; z-index: 24; left: 0; right: 0; bottom: 0; height: 52px;
     box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 4px 8px;
     overflow-x: auto; overflow-y: hidden; scrollbar-width: none; touch-action: pan-x;
@@ -851,6 +869,9 @@ body[data-fullscreen-pane="2"] #chart2 { left: 42px; }
   .mobilebar button { padding: 0 12px; cursor: pointer; }
   .mobilebar button:disabled { color: var(--faint); cursor: default; }
   .mobilebar button[aria-pressed="true"] { color: var(--acc-2); border-color: var(--on-bd); background: var(--on-bg); }
+}
+@media (max-width: 900px), (pointer: coarse) {
+  :root { --h: 40px; }
   .tbtn, .btn, .field, .set-foot .btn, .chartstate__actions .btn, #replayleave button, #replaypick button,
   .menu button, #ctxmenu button, .axrow, #snapmenu button, .set-tab, .cset-tab,
   .set-head button, .toast__x, .cmp-row .cmp-del, .fsexit { min-height: 40px; }
