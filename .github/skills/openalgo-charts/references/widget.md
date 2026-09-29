@@ -307,7 +307,7 @@ Color swatches stay compact. Theme overrides should target these tokens.
 | `rail` | `boolean \| RailOptions` | on | `false` hides it. `RailOptions.tools` restricts which ids appear (order still follows `RAIL_GROUPS`); `favorites` seeds the pins when nothing is stored. |
 | `topbar` | `boolean` | on | |
 | `statusline` | `boolean` | on | |
-| `mobile` | `'auto'` \| `'always'` \| `'never'` | `'auto'` | Compact widget controls. Auto activates when the widget container is at most 640 CSS px wide or the primary pointer is coarse. |
+| `mobile` | `'auto'` \| `'always'` \| `'never'` | `'auto'` | Compact widget controls. Auto activates when the widget container is at most 640 CSS px wide, or, with a coarse primary pointer, at most 960 px wide and under 600 px tall; tablets and touch laptops keep the desktop chrome. |
 | `indicators` | `boolean` | on | The Indicators button. |
 | `persist` | `boolean \| string` | off | `true` uses the `default` namespace; a string names one, so two widgets on a page keep separate layouts. |
 | `storage` | `StorageLike \| null` | the page's `localStorage` | The store behind `persist`. |
@@ -330,9 +330,13 @@ Confirm defaults against `WidgetOptions` in the typings rather than assuming.
 ## Mobile controls
 
 `createWidget` always mounts one mobile handle. Mode `'auto'` observes the widget
-container and the primary-pointer media query. It activates at 640 CSS px or less or
-when `(pointer: coarse)` matches, `'always'` stays active, and `'never'` keeps desktop
-chrome. Width is based on the container, not the viewport.
+container and the primary-pointer media query. It activates at 640 CSS px or less for
+any pointer, and when `(pointer: coarse)` matches, also up to 960 px wide while the
+container is under 600 px tall; a tablet in either orientation or a touch laptop keeps
+desktop chrome. A container that drops to 0 wide or 0 tall keeps its last layout, an
+unmeasured one starts on desktop, and a switch waits while a form field in the widget
+(dialogs included) has focus. `'always'` stays active, and `'never'` keeps desktop
+chrome. Size is read from the container, not the viewport.
 
 The compact header provides symbol entry and intervals. The bottom bar provides Draw,
 Studies, Objects and More according to the same `topbar`, `rail` and `indicators` options
