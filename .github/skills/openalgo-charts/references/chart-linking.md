@@ -199,14 +199,14 @@ report changes with `group.setChartType(chart, id)` or
 The core never emits `'chartType'`; the host reports it, as it does an interval.
 
 ```ts
-import { createLinkGroup, registeredChartTypes } from 'openalgo-charts';
+import { createLinkGroup, registeredChartTypes, type SeriesType } from 'openalgo-charts';
 
 const group = createLinkGroup({ chartType: true });
 for (const { chart, series } of cells) {
   group.add(chart, {
     chartType: chart.seriesType(series) ?? undefined,
     onChartType: id => registeredChartTypes().includes(id)
-      && chart.setSeriesType(series, id),
+      && chart.setSeriesType(series, id as SeriesType),
   });
 }
 chartA.setSeriesType(seriesA, 'bar');
@@ -218,7 +218,7 @@ keeps its own and is asked again on the next change. Colours, scales and the
 status line are the appearance channel, never this one, so candles linked to
 candles keep each chart's own colours unless appearance is on too. The widget
 reports its own change on its bus as `'layout'` with `reason: 'chartType'`; a
-grid forwards that to `setChartType`.
+host running widgets side by side forwards that to `setChartType`.
 
 ## Appearance linking
 
@@ -282,9 +282,9 @@ The rule, which a host can state to its users as is:
 
 - **Same instrument only.** Drawings cross only between charts showing the same symbol and exchange. A chart on another instrument neither sends nor receives, whatever its group.
 - **Price pane, data space.** A drawing pinned to the viewport stays on its chart.
-- **Drawn while on, and present.** A drawing crosses to the charts that are on its instrument when it is drawn, and from then on every edit and the deletion reach each of them. Drawings already on a chart when the switch goes on stay private until `sharing.share(chart, ids?)`. A chart that arrives on the instrument later, or joins the group later, gets a drawing shared without it only when the host shares it again.
+- **Drawn while on, and present.** A drawing crosses to the charts that are on its instrument when it is drawn, and from then on every edit and the deletion reach each of them. A drawing that has never been shared stays private to its chart until `sharing.share(chart, ids?)`, so switching on never sprays one chart's levels across a desk. A chart that arrives on the instrument later, or joins the group later, gets a drawing shared without it only when the host shares it again.
 - **An instrument change keeps drawings with their instrument.** With drawings kept per instrument (`InstrumentDrawings`, the widget's default), a chart leaving an instrument keeps its copies in that instrument's saved document and shows the new instrument's own. Coming back, the copies reconnect and take the state the charts still on it hold, a deletion included. With symbol linking on too, the whole group moves together and keeps sharing on each instrument it visits. Build the `InstrumentDrawings` before joining, so it swaps the document before the sharer sees the new instrument.
-- **Leaving keeps what arrived.** Switching off or leaving the group stops the traffic; copies already made stay, private to each chart.
+- **Leaving keeps what arrived, and re-linking reconnects it.** Switching off or leaving the group stops the traffic; copies already made stay on each chart. A copy still carries its link, so when its chart shares again (the switch goes back on, or it rejoins) it reconnects and takes the state the charts already sharing hold, as on returning to an instrument: their edits, and a deletion made while they were sharing. An edit made to a copy while unlinked gives way on re-linking. Members join in the order they were added, so when the switch goes on for the whole group the first of them holding the drawing sets its state.
 
 ## Drawing linking (draw tier)
 
@@ -379,6 +379,17 @@ How a reader applies them:
 - **`groups` present**, even empty: each chart is in the group its `linkGroup` names, or in none when it has no `linkGroup`, and each group links on its own flags. A group with no chart yet is kept.
 - A `linkGroup` naming an undeclared group, or any `linkGroup` while no groups are declared, refuses the document (`WorkspaceDocumentError`), since either would link that chart wrongly. So do duplicate group ids, a blank id or name, and non-boolean flags.
 - Absent optional flags read as the engine defaults (off, and `'nearest'`), and are not written back.
+
+Pass only the flags to `createLinkGroup`; `groups`, `id` and `name` are not link options, and `options()` would report them back:
+
+```ts
+const { groups, ...deskFlags } = desk.sync;
+const named = new Map<string, LinkGroup>();
+for (const { id, name, ...flags } of groups ?? []) named.set(id, createLinkGroup(flags));
+const whole = groups === undefined ? createLinkGroup(deskFlags) : null;
+const groupOf = (pane: WorkspacePane): LinkGroup | null =>   // whole desk, named group, or none
+  whole ?? (pane.linkGroup === undefined ? null : named.get(pane.linkGroup) ?? null);
+```
 
 Writing groups: a reader older than groups drops `groups` and `linkGroup` and
 applies the flags beside them to every chart. Turn a flag on there only when
