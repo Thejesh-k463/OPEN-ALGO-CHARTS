@@ -24,7 +24,7 @@ import type { SymbolSearch } from './symbol-picker';
 import { openChartDataExportDialog } from './chart-data-export-dialog';
 import type { PanelHandle } from './form';
 import type { LayoutsController } from './layouts';
-import { layoutNeedsAttention, layoutStatusText } from './layouts-menu';
+import { layoutNeedsAttention, layoutStatusText } from './layouts-widget';
 
 /** Labels for the built-in chart types; anything else is read from its id. */
 export const CHART_TYPE_LABELS: Readonly<Record<string, string>> = {
@@ -438,7 +438,7 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
     paintLayouts();
     layouts.addEventListener('click', () => { opts.onLayouts?.(layouts); });
     host.appendChild(layouts);
-    // The bar measures itself, so the name can give way before it wraps (LAYOUTS_MENU_CSS).
+    // The bar measures itself, so the name can give way before it wraps (LAYOUTS_BUTTON_CSS).
     host.classList.add('has-layouts');
   }
 

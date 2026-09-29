@@ -41,7 +41,7 @@ export { CHART_GRID_CSS } from './grid-styles';
 export { createLayoutsController } from './layouts';
 export type { LayoutsController, LayoutsControllerOptions, LayoutsState, LayoutTarget, LayoutApplyReport, LayoutAutosaveStatus } from './layouts';
 // Layouts: the menu, the one-widget target and indicator templates.
-export { openLayoutsMenu, LAYOUTS_MENU_CSS } from './layouts-menu';
+export { openLayoutsMenu } from './layouts-widget';
 export { widgetLayoutTarget } from './layouts-target';
 export { applyIndicatorTemplate, saveIndicatorTemplate } from './layouts-templates';
 export type { IndicatorTemplateApplyMode } from './layouts-templates';

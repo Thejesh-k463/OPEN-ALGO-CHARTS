@@ -179,7 +179,8 @@ website's Workspaces page for its state and conflict rules.
 
 Since 2.5.10 `createWidget(el, { workspaces })` builds that controller over the widget
 itself (`widget.layouts`) with a Layouts menu in the top bar and the More sheet
-(`widget.openLayouts()`, `openLayoutsMenu(ctx, controller, anchor?)`), reopens the active
+(`widget.openLayouts()`, and `openLayoutsMenu(ctx, controller, anchor?)`, which resolves
+with the menu's handle once the menu has loaded), reopens the active
 layout on load, and offers indicator templates in the picker when the store has
 `planIndicatorTemplateState` (`applyIndicatorTemplate`, `saveIndicatorTemplate`).
 `widgetLayoutTarget(widget)` is the widget's own target.
@@ -411,12 +412,12 @@ needed:
 The standalone script (`openalgo-charts.standalone.js`) is base-only and cannot host the
 widget: a tier loaded beside it would import its own second engine.
 
-Some of the widget loads on first use. The shortcuts panel is not in
-`openalgo-charts.widget.mjs` but in a file beside it (`openalgo-charts.widget.keymap-editor.mjs`),
-fetched with `import()` the first time a user opens it. It resolves against the tier's own
+Some of the widget loads on first use. The shortcuts panel and the Layouts menu are not
+in `openalgo-charts.widget.mjs` but in files beside it (`openalgo-charts.widget.<part>.mjs`),
+fetched with `import()` the first time a user opens one. It resolves against the tier's own
 URL, so `dist/` or a CDN path needs nothing more, and a bundler splits it the same way.
 Under a Content Security Policy, `script-src` must allow the tier's origin, as it already
-must for the tier itself; the part's rules join the widget's stylesheet and keep its nonce.
+must for the tier itself; a part's rules join the widget's stylesheet and keep its nonce.
 A part that cannot load says so in a toast and is fetched again the next time.
 
 ## Size

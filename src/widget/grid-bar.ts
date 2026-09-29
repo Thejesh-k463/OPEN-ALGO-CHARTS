@@ -18,7 +18,7 @@ import { CHART_GRID_LAYOUTS, isChartGridLayout, type ChartGridLayoutId } from '.
 import type { ChartGridLinkGroup, LinkChannel } from './grid-links';
 import type { GridSaved } from './grid-saved';
 import { chartCount, layoutName } from './grid-text';
-import { layoutNeedsAttention } from './layouts-menu';
+import { layoutNeedsAttention } from './layouts-widget';
 import { widgetText, type WidgetTranslationOptions } from './localization';
 
 /** What the bar and its menus read from the grid and ask it to do. */

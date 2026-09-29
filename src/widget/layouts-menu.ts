@@ -18,17 +18,21 @@
  * - **Rename and Delete act on the held layout.** A row opens its layout; the
  *   actions name the one the chart shows, so no row carries a destructive
  *   control a stray tap could reach.
+ *
+ * It loads on first use (lazy.ts): `openLayoutsMenu` in layouts-widget.ts is
+ * the door, and the status sentence the top bar shares lives there too.
  */
 import type { WorkspaceDocument } from 'openalgo-charts/workspace';
 import type { WidgetContext } from './context';
 import { button, dialogFrame, el, openPanel, type PanelHandle } from './form';
 import { widgetText } from './localization';
 import type { LayoutsController, LayoutsState } from './layouts';
+import { layoutStatusText, layoutText } from './layouts-widget';
+import { addWidgetStyles } from './styles';
 
 /** Most recent layouts listed first, as the catalog keeps them. */
-export const RECENT_LAYOUTS = 10;
+const RECENT_LAYOUTS = 10;
 
-type Text = (key: string, fallback: string, values?: Record<string, string | number>) => string;
 type Action = 'save' | 'open' | 'rename' | 'delete' | 'reload' | 'overwrite' | 'autosave';
 
 /** What a failed operation says, by what the user asked for. */
@@ -44,34 +48,14 @@ const FAILURES: Readonly<Record<Action, string>> = {
 
 let sequence = 0;
 
-const layoutText = (ctx: WidgetContext): Text => (key, fallback, values = {}) =>
-  widgetText(ctx, `schema.ui.layouts.${key}`, values, fallback);
-
 const nameOf = (state: LayoutsState): string | null =>
   state.layoutId === null ? null : state.catalog?.workspaces.find(doc => doc.id === state.layoutId)?.name ?? null;
-
-/**
- * What the held layout's status line says, and what the top bar button's tip
- * repeats: the one sentence a user needs about whether the chart is kept.
- */
-export function layoutStatusText(ctx: WidgetContext, state: LayoutsState): string {
-  const text = layoutText(ctx);
-  if (state.layoutId === null) return text('unsaved', 'This chart is not saved as a layout');
-  if (state.conflict) return text('conflict', 'Changed in another window');
-  if (state.catalog?.autosave) {
-    if (state.autosave === 'saving') return text('saving', 'Saving');
-    if (state.autosave === 'failed') return text('failed', 'Could not save');
-    if (state.autosave === 'pending') return state.suspended ? text('suspended', 'Autosave waits for the replay to end') : text('pending', 'Waiting to save');
-    return text('saved', 'Saved');
-  }
-  return state.dirty ? text('dirty', 'Unsaved changes') : text('saved', 'Saved');
-}
 
 /**
  * When a layout was last saved, on the chart's clock: the time alone for
  * today, the date as well before that.
  */
-export function savedAtText(ctx: WidgetContext, at: number, now = Date.now()): string {
+function savedAtText(ctx: WidgetContext, at: number, now = Date.now()): string {
   const zone = ctx.chart.timezone();
   const day = (t: number): string => new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(t);
   const options: Intl.DateTimeFormatOptions = day(at) === day(now)
@@ -80,19 +64,15 @@ export function savedAtText(ctx: WidgetContext, at: number, now = Date.now()): s
   try { return new Intl.DateTimeFormat(ctx.locale, options).format(at); } catch { return new Intl.DateTimeFormat('en-US', options).format(at); }
 }
 
-/** Whether the top bar should mark the held layout: unsaved, failing or changed elsewhere. */
-export function layoutNeedsAttention(state: LayoutsState): boolean {
-  return state.layoutId !== null && (state.conflict || state.autosave === 'failed' || (state.dirty && !state.catalog?.autosave));
-}
-
 type FormMode = 'save-as' | 'rename' | 'copy';
 
 /**
  * Open the Layouts menu for `controller`: under `anchor`, or centred as a
  * dialog without one and on a phone layout. Returns its handle.
  */
-export function openLayoutsMenu(ctx: WidgetContext, controller: LayoutsController, anchor?: HTMLElement): PanelHandle {
+export function mountLayoutsMenu(ctx: WidgetContext, controller: LayoutsController, anchor?: HTMLElement): PanelHandle {
   const doc = ctx.document;
+  addWidgetStyles(doc, LAYOUTS_MENU_CSS);
   const text = layoutText(ctx);
   const title = text('title', 'Layouts');
   const frame = dialogFrame(doc, { translate: ctx.translate, title, className: 'oac-layouts', onClose: () => handle.close() });
@@ -470,8 +450,8 @@ export function openLayoutsMenu(ctx: WidgetContext, controller: LayoutsControlle
   return handle;
 }
 
-/** The Layouts menu's rules and the top bar button's; part of the widget's shared stylesheet. */
-export const LAYOUTS_MENU_CSS = `
+/** The Layouts menu's rules, added to the widget sheet when the menu first opens. */
+const LAYOUTS_MENU_CSS = `
 .oac-widget .oac-layouts { width: 380px; }
 .oac-widget .oac-layouts .oac-dialog__body { display: flex; flex-direction: column; gap: 8px; padding-top: 2px; }
 .oac-widget .oac-layouts__current { display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--oac-bd-soft); border-radius: 8px; background: var(--oac-elev); }
@@ -519,14 +499,6 @@ export const LAYOUTS_MENU_CSS = `
 .oac-widget .oac-layouts__switch-value { color: var(--oac-mut); font-size: 11px; }
 .oac-widget .oac-layouts__autosave-state { color: var(--oac-mut); font-size: 11px; }
 .oac-widget .oac-layouts__autosave-state[data-state="failed"] { color: var(--oac-danger); }
-.oac-widget .oac-topbar__layouts { max-width: 190px; }
-.oac-widget .oac-topbar__layouts-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* The name gives way before the bar wraps to a second row: the glyph, the unsaved mark, the tip and the
-   accessible name still carry it. Measured on the default bar, which needs about 1000 px on one row. */
-.oac-widget .oac-topbar.has-layouts { container: oac-topbar / inline-size; }
-@container oac-topbar (max-width: 1199px) { .oac-widget .oac-topbar__layouts-name { max-width: 96px; } }
-@container oac-topbar (max-width: 1139px) { .oac-widget .oac-topbar__layouts-name { display: none; } }
-.oac-widget .oac-topbar__layouts[data-attention="true"]::after { content: ''; width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--oac-amber); }
 .oac-widget.is-mobile .oac-layouts { width: 100%; }
 .oac-widget.is-mobile .oac-layouts__row { min-height: 44px; }
 .oac-widget.is-mobile .oac-layouts .oac-btn, .oac-widget.is-mobile .oac-layouts__switch { min-height: 40px; }

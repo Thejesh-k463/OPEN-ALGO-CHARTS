@@ -985,8 +985,10 @@ await widget.layouts?.flush();   // the controller behind the menu; flush before
 - Two widgets on one page take repositories of separate namespaces, or both hold the same
   layout as two tabs would.
 - `openLayoutsMenu(ctx, controller, anchor?)` opens the same menu for any controller (a
-  grid host's own); `LAYOUTS_MENU_CSS` is in `WIDGET_COMPONENT_CSS`. `widgetLayoutTarget`
-  is above.
+  grid host's own) and resolves with its `PanelHandle`. The menu loads on first use (see
+  Packaging facts), so the promise rejects when it could not load; its rules join the
+  widget's stylesheet then. The top bar's Layouts button, which shows before anyone opens
+  the menu, is in `WIDGET_COMPONENT_CSS`. `widgetLayoutTarget` is above.
 - Indicator templates: the picker's Templates button (bottom left) appears when the store
   has `planIndicatorTemplateState`. `applyIndicatorTemplate(ctx, store, template, mode,
   label?)` (`IndicatorTemplateApplyMode`: `'replace'` or `'append'`; returns false when an
