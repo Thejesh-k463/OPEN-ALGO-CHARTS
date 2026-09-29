@@ -173,3 +173,19 @@ export function clampPeriod(interval, wanted) {
   if (ok.length === 0) return PERIODS[0];
   return PERIOD_DAYS[wanted] < PERIOD_DAYS[ok[0]] ? ok[0] : ok[ok.length - 1];
 }
+
+/**
+ * The interval and period a preset range loads, for a range reaching
+ * `reachSec` back from now: `nearest` (the widget tier's `rangeInterval`)
+ * picks among the intervals with a period that reaches that far, and the
+ * shortest such period goes with it. Only those can show the whole range: a
+ * month back to midnight is often a little more than the month of 30-minute
+ * bars this page asks for, and the range would stop short.
+ */
+export function rangeLoad(range, reachSec, nearest) {
+  const reaches = (p) => PERIOD_DAYS[p] * 86400 >= reachSec;
+  const reaching = INTERVALS.filter((iv) => periodsFor(iv).some(reaches));
+  const interval = nearest(range, reaching.length ? reaching : INTERVALS);
+  const periods = periodsFor(interval);
+  return { interval, period: periods.find(reaches) ?? periods[periods.length - 1] };
+}

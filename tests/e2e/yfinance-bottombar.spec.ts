@@ -85,6 +85,37 @@ test('a range loads the interval and period its sessions need, then places the l
   expect(errors).toEqual([]);
 });
 
+test('a month shows whole', async ({ page }) => {
+  const errors = await openHost(page);
+  await page.locator('.host-bottombar .oac-bottombar__range[data-range="1M"]').click();
+  await expect.poll(() => app(page, 'app.bottombar.controls.range()'), { timeout: 15_000 }).toBe('1M');
+  // Placed whole: the loaded history reaches back past the month's first day.
+  await expect(page.locator('#status')).toHaveText(/^1M: /);
+  const month = await app(page, `(() => {
+    const view = app.chart.getVisibleLogicalRange(), first = app.chart.dataLayer.indexToTime(Math.ceil(view.from));
+    return (app.chart.primaryBars().at(-1).time - first) / 86400;
+  })()`) as number;
+  expect(month).toBeGreaterThan(26);
+  expect(month).toBeLessThan(32);
+  expect(errors).toEqual([]);
+});
+
+test('a range on the history already loaded only moves the view', async ({ page }) => {
+  // The page opens on five years of daily bars, which is what a year is shown at.
+  const errors = await openHost(page);
+  expect(await app(page, 'app.req.interval + "/" + app.req.period')).toBe('1d/5y');
+  const loads: string[] = [];
+  page.on('request', r => { if (r.url().includes('/api/history')) loads.push(r.url()); });
+  await page.evaluate(() => { (window as any).__opened = (window as any).__oac.app.chart; });
+  await page.locator('.host-bottombar .oac-bottombar__range[data-range="1Y"]').click();
+  await expect.poll(() => app(page, 'app.bottombar.controls.range()')).toBe('1Y');
+  await expect(page.locator('#status')).toHaveText(/^1Y: /);
+  // No reload, so no rebuilt chart and no bar held back by the cache.
+  expect(await page.evaluate(() => (window as any).__oac.app.chart === (window as any).__opened)).toBe(true);
+  expect(loads).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 test('a range wider than the plot keeps the latest bars in view', async ({ page }) => {
   // All at a weekly interval is more bars than a tablet-width plot holds at its narrowest spacing.
   const errors = await openHost(page, { width: 1024, height: 768 });

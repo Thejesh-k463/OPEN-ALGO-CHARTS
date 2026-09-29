@@ -501,9 +501,10 @@ resizing changes only the CSS layout, so loaded bars and drawings stay in place.
 The widget tier's bottom bar (`mountBottombar`) sits under the stage and acts on the
 focused chart: preset ranges, **Go to**, the market status, a clock in the chart's
 timezone that opens a timezone menu, and the Auto, Log and Percent scale toggles. A range
-picks the nearest interval the page offers and the shortest history period that reaches
-its first session, then places it; a range wider than the plot keeps its latest bars in
-view. A timezone picked there survives the next rebuild. Session shading
+picks the nearest interval the page offers among those with a history period that
+reaches its first session, and the shortest such period, then places it; a range on the
+history already loaded only moves the view, and a range wider than the plot keeps its
+latest bars in view. A timezone picked there survives the next rebuild. Session shading
 (`attachSessionShading`) is attached to each chart as it is built.
 
 Where the bar shows, its **Go to** and its clock are the page's only ones: the toolbar

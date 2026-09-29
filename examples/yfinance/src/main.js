@@ -14,7 +14,7 @@ import '/dist/openalgo-charts.indicators.mjs';
 import * as widgetTier from '/dist/openalgo-charts.widget.mjs';
 import { el, initShell, chartTheme, chartMotionOptions, setChartState, toast, currentTheme } from './ui.js';
 import { initHover } from './hover.js';
-import { fillIntervalSelect, clampPeriod, INTERVALS, PERIOD_DAYS, periodsFor } from './intervals.js';
+import { fillIntervalSelect, clampPeriod, rangeLoad } from './intervals.js';
 import { initFeed, fetchBars, fetchNote, feedErrorState } from './feed.js';
 import { applyTransform } from './transforms.js';
 import { isExpression, fetchExpressionBars, mountOperatorKeypad, referenceDataContext } from './expression.js';
@@ -579,9 +579,10 @@ async function load(opts) {
 // outlive every chart render() throws away; only the strip takes the pointer.
 //
 // A range here is the page's own: the source serves history by named period,
-// so a range picks the interval nearest its own that this page offers and
-// the shortest period reaching back to its first session, loads through the
-// ordinary load path, and then places the sessions on the bars that arrived.
+// so a range picks the interval nearest its own among those this page offers
+// that reach back to its first session, and the shortest period that does,
+// loads them through the ordinary load path unless the pane holds them
+// already, and then places the sessions on the bars that arrived.
 /** The range each pane last took, with the chart it was placed on: a rebuilt chart has left it. */
 const paneRanges = new Map();
 let rangeRequest = 0;
@@ -592,18 +593,21 @@ async function applyRange(id) {
   const target = capturePaneTarget(app);
   if (!range || !target?.current()) return { status: 'cancelled' };
   const mine = ++rangeRequest;
-  const interval = rangeInterval(range, INTERVALS);
   const now = Date.now() / 1000;
   const calendar = sessionCalendarFor(target.request.symbol);
   const reach = now - rangeWindow(range, { end: now, zone: target.chart.timezone(), calendar }).from;
-  const periods = periodsFor(interval);
-  const period = periods.find(p => PERIOD_DAYS[p] * 86400 >= reach) ?? periods[periods.length - 1];
+  const { interval, period } = rangeLoad(range, reach, rangeInterval);
   paneRanges.delete(target.pane);
   const request = { ...target.request, interval, period };
-  if (target.pane === 2) {
+  // History already on screen only needs the view moved: loading it again
+  // would rebuild the chart, and while a bar is forming it would come from
+  // the wire, all of it, for a change of view.
+  const onScreen = target.request.interval === interval && target.request.period === period
+    && !(target.pane === 2 ? app.loadFailed2 : app.loadFailed) && !app.replay && !app.replayPicking && !app.replayLoading;
+  if (!onScreen && target.pane === 2) {
     Object.assign(app.p2, request);
     await app.loadSecondary();
-  } else {
+  } else if (!onScreen) {
     for (const key of ['symbol', 'interval', 'period']) el(key).value = request[key];
     await load();
   }
