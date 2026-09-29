@@ -148,12 +148,14 @@ describe('a synchronous store the host passes', () => {
 });
 
 // Recorded from the widget as it stood before asynchronous storage (2.5.9 plus
-// the wave 1 split), with the session above.
+// the wave 1 split), with the session above. The one call added since is the
+// shortcuts editor reading the user's chords at each mount (2.5.10), marked.
 const SYNC_LOG: readonly string[] = [
   'get oac-widget:pin:state null',
   'get oac-widget:pin:drawings:NSE:ALPHA null',
   'get oac-widget:pin:rail null',
   'get oac-widget:pin:rail null',
+  'get oac-widget:pin:keymap null', // the shortcuts editor
   'set oac-widget:pin:drawings:NSE:ALPHA dec3d03e62c9',
   'set oac-widget:pin:state a5ebfb281b33',
   'get oac-widget:pin:drawings:NSE:BETA null',
@@ -165,6 +167,7 @@ const SYNC_LOG: readonly string[] = [
   'get oac-widget:pin:drawings:NSE:BETA 37916dec368c',
   'get oac-widget:pin:rail null',
   'get oac-widget:pin:rail null',
+  'get oac-widget:pin:keymap null', // the shortcuts editor
   'set oac-widget:pin:rail bebd1f203d89',
   'get oac-widget:pin:drawings:NSE:ALPHA dec3d03e62c9',
   'set oac-widget:pin:state 7437d2c17f93',
