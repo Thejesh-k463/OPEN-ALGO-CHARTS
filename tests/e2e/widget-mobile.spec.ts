@@ -194,8 +194,7 @@ test('a tablet keeps the toolbar and drawing rail in both orientations, and they
   await expect.poll(() => page.evaluate(() => (window as any).__widget.interval())).toBe('15m');
   // Six sessions of 25 fifteen-minute bars.
   await expect.poll(() => page.evaluate(() => (window as any).__widget.dataController.bars().length)).toBe(150);
-  // The pinned button, not the group face: Chromium moves a tap on a group
-  // face onto its list chevron, which opens the list instead of the tool.
+  // The pinned button; a tap on a group face has a test of its own below.
   await page.locator('.oac-rail__fav[data-tools="trend-line"]').tap();
   await expect.poll(() => page.evaluate(() => (window as any).__widget.draw.activeTool())).toBe('trend-line');
   // A support line through the lowest low of each half of the visible bars,
@@ -242,6 +241,31 @@ test('a tablet keeps the toolbar and drawing rail in both orientations, and they
     await setTheme(page, theme);
     await shoot(page, info, `tablet 1180x820 ${theme}`);
   }
+  expect(errors).toEqual([]);
+});
+
+test('a tap on a rail group face picks its tool on a tablet, and a mouse on the chevron still opens the list', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await mountRandomWalk(page, 'dark');
+  expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+  expect(await layout(page)).toBe('false');
+  const face = page.locator('.oac-rail__group[data-group="lines"]');
+  const tool = await face.getAttribute('data-face');
+  expect(tool).not.toBe('');
+  // A browser may move the tap onto the chevron beside the glyph; the tap
+  // still means the tool on the face.
+  await face.tap();
+  await expect.poll(() => page.evaluate(() => (window as any).__widget.draw.activeTool())).toBe(tool);
+  await expect(page.locator('.oac-fly')).toHaveCount(0);
+  await expect(face).toHaveAttribute('aria-expanded', 'false');
+  await page.evaluate(() => (window as any).__widget.draw.setTool(null));
+  // A mouse is precise: a click on the chevron opens the list and picks nothing.
+  await face.locator('.oac-rail__chev').click();
+  await expect(page.locator('.oac-fly')).toHaveCount(1);
+  await expect(face).toHaveAttribute('aria-expanded', 'true');
+  expect(await page.evaluate(() => (window as any).__widget.draw.activeTool())).toBeNull();
   expect(errors).toEqual([]);
 });
 

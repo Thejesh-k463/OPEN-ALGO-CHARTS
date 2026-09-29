@@ -109,6 +109,32 @@ describe('arming a tool', () => {
     expect(chartEl.style.getPropertyValue('--oac-tool-cursor')).toBe('');
   });
 
+  it('the chevron opens the list for a press that went down on it, and a touch landing there picks the tool', () => {
+    const { w, rail, root } = make();
+    const lines = groupBtn(rail, 'lines');
+    const chev = lines.querySelector('.oac-rail__chev') as FakeElement;
+    // A mouse press on the chevron opens the list and leaves the tool alone.
+    fire(chev, 'pointerdown', { pointerType: 'mouse' });
+    fire(chev, 'click');
+    expect(root.querySelector('.oac-fly')).not.toBeNull();
+    expect(w.draw.activeTool()).toBeNull();
+    fire(lines, 'pointerdown', { pointerType: 'mouse' });
+    fire(lines, 'click');
+    expect(root.querySelector('.oac-fly')).toBeNull();
+    // A browser that moves a tap on the face onto the chevron delivers the
+    // click there; the touch still means the face.
+    fire(chev, 'pointerdown', { pointerType: 'touch' });
+    fire(chev, 'click');
+    expect(w.draw.activeTool()).toBe('trend-line');
+    expect(root.querySelector('.oac-fly')).toBeNull();
+    // A keyboard click after a press dragged off the chevron is not the chevron.
+    (rail.querySelectorAll('.oac-rail__tool')[0]).click();
+    fire(chev, 'pointerdown', { pointerType: 'mouse' });
+    fire(chev, 'click', { detail: 0 });
+    expect(w.draw.activeTool()).toBe('trend-line');
+    expect(root.querySelector('.oac-fly')).toBeNull();
+  });
+
   it('a flyout pick arms the tool, becomes the group face, and is remembered', () => {
     const store = new MemoryStorage();
     const { w, rail, root } = make({ persist: true, storage: store });

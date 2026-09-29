@@ -363,6 +363,11 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
 
   const groupButton = (g: RailGroup): HTMLButtonElement => {
     const tools = toolsOf(g);
+    // Where the press went down, not where the click lands: a browser that
+    // adjusts a touch onto the nearest target moves a tap on the face onto
+    // the small chevron, which would open the list instead of the tool. A
+    // touch opens the list by long press or by tapping the active tool again.
+    let downOnChevron = false;
     const b = makeBtn({
       cls: 'oac-rail__tool oac-rail__group',
       glyphEl: toolGlyph(doc, lastOf(g) ?? tools[0]),
@@ -373,8 +378,10 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
         side: 'right',
       }),
       onClick: (e) => {
-        const target = e.target as HTMLElement | null;
-        const onChevron = target !== null && typeof target.closest === 'function' && target.closest('.oac-rail__chev') !== null;
+        // A keyboard click (detail 0) never means the chevron, even after a
+        // press that went down on it and was dragged away.
+        const onChevron = downOnChevron && e.detail !== 0;
+        downOnChevron = false;
         if (fly !== null && b.getAttribute('aria-expanded') === 'true') { closeFlyout(); return; }
         if (onChevron) { openGroupFlyout(g, b, false); return; }
         if (e.detail >= 2 && !prefs.stay) { const t = lastOf(g); if (t !== null) hold(t); return; }
@@ -385,6 +392,10 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
         arm(lastOf(g));
       },
       onContext: () => openGroupFlyout(g, b, false),
+    });
+    b.addEventListener('pointerdown', (e) => {
+      const target = e.target as Element | null;
+      downOnChevron = (e as PointerEvent).pointerType !== 'touch' && typeof target?.closest === 'function' && target.closest('.oac-rail__chev') !== null;
     });
     b.dataset.tools = tools.join(',');
     b.dataset.group = g.id ?? '';
