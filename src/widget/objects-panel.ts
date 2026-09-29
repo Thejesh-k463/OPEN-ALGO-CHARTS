@@ -1,8 +1,8 @@
 import { widgetText } from './localization';
 import type { ChartObjects, ChartObjectSnapshot } from 'openalgo-charts';
 import type { WidgetContext } from './context';
-import { button, dialogFrame, el, glyphSvg, openPanel, type PanelHandle } from './form';
-import { GRIP_GLYPH } from './glyphs';
+import { chromeIconSvg } from 'openalgo-charts/draw';
+import { button, dialogFrame, el, openPanel, type PanelHandle } from './form';
 
 export interface ObjectsPanelOptions {
   /** Overrides the widget's inventory for a custom host. The caller owns it. */
@@ -242,7 +242,7 @@ export function createObjectsPanelContent(ctx: WidgetContext, opts: ObjectsPanel
     });
     const grip = el(doc, 'span', 'oac-objects__grip');
     grip.setAttribute('aria-hidden', 'true');
-    grip.innerHTML = glyphSvg(GRIP_GLYPH);
+    grip.innerHTML = chromeIconSvg('grip');
     node.appendChild(grip);
     const summary = item.capabilities.select
       ? button(doc, { label: '', onClick: event => act('select', item.id, event) })
