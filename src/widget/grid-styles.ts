@@ -57,7 +57,8 @@ export const CHART_GRID_CSS = `
 .oac-grid__cell[data-dense="true"] .oac-sym__ex { display: none; }
 .oac-grid__cell[data-dense="true"] :is(.oac-topbar__goto, .oac-topbar__objects, .oac-topbar__data, .oac-topbar__watchlist,
   .oac-topbar__news, .oac-topbar__alerts, .oac-topbar__theme, .oac-topbar__branding-slot, .oac-topbar__spacer + .oac-sep) { display: none; }
-.oac-grid__cell[data-dense="true"] .oac-topbar > .oac-btn:not(.oac-topbar__type) > span:not(.oac-glyph):not(.oac-chev) { display: none; }
+/* A label goes where its glyph shows: a host's chart type with none keeps its name. */
+.oac-grid__cell[data-dense="true"] .oac-topbar > .oac-btn > span:not(.oac-glyph):not(.oac-chev):not([hidden] + span) { display: none; }
 
 /* The grid's own chrome takes the widget's controls; these rules only place it. */
 .oac-widget.oac-grid__bar { position: relative; display: flex; align-items: center; gap: 4px; flex: none; height: auto; min-height: 0;

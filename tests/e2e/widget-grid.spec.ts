@@ -293,6 +293,14 @@ test('the grid bar lays out four by four and an uneven layout from the picker, b
   }
   // Sixteen cells are dense: one row of chart controls, the rest of the cell is the chart.
   expect(await page.locator('.oac-grid__cell[data-dense="true"]').count()).toBe(16);
+  // A dense chart's type button shows its glyph alone, as its other buttons do.
+  const type = page.locator('.oac-grid__cell').nth(0).locator('.oac-topbar__type');
+  await expect(type.locator('.oac-glyph')).toBeVisible();
+  await expect(type.locator(':scope > span:not(.oac-glyph):not(.oac-chev)')).toBeHidden();
+  // A host's chart type has no glyph (the top bar hides the empty one), so it keeps its name.
+  await type.locator('.oac-glyph').evaluate(el => { (el as HTMLElement).hidden = true; });
+  await expect(type.locator(':scope > span:not(.oac-glyph):not(.oac-chev)')).toBeVisible();
+  await type.locator('.oac-glyph').evaluate(el => { (el as HTMLElement).hidden = false; });
   const plots = await page.locator('.oac-grid__cell .oac-chart').evaluateAll(els => els.map(el => el.clientHeight));
   for (const height of plots) expect(height).toBeGreaterThan(body.height / 4 - 90);
   for (const index of [0, 5, 15]) await expect.poll(() => painted(page, index)).toBe(true);
