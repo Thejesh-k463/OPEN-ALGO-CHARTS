@@ -411,7 +411,10 @@ the open, over a weekend, or with a feed that lags, **1D** is the last session t
 traded, because the window ends at the latest bar rather than the wall clock. Without a
 calendar the fetch reaches back over weekdays, and the placement counts the dates the
 loaded bars fall on. A fetch never asks for less than an ordinary load, so older pages
-keep a useful width.
+keep a useful width. **All** asks the source for its whole history even when the
+interval is already weekly. A range holding more bars than the plot shows at its
+narrowest spacing keeps its latest bars in view, so the last price stays on screen, and
+reports `partial` with `clipped`.
 
 | Button | Interval | Span |
 |---|---|---|
@@ -436,7 +439,8 @@ reported on the status line) and to `invalid` for an id the widget does not know
 with its opening, post-close and extended hours with when they end, closed or holiday
 with the next opening, all on the chart's clock. It is checked again on a timer at the
 next change of phase, and a calendar that cannot answer shows no status rather than
-stopping the bar. Without a calendar, or with **Session state** off in the chart
+stopping the bar. The status is a polite live region, so a screen reader hears the
+market open or close as well as seeing the glyph change. Without a calendar, or with **Session state** off in the chart
 settings, no status is shown. With the bar off, the status line says it instead.
 
 **The clock opens the timezone choice.** It shows the time and the zone's offset from
@@ -456,7 +460,9 @@ a regular-hours chart looks as before. `sessionShading: false` turns it off.
 
 In the phone layout the bar is hidden and the **More** sheet carries its controls: the
 market status and the clock at the top, then the ranges, the scale toggles and the
-timezone. A chart grid gives its cells no bar of their own. For a host of your own,
+timezone. With `topbar: false` there is no **More** sheet, so the bar stays, between the
+chart and the phone footer. On a narrow bar the ranges scroll, and the status, the clock
+and the scale toggles keep their size. A chart grid gives its cells no bar of their own. For a host of your own,
 `mountBottombar(context, element, options)` builds the strip over any chart: its
 `target` option is read at every use, so one bar can follow whichever chart has the
 focus, and its `controls` drive the same actions without the markup. The reference
