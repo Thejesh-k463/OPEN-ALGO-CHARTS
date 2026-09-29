@@ -206,6 +206,19 @@ The widget disables omitted `animZoom` and `animAutoscale` options when the user
 reduced motion; explicit host settings win. A bare `createChart` host manages that
 preference and its own mobile controls. See the [mobile guide and live example](https://marketcalls.github.io/openalgo-charts/docs/mobile/).
 
+## Bottom bar
+
+Since 2.5.10 the widget mounts a 28 px bar under the chart (`bottombar`, default on):
+preset ranges sized in trading sessions (`ranges`, `widget.setRange('1D')`), **Go to**,
+the market status from the chart's session calendar, a clock in the chart's timezone
+that opens a timezone menu, and the Auto, Log and Percent price scale toggles. Go to
+lives in this bar; with `bottombar: false` it is back in the top bar and the status line
+shows the market status. `sessionCalendar` gives the chart its trading hours, and
+`sessionShading` (default on) washes pre-open, post-close and extended-hours bars. The
+phone layout hides the bar and lists its controls in the More sheet. See the
+[bottom bar](https://marketcalls.github.io/openalgo-charts/docs/widget/#bottom-bar) on the
+website.
+
 ## Options
 
 `WidgetOptions` is `ChartOptions` plus the fields below. Every `ChartOptions` key

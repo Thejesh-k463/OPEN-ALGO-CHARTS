@@ -152,8 +152,10 @@ widget.draw;    // the DrawingController the rail drives
 
 The optional widget adds symbol search, interval and chart-type controls, a drawing
 toolbar, settings, indicators, a status line, mobile controls and layout persistence.
-Its dialogs use the chart's settings schemas and follow the active theme. **Go to**
-jumps to a date or a range, loading older history first (`widget.goTo`), and
+Its dialogs use the chart's settings schemas and follow the active theme. A bottom bar
+under the chart carries preset ranges, the market status, a clock and the scale toggles,
+and its **Go to** (in the top bar with `bottombar: false`) jumps to a date or a range,
+loading older history first (`widget.goTo`), and
 `createChartGrid` lays out one widget per cell, from `1x1` to `2x2`, with splitters,
 linked charts and portable workspace documents. The panel dock also holds named
 **Watchlists** with live quote rows and a **News** reader when the host supplies a
