@@ -215,8 +215,9 @@ src/
 └── widget/                  # the chrome as a tier (separate entry point, §8.5); the only DOM under src/
     ├── widget.ts            # createWidget: the shell, symbol/interval/theme, the chrome wiring
     ├── widget-keys.ts       # the shell's key scopes, pointer tracking and key bindings
-    ├── widget-persist.ts    # the saved layout: read and applied, per-instrument drawings, restoreState, debounced save, pagehide flush
+    ├── widget-persist.ts    # the saved layout: read and applied, per-instrument drawings, restoreState, debounced save, pagehide flush, the late restore over an async store
     ├── context.ts           # WidgetContext, bus, storage, overlay stack, tips, the dialog registry
+    ├── storage.ts           # the IndexedDB store, its change announcements, the one-time copy from localStorage, the default store
     ├── keymap.ts            # one capture-phase keymap with scopes and conflict reporting
     ├── rail.ts / topbar.ts / statusline.ts / toast.ts
     ├── tokens.ts / styles.ts# --oac- tokens derived from the ChartTheme; one scoped stylesheet
