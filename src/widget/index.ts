@@ -32,6 +32,8 @@ export type { Widget, WidgetOptions, WidgetState, WidgetChartState, WidgetRestor
 export { createChartGrid, CHART_GRID_PRESETS } from './grid';
 export type { ChartGrid, ChartGridOptions, ChartGridCell, ChartGridLayout, ChartGridPreset, ChartGridApplyReport, ChartGridEvents, ChartGridEventName } from './grid';
 export { CHART_GRID_CSS } from './grid-styles';
+export { createLayoutsController } from './layouts';
+export type { LayoutsController, LayoutsControllerOptions, LayoutsState, LayoutTarget, LayoutApplyReport, LayoutAutosaveStatus } from './layouts';
 export { mountObjectsPanel, createObjectsPanelContent, OBJECTS_PANEL_CSS } from './objects-panel';
 export type { ObjectsPanelOptions, ObjectsPanelContent } from './objects-panel';
 export { readDataWindow, mountDataWindow, DATA_WINDOW_CSS } from './data-window';
