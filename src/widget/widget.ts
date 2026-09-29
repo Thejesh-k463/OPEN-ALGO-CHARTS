@@ -33,9 +33,10 @@ import {
 } from 'openalgo-charts';
 import { DrawingController, type DrawingDocumentStore, type InstrumentDrawings } from 'openalgo-charts/draw';
 import {
-  WidgetBus, WidgetStorage, createOverlayStack, createTipController, defaultStorage, h, widgetDialog,
-  type OverlayOptions, type StorageLike, type WidgetBusEvents, type WidgetContext, type WidgetDialogName,
+  WidgetStorage, createOverlayStack, createTipController, h, widgetDialog,
+  type AsyncStorageLike, type OverlayOptions, type StorageLike, type WidgetBus, type WidgetBusEvents, type WidgetContext, type WidgetDialogName,
 } from './context';
+import { defaultWidgetStore } from './storage';
 import { ChartHistory } from './history';
 import { Keymap } from './keymap';
 import { mountRail, type RailHandle, type RailOptions, type RailPrefs } from './rail';
@@ -66,7 +67,10 @@ import { mountAccountSummary } from './account-summary';
 import type { AccountStateSource } from 'openalgo-charts/trade';
 import { dataVariantLabel } from './data-status';
 import { installKeys, keyScopes, trackPointer, type KeysHost } from './widget-keys';
-import { applySavedLayout, flushOnPageHide, readSaved, restoreWidgetState, saveNow, scheduleSave, scopeDrawings, stripView as stripSavedView, type PersistHost } from './widget-persist';
+import {
+  ShellBus, applySavedLayout, flushOnPageHide, readSaved, reportStorage, restoreWhenLoaded, restoreWidgetState, saveNow, scheduleSave,
+  scopeDrawings, stripView as stripSavedView, type PersistHost,
+} from './widget-persist';
 
 /** The intervals offered when the host names none: the registry's codes are appended. */
 export const DEFAULT_INTERVALS: readonly string[] = ['1m', '5m', '15m', '1h', '1d', '1w'];
@@ -135,8 +139,14 @@ export interface WidgetOptions extends Omit<ChartOptions, 'theme'> {
    * so two widgets on a page keep separate layouts. Default off.
    */
   persist?: boolean | string;
-  /** The store behind `persist`. Default: the page's `localStorage`. */
-  storage?: StorageLike | null;
+  /**
+   * The store behind `persist`. Default: IndexedDB where the page has it
+   * (since 2.5.10), else the page's `localStorage`. Over an asynchronous
+   * store (one with `entries`, such as `createIndexedDbWidgetStorage`) the
+   * saved layout lands when `ready` settles; a synchronous one, such as
+   * `localStorage` passed here, applies it before `createWidget` returns.
+   */
+  storage?: StorageLike | AsyncStorageLike | null;
   /**
    * Whose drawings the chart shows. `'instrument'` (default): each symbol and
    * exchange keeps its own, saved when the chart moves to another instrument
@@ -234,6 +244,16 @@ export interface Widget {
   /** The template store's catalog as the widget holds it, or null without a `drawingTemplates` store. */
   readonly drawingTemplates: DrawingTemplates | null;
   readonly alerts: AlertController;
+  /**
+   * Settles once the persisted layout has been applied and the first load
+   * has started (since 2.5.10). At once without `persist` or over a
+   * synchronous store; over an asynchronous one (IndexedDB, the default)
+   * when it has been read, and until then the widget stays out of sight and
+   * shows the defaults. Never rejects: a store that fails is reported on the
+   * status line and the widget opens on its defaults. A host that reads or
+   * edits the restored layout (`getState`, the indicators, the view) awaits it.
+   */
+  readonly ready: Promise<void>;
   /** Shared inventory and supported actions for drawings, indicators and registered profiles. */
   readonly objects: ChartObjects;
   /**
@@ -407,11 +427,12 @@ class WidgetImpl implements Widget {
   public readonly history: ChartHistory;
   public readonly root: HTMLElement;
   public readonly context: WidgetContext;
+  public readonly ready: Promise<void>;
   private readonly _series: SeriesApi;
 
   private readonly _doc: Document;
   private readonly _opts: WidgetOptions;
-  private readonly _bus = new WidgetBus<WidgetBusEvents>();
+  private readonly _bus = new ShellBus();
   private readonly _storage: WidgetStorage;
   private readonly _keymap: Keymap;
   private readonly _toasts: Toaster;
@@ -453,6 +474,15 @@ class WidgetImpl implements Widget {
   private _pendingView: WidgetChartState['viewport'] | null = null;
   private _keepView = false;
   private _saveTimer: ReturnType<typeof setTimeout> | 0 = 0;
+  /** An asynchronous store has not answered yet: saves wait, and the first load is held. */
+  private _restoring: boolean;
+  // Not private: only widget-persist.ts reads the next three.
+  /** Until the store answers, the drawings follow no instrument. */
+  public _holdDrawings: boolean;
+  /** A save was asked for while restoring; the one change worth writing once the store answers. */
+  public _saveWanted = false;
+  /** The host restored a whole state while restoring, which the stored one does not overwrite. */
+  public _stateGiven = false;
   private _destroyed = false;
   private readonly _cleanups: Array<() => void> = [];
 
@@ -469,8 +499,12 @@ class WidgetImpl implements Widget {
 
     // ── persisted facts, before anything is built from them ────────────
     const ns = typeof options.persist === 'string' ? options.persist : 'default';
-    const store = options.persist ? (options.storage === undefined ? defaultStorage() : options.storage) : null;
-    this._storage = new WidgetStorage(ns, store);
+    const store = options.persist ? (options.storage === undefined ? defaultWidgetStore() : options.storage) : null;
+    this._storage = new WidgetStorage(ns, store, { onError: failure => reportStorage.call(this as unknown as PersistHost, failure) });
+    // An asynchronous store answers later: until then `saved` is null, the
+    // shell is built on the defaults, and `restoreWhenLoaded` applies it.
+    this._restoring = !this._storage.loaded;
+    this._holdDrawings = this._restoring;
     const saved = readSaved.call(this as unknown as PersistHost);
 
     this._symbol = (options.symbol ?? saved?.symbol ?? '').toUpperCase();
@@ -756,8 +790,9 @@ class WidgetImpl implements Widget {
       doc.addEventListener('visibilitychange', visibility);
       this._cleanups.push(() => doc.removeEventListener('visibilitychange', visibility));
       if (doc.hidden) visibility();
-      if (this._symbol !== '') void this.reload();
+      if (this._symbol !== '' && !this._restoring) void this.reload();
     }
+    this.ready = this._restoring ? restoreWhenLoaded.call(this as unknown as PersistHost) : Promise.resolve();
   }
 
   // ── facts ────────────────────────────────────────────────────────────
@@ -947,6 +982,8 @@ class WidgetImpl implements Widget {
   public async reload(): Promise<void> {
     const controller = this.dataController;
     if (controller === null || this._destroyed) return;
+    // The load the saved layout starts is this one: nothing goes out for the defaults.
+    if (this._restoring) { await this.ready; await this._loading; return; }
     const current = controller.getState().request;
     const same = current?.symbol === this._symbol && current.exchange === this._exchange && current.interval === this._interval
       && dataVariantKey(current.variant) === dataVariantKey(this._variant);
@@ -968,6 +1005,7 @@ class WidgetImpl implements Widget {
   public async goTo(target: DateNavigationTarget): Promise<DateNavigationResult> {
     const request = ++this._navigation;
     this._navigator.cancel();
+    if (this._restoring) await this.ready;
     // The placement belongs after the accepted load, or the first data would reset it.
     if (this._loading !== null) await this._loading;
     if (request !== this._navigation || this._destroyed) return { status: 'cancelled' };
@@ -1124,6 +1162,10 @@ class WidgetImpl implements Widget {
   public destroy(): void {
     if (this._destroyed) return;
     this._saveNow();
+    // Sends an asynchronous store's writes now, journaled in case the page is
+    // going too, and stops following other tabs' changes to it.
+    void this._storage.flush();
+    this._storage.close();
     this._destroyed = true;
     this._cancelNavigation();
     this._navigator.destroy();

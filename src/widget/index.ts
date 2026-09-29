@@ -73,6 +73,10 @@ export type {
   DialogMount, DialogHandle, WidgetDialogName,
   OverlayOptions, OverlayStack, TipSpec, TipSource, TipSide, TipController, Box, Size,
 } from './context';
+// Hook (widget storage, 2.5.10): the asynchronous store contract and the IndexedDB store.
+export type { AsyncStorageLike, WidgetStorageOptions, WidgetStorageError } from './context';
+export { createIndexedDbWidgetStorage } from './storage';
+export type { IndexedDbWidgetStorage, IndexedDbWidgetStorageOptions } from './storage';
 
 export { Keymap, openShortcutsPanel, parseKeyCombo, eventKeyCombo, formatKeyCombo, fromChartCombo } from './keymap';
 export type { KeyScope, KeyEventLike, KeyAction, KeyBinding, KeyBindingOptions, KeyConflict, KeymapOptions, KeymapGroup, ChartShortcutSource } from './keymap';
