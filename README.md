@@ -157,10 +157,11 @@ under the chart carries preset ranges, the market status, a clock and the scale 
 and its **Go to** (in the top bar with `bottombar: false`) jumps to a date or a range,
 loading older history first (`widget.goTo`), and `createChartGrid` lays out one widget
 per cell, from one chart to sixteen in uniform and uneven layouts, with splitters, a
-grid bar, maximize and swap, named link groups, one picture of every chart and portable
-workspace documents. The panel dock also holds named
-**Watchlists** with live quote rows and a **News** reader when the host supplies a
-quote or news feed, and an account summary when its broker declares accounts.
+grid bar, maximize and swap, named link groups, one bottom bar for the active chart,
+saved desks, one picture of every chart and portable workspace documents. The panel
+dock also holds named **Watchlists** with live quote rows and a **News** reader when the
+host supplies a quote or news feed, and an account summary when its broker declares
+accounts.
 Undo and Redo walk one timeline for the whole chart (`widget.history`): studies
 added, removed or edited, scale and pane changes, chart settings and drawings, in
 the order they were made.
