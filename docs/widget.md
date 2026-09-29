@@ -179,12 +179,14 @@ website's Workspaces page for its state and conflict rules.
 
 ## Mobile controls and navigation
 
-Since 2.1.8, `mobile: 'auto'` selects compact controls when the widget container is at
-most 640 CSS px wide or the primary pointer is coarse. Use `'always'` to force them or
-`'never'` to keep desktop controls. The mobile symbol header, interval picker, bottom
-bar and drawing sheets reuse the existing drawing controller, object inventory and
-dialogs. Changing layout retains drawings, selection and undo history; `rail.tools`
-restricts the same tool ids in both layouts.
+`mobile: 'auto'` selects compact controls when the widget container is at most 640 CSS
+px wide, or, with a coarse primary pointer, at most 960 px wide and under 600 px tall
+(a phone on its side); tablets and touch laptops keep the desktop controls. From 2.1.8
+to 2.5.9 any coarse pointer selected them. Use `'always'` to force them or `'never'` to
+keep desktop controls. The mobile symbol header, interval picker, bottom bar and
+drawing sheets reuse the existing drawing controller, object inventory and dialogs.
+Changing layout retains drawings, selection and undo history; `rail.tools` restricts
+the same tool ids in both layouts.
 
 Vertical wheel input zooms time proportionally; dominant horizontal input and Shift-wheel
 pan time. A vertical wheel movement over a visible price axis scales that axis around
