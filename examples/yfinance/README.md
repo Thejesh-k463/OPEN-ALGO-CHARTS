@@ -344,7 +344,7 @@ examples/yfinance/
     workspace-host.js  reference chart ownership, pending guards and transition wiring
     workspace-catalog.js  named saves, revision conflicts, autosave ownership and storage recovery
     workspaces.js     named-layout dialog, startup selection, autosave and portable files
-    grid.js           the grid view's start-up: presets, links, import and export, panels
+    grid.js           the grid view's start-up: the library's grid bar (layouts, maximize, link groups, capture), import and export, panels
     grid-view.js      the grid view's feed adapter, layout hand-off and document helpers
   tests/              vitest specs for the modules that can run without a browser
   vitest.config.ts    the config those specs run under (see Tests)
