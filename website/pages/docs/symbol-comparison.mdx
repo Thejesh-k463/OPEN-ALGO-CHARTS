@@ -4,6 +4,7 @@ description: Put a second instrument on the same pane and read the two together,
 ---
 
 import RunnableExample from '../../components/RunnableExample'
+import { STOCK_BARS_SOURCE } from '../../components/synthetic-market'
 import { Callout } from 'nextra/components'
 
 # Multi-symbol comparison
@@ -60,16 +61,15 @@ A synthetic second instrument, an order of magnitude away in price and missing a
 sessions of its own. The axis reads percent; the counters underneath are what
 `alignment()` reports.
 
-<RunnableExample height={420} code={`const chart = lib.createChart(el);
+<RunnableExample height={420} code={`${STOCK_BARS_SOURCE}
+const chart = lib.createChart(el);
 const spot = lib.generateBars(1700000000, 220, 3600);
 chart.addSeries('candlestick').setData(spot);
 
-// A second instrument on the same session: its own price level, its own path,
-// and closed for every 41st bar so the alignment gaps are visible.
-const other = spot.filter((b, i) => i % 41 !== 0).map((b, i) => {
-  const c = 46000 * (1 + Math.sin(i / 13) * 0.018 + i * 0.0004);
-  return { time: b.time, open: c, high: c, low: c, close: c };
-});
+// A second instrument on the same session: its own price level, its own
+// simulated path, and closed for every 41st bar so the alignment gaps are visible.
+const path = stockBars(1700000000, spot.length, 3600, 46000, 28);
+const other = spot.map((b, i) => ({ ...path[i], time: b.time })).filter((b, i) => i % 41 !== 0);
 
 const bn = lib.addComparison(chart, { symbol: 'BANKNIFTY', bars: other, color: '#f0b90b' });
 chart.fitContent();
