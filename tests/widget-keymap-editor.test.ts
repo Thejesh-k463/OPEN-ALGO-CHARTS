@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import type { Bar } from '../src/index';
 import {
-  createWidget, openShortcutsPanel, KEYMAP_KEY, STORAGE_PREFIX,
+  createWidget, openShortcutsPanel, contextMenuEntries, mountDrawingProperties, KEYMAP_KEY, STORAGE_PREFIX,
   type Widget, type WidgetOptions, type StorageLike, type WidgetMessageKey,
 } from '../src/widget/index';
 import { fakeWidgetDocument, fakeContainer, fireKey, fire, ensureWindowGlobal, type FakeDocument, type FakeElement } from './helpers/fake-dom-widget';
@@ -106,6 +106,48 @@ describe('a moved chord does what the old one did', () => {
     expect(fireKey(chartEl, 'ArrowLeft').defaultPrevented).toBe(false);
     expect(w.context.keymap.rebind('leave', 'Alt+E')).toMatchObject({ ok: false, reason: 'fixed' });
     expect(w.context.keymap.rebind('shortcuts', 'Alt+K')).toMatchObject({ ok: false, reason: 'fixed' });
+  });
+
+  it('the context menu, the properties dialog and the toolbar\'s more menu name the chord in force', () => {
+    const { w, root } = make();
+    const km = w.context.keymap;
+    const id = addLine(w);
+    w.draw.select(id);
+    const menuChords = (): Record<string, string | undefined> => {
+      const at = { paneIndex: 0, point: { x: 200, y: 150 }, price: 100, time: T0 + 5 * DAY, index: 5, preventDefault: () => {} };
+      const entries = [
+        ...contextMenuEntries(w.context, { ...at, target: { kind: 'drawing', id: `draw:${id}` } }),
+        ...contextMenuEntries(w.context, { ...at, target: { kind: 'empty', id: null } }),
+      ];
+      const out: Record<string, string | undefined> = {};
+      for (const e of entries) if ('id' in e && e.id !== undefined && e.id.startsWith('draw-')) out[e.id] = (e as { chord?: string }).chord;
+      return out;
+    };
+    const before = menuChords();
+    expect(before['draw-copy']).toBe(km.format('Mod+C'));
+    expect(before['draw-delete']).toBe(km.format('Delete'));
+    for (const [command, combo] of [['copy', 'Alt+Shift+C'], ['cut', 'Alt+Shift+X'], ['paste', 'Alt+Shift+V'], ['duplicate', 'Alt+Shift+D'], ['delete', 'Alt+Shift+Backspace']]) {
+      expect(km.rebind(command, combo).ok, command).toBe(true);
+    }
+    const after = menuChords();
+    expect([after['draw-copy'], after['draw-cut'], after['draw-duplicate'], after['draw-delete']])
+      .toEqual([km.format('Alt+Shift+C'), km.format('Alt+Shift+X'), km.format('Alt+Shift+D'), km.format('Alt+Shift+Backspace')]);
+    // Paste shows on an empty spot once the clipboard holds a drawing.
+    void w.draw.copy([id]);
+    expect(menuChords()['draw-paste']).toBe(km.format('Alt+Shift+V'));
+    // An unbound command shows no chord rather than one that does nothing.
+    km.rebind('copy', null);
+    expect(menuChords()['draw-copy']).toBeUndefined();
+
+    const props = mountDrawingProperties(w.context, undefined, { ids: [id] });
+    const titleOf = (act: string): string => (root.querySelector(`.oac-btn[data-act="${act}"]`) as FakeElement).title;
+    expect(titleOf('duplicate')).toContain(km.format('Alt+Shift+D'));
+    expect(titleOf('delete')).toContain(km.format('Alt+Shift+Backspace'));
+    props.close();
+
+    (root.querySelector('[data-drawbar="more"]') as FakeElement).click();
+    const duplicateRow = root.querySelectorAll('.oac-menu__row').find((r) => r.textContent.startsWith('Duplicate'));
+    expect(duplicateRow?.querySelector('.oac-menu__key')?.textContent).toBe(km.format('Alt+Shift+D'));
   });
 
   it('the rail reads the chord in force for its tool rows and tips', () => {

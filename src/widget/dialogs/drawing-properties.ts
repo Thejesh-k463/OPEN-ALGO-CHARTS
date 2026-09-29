@@ -22,6 +22,7 @@ import { widgetText } from '../localization';
 import { applyDrawingSettings, drawingSettingsSchema, getDrawingTool, readDrawingSettings } from 'openalgo-charts/draw';
 import type { Drawing, DrawingTool, SettingsSchema } from 'openalgo-charts/draw';
 import { editableIds, type WidgetContext } from '../context';
+import { commandChord } from '../keymap';
 import {
   button, controlsFromFields, dialogFrame, el, glyphSvg, openPanel, placePanel, renderForm, selectionPoint, tabList,
   type ButtonSpec, type FormHandle, type PanelHandle,
@@ -204,8 +205,8 @@ export function mountDrawingProperties(ctx: WidgetContext, anchor?: HTMLElement,
     add({ label: widgetText(ctx, 'Behind the series'), svg: glyphSvg(BEHIND_GLYPH),
       onClick: () => { for (const id of ids) draw.sendBehindSeries(id); } }, 'behind', behind);
     sep();
-    add({ label: widgetText(ctx, 'Duplicate'), icon: 'duplicate', chord: 'Ctrl+D', onClick: () => { draw.duplicate(ids); } }, 'duplicate');
-    add({ label: widgetText(ctx, 'Delete'), icon: 'trash', chord: 'Del', variant: 'danger', onClick: () => { draw.removeMany(ids); } }, 'delete', undefined, true);
+    add({ label: widgetText(ctx, 'Duplicate'), icon: 'duplicate', chord: commandChord(ctx.keymap, 'duplicate', 'Mod+D'), onClick: () => { draw.duplicate(ids); } }, 'duplicate');
+    add({ label: widgetText(ctx, 'Delete'), icon: 'trash', chord: commandChord(ctx.keymap, 'delete', 'Delete'), variant: 'danger', onClick: () => { draw.removeMany(ids); } }, 'delete', undefined, true);
     restore.disabled = why !== null;
   }
 

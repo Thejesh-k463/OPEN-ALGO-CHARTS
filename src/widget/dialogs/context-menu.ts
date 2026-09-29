@@ -26,6 +26,7 @@ import type { Chart, ContextMenuEvent, ContextMenuTarget, IndicatorApi, PriceSca
 import { drawingSettingsSchema } from 'openalgo-charts/draw';
 import type { Drawing } from 'openalgo-charts/draw';
 import { editableIds, type WidgetContext } from '../context';
+import { commandChord } from '../keymap';
 import { boxInRoot, chromeGlyph, el, glyphSvg, openPanel, placePanel, stopOwnKeys, type PanelHandle } from '../form';
 import { ABOVE_GLYPH, BEHIND_GLYPH, FIT_GLYPH } from '../glyphs';
 import { mountDrawingProperties } from './drawing-properties';
@@ -145,10 +146,10 @@ function drawingEntries(ctx: WidgetContext, primary: Drawing, ids: readonly stri
     out.push({ id: 'draw-levels', label: widgetText(ctx, 'Edit levels...'), disabled: fixed, note: why, run: () => { mountLevelEditor(ctx, undefined, { ids }); } });
   }
   out.push(SEP);
-  out.push({ id: 'draw-copy', label: many ? widgetText(ctx, 'Copy {count} drawings', { count: ids.length }) : widgetText(ctx, 'Copy drawing'), icon: 'copy', chord: 'Ctrl+C', run: () => { void draw.copy(ids); } });
-  out.push({ id: 'draw-cut', label: mine > 1 ? widgetText(ctx, 'Cut {count} drawings', { count: mine }) : widgetText(ctx, 'Cut drawing'), chord: 'Ctrl+X', disabled: locked || fixed, note: why ?? (locked ? widgetText(ctx, 'locked') : undefined),
+  out.push({ id: 'draw-copy', label: many ? widgetText(ctx, 'Copy {count} drawings', { count: ids.length }) : widgetText(ctx, 'Copy drawing'), icon: 'copy', chord: commandChord(ctx.keymap, 'copy', 'Mod+C'), run: () => { void draw.copy(ids); } });
+  out.push({ id: 'draw-cut', label: mine > 1 ? widgetText(ctx, 'Cut {count} drawings', { count: mine }) : widgetText(ctx, 'Cut drawing'), chord: commandChord(ctx.keymap, 'cut', 'Mod+X'), disabled: locked || fixed, note: why ?? (locked ? widgetText(ctx, 'locked') : undefined),
     run: () => { void draw.cut(ids); } });
-  out.push({ id: 'draw-duplicate', label: widgetText(ctx, 'Duplicate'), icon: 'duplicate', chord: 'Ctrl+D', run: () => { draw.duplicate(ids); } });
+  out.push({ id: 'draw-duplicate', label: widgetText(ctx, 'Duplicate'), icon: 'duplicate', chord: commandChord(ctx.keymap, 'duplicate', 'Mod+D'), run: () => { draw.duplicate(ids); } });
   out.push(SEP);
   out.push({ id: 'draw-lock', label: locked ? widgetText(ctx, 'Unlock') : widgetText(ctx, 'Lock'), icon: locked ? 'lock' : 'unlock', mark: 'check', on: locked, disabled: fixed, note: why,
     run: () => { draw.updateMany(ids.map((id) => ({ id, patch: { locked: !locked } }))); } });
@@ -165,7 +166,7 @@ function drawingEntries(ctx: WidgetContext, primary: Drawing, ids: readonly stri
   out.push({ id: 'draw-behind', label: widgetText(ctx, 'Behind the series'), icon: glyphSvg(BEHIND_GLYPH), mark: 'radio', on: behind,
     run: () => { for (const id of ids) draw.sendBehindSeries(id); } });
   out.push(SEP);
-  out.push({ id: 'draw-delete', label: mine > 1 ? widgetText(ctx, 'Delete {count} drawings', { count: mine }) : widgetText(ctx, 'Delete'), icon: 'trash', chord: 'Del', danger: true,
+  out.push({ id: 'draw-delete', label: mine > 1 ? widgetText(ctx, 'Delete {count} drawings', { count: mine }) : widgetText(ctx, 'Delete'), icon: 'trash', chord: commandChord(ctx.keymap, 'delete', 'Delete'), danger: true,
     disabled: locked || fixed, note: why ?? (locked ? widgetText(ctx, 'locked') : undefined), run: () => { draw.removeMany(ids); } });
   return out;
 }
@@ -393,7 +394,7 @@ export function contextMenuEntries(ctx: WidgetContext, e: ContextMenuEvent, hook
 
   if (target.kind !== 'time-scale') {
     sep();
-    out.push({ id: 'draw-paste', label: widgetText(ctx, 'Paste'), icon: 'paste', chord: 'Ctrl+V',
+    out.push({ id: 'draw-paste', label: widgetText(ctx, 'Paste'), icon: 'paste', chord: commandChord(ctx.keymap, 'paste', 'Mod+V'),
       run: () => { void draw.paste().then((made) => { if (made.length === 0) ctx.toast(widgetText(ctx, 'Nothing to paste'), 'info'); }); } });
     // What `clear` would take: a read-only drawing stays, so it is not counted.
     const n = draw.drawings().filter((d) => d.policy?.editable !== false).length;

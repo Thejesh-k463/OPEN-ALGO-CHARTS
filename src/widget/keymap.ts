@@ -979,6 +979,10 @@ export class Keymap {
  * export it.
  */
 export function commandChord(km: Keymap, command: string, fallback?: string): string | undefined {
-  const c = km.chord(command) ?? fallback;
-  return c === undefined || c === '' ? undefined : km.format(c);
+  // The dialogs also mount over a context a host built itself, whose keymap
+  // may be a stand-in; they showed the default chord there before 2.5.10.
+  const own = km as Partial<Keymap> | undefined;
+  const c = (typeof own?.chord === 'function' ? own.chord(command) : null) ?? fallback;
+  if (c === undefined || c === '') return undefined;
+  return typeof own?.format === 'function' ? own.format(c) : formatKeyCombo(c);
 }

@@ -20,6 +20,7 @@
 import { applyDrawingSettings, drawingSettingsSchema, getDrawingTool, LINE_STYLE_OPTIONS } from 'openalgo-charts/draw';
 import type { Drawing, DrawingTool, SettingsField } from 'openalgo-charts/draw';
 import { editableIds, type WidgetContext } from './context';
+import { commandChord } from './keymap';
 import { createColorPicker } from './color-picker';
 import { boxInRoot, button, chromeGlyph, el, glyphSvg } from './form';
 import { MORE_GLYPH, LINE_STYLE_GLYPH } from './glyphs';
@@ -226,7 +227,7 @@ export function mountDrawingToolbar(ctx: WidgetContext, host: HTMLElement, opts:
     const why = readOnly();
     const rows: Array<MenuRow | string> = [
       { label: widgetText(ctx, 'Properties...'), onSelect: () => { mountDrawingProperties(ctx, undefined, { ids: targets }); } },
-      { label: widgetText(ctx, 'Duplicate'), key: 'Ctrl+D', onSelect: () => act('duplicate', () => { draw.duplicate(targets); }) },
+      { label: widgetText(ctx, 'Duplicate'), key: commandChord(ctx.keymap, 'duplicate', 'Mod+D'), onSelect: () => act('duplicate', () => { draw.duplicate(targets); }) },
       { label: hidden ? widgetText(ctx, 'Show') : widgetText(ctx, 'Hide'), disabled: why !== null, sub: why ?? undefined,
         onSelect: () => act('visibility', () => { draw.updateMany(editableIds(draw, targets).map((target) => ({ id: target, patch: { visible: hidden } }))); }) },
       widgetText(ctx, 'Order'),
