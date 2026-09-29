@@ -219,8 +219,8 @@ to `createChart` unchanged.
 | `statusline` | `boolean` | The status line under the chart. |
 | `mobile` | `'auto'` \| `'always'` \| `'never'` | Responsive touch controls; default `'auto'`. Observes container width and primary pointer capability. |
 | `indicators` | `boolean` | The Indicators button and picker. Turn it off for a host that manages indicators itself. |
-| `persist` | `boolean` \| `string` | `true` saves the state under the `default` namespace (`oac-widget:default:state`) and restores it on the next `createWidget`; a string names the namespace, for more than one widget per origin. |
-| `storage` | `StorageLike` \| `null` | The store behind `persist`. Default: the page's `localStorage`. |
+| `persist` | `boolean` \| `string` | `true` saves the state under the `default` namespace (`oac-widget:default:state`) and restores it on the next `createWidget`; a string names the namespace, for more than one widget per origin. Since 2.5.10 the state lands when `widget.ready` settles (see [Persistence](#persistence)). |
+| `storage` | `StorageLike` \| `AsyncStorageLike` \| `null` | The store behind `persist`. Default: IndexedDB (since 2.5.10), else the page's `localStorage`. Pass `localStorage` to restore synchronously, as before. |
 | `locale` | `string` | A BCP 47 tag the status line formats numbers with. |
 | `symbolSearch` | `(query) => SymbolMatch[] \| Promise<SymbolMatch[]>` | Called as the user types in the symbol box; the results open as a menu under it. |
 | `lookbackBars` | `number` | Bars per load. Default 500. |
@@ -232,6 +232,36 @@ to `createChart` unchanged.
 The chrome switches (`rail`, `topbar`, `statusline`, `indicators`) default to on, so a
 bare `createWidget(el)` is the full terminal. `persist` defaults to off: nothing is
 written to storage until you ask.
+
+## Persistence
+
+With `persist` the widget keeps its layout, rail preferences, panels and each
+instrument's drawings in IndexedDB (since 2.5.10; before, `localStorage`). IndexedDB
+answers later, so the widget is built on its defaults, kept out of sight, and asks the
+feed for nothing until the saved layout has been read; then it applies it and loads the
+saved instrument. Await `widget.ready` before reading or editing the restored state:
+
+```ts
+const widget = createWidget(el, { feed, persist: 'desk' });
+await widget.ready;
+widget.symbol();   // the saved symbol
+```
+
+- **Upgrading.** The first visit copies the `oac-widget:<namespace>:` keys an earlier
+  release left in `localStorage` into IndexedDB, once, and leaves them where they were.
+- **Several tabs.** Each write that lands is announced to the other tabs on the
+  database, so a tab opened earlier shows the lines another tab drew since and does not
+  write over them. A hidden tab writes its layout only when it has a change pending.
+- **Unload.** The writes still pending when the page hides or closes are kept in a small
+  `localStorage` journal and written at the next load.
+- **Failures.** A store that cannot be read runs the session on memory; a refused write
+  is sent again with the next change. Both are reported on the status line.
+- **Keeping localStorage.** `storage: localStorage` (or any synchronous `StorageLike`)
+  restores before `createWidget` returns, exactly as before 2.5.10.
+- **Another store.** `createIndexedDbWidgetStorage(indexedDB, 'my-app-charts')` names the
+  database. Any object with `entries(prefix)`, `setItem` and `removeItem` returning
+  promises (`AsyncStorageLike`) works too. An optional `subscribe(listener)` lets the widget
+  follow the changes others make to it.
 
 ## Events
 
