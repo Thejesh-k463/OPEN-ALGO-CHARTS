@@ -472,6 +472,30 @@ describe('state and persistence', () => {
     w.destroy();
     expect(JSON.parse(store.map.get(`${STORAGE_PREFIX}default:${STATE_KEY}`) as string).interval).toBe('1h');
   });
+
+  it('writes a pending save when the page goes away, and stops listening once destroyed', () => {
+    // The fake document has no window, and the flush listens on the window.
+    const doc = fakeWidgetDocument();
+    const listeners = new Map<string, Set<() => void>>();
+    (doc as unknown as { defaultView: unknown }).defaultView = {
+      addEventListener: (type: string, fn: () => void) => { listeners.set(type, (listeners.get(type) ?? new Set()).add(fn)); },
+      removeEventListener: (type: string, fn: () => void) => { listeners.get(type)?.delete(fn); },
+    };
+    const pagehide = (): void => { for (const fn of [...(listeners.get('pagehide') ?? [])]) fn(); };
+    const store = new MemoryStorage();
+    const key = `${STORAGE_PREFIX}default:${STATE_KEY}`;
+    const { w } = make({ persist: true, storage: store }, doc);
+    w.setInterval('1h');
+    // Still inside the debounce: only the page going away writes it now.
+    expect(store.map.has(key)).toBe(false);
+    pagehide();
+    expect(JSON.parse(store.map.get(key) as string).interval).toBe('1h');
+    w.destroy();
+    store.map.delete(key);
+    pagehide();
+    expect(store.map.has(key)).toBe(false);
+    expect(listeners.get('pagehide')?.size ?? 0).toBe(0);
+  });
 });
 
 describe('keyboard', () => {
