@@ -1109,6 +1109,21 @@ svg.innerHTML = `<path d="${drawingToolIcon('ray')}"/>`
 
 `CHROME_ICON_ACCENTS` and `chromeIconAccent(id)` are the same for the chrome set.
 
+The chrome set covers the controls around a chart: the grid of charts, replay, alerts, the market session, scale modes, layouts and files, trading actions and the settings tabs (`chromeIconIds()` lists every id). It also holds a glyph for each chart type and transform under `chart-<id>`, which `chartTypeIcon(type)` reads. A layout picker builds its tiles with `layoutIconPath(rows, columns, slots?)`: one to four rows and columns, where a slot that spans cells is drawn as one pane. A chart grid takes up to eight a side, so a button that shows the current layout draws `layout` past four.
+
+```ts
+import { chartTypeIcon, chromeIconSvg, layoutIconPath, CHROME_ICON_ATTRS } from 'openalgo-charts/draw';
+
+// A chart-type menu row: the glyph when the type has one, an empty slot otherwise.
+const glyph = chartTypeIcon(type) !== undefined ? chromeIconSvg(`chart-${type}`) : '';
+
+// A layout picker tile: one tall chart beside two, in the chrome frame.
+const d = layoutIconPath(2, 2, [{ row: 0, column: 0, rowSpan: 2 }, { row: 0, column: 1 }, { row: 1, column: 1 }]);
+const a = CHROME_ICON_ATTRS;
+tile.innerHTML = `<svg viewBox="${a.viewBox}" width="16" height="16" fill="none" stroke="currentColor"`
+  + ` stroke-width="${a.strokeWidth}" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
+```
+
 The chrome stroke (`CHROME_ICON_STROKE`) was 1.5 through 2.5.5 and is 2 now. To keep the
 old weight, pass it explicitly: `chromeIconSvg(id, { stroke: 1.5 })`, `stroke-width="1.5"`
 on your own `<svg>`, or `stroke-width: 1.5` in your stylesheet. The glyphs are drawn for 2
