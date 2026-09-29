@@ -61,6 +61,20 @@ Runtime exports:
   `createTemplate`/`saveTemplate` accept study arrays or complete payloads.
   `saveTemplate` retains metadata identity and captures detached inputs; saving an
   array removes prior layout metadata. Empty updates are valid; failed writes preserve old content.
+  (since 2.5.10) Every change takes `WorkspaceOperationOptions` (`signal`, `expectedRevision`)
+  as its last argument; a stale revision rejects with `WorkspaceConflictError` after the read
+  and before any write. `subscribe(listener)` is called with a detached catalog copy after each
+  commit, before that change's promise resolves, and returns the unsubscribe. It implements
+  `WorkspaceStore`.
+- `WorkspaceStore` (since 2.5.10): the contract a layouts control holds: `load`, `subscribe`,
+  `createWorkspace`, `saveWorkspace`, `openWorkspace`, `createTemplate`, `saveTemplate`,
+  `rename`, `duplicate`, `remove`, `setAutosave`. A host with server-side layouts can implement
+  it; its conflicts must be errors named `WorkspaceConflictError`, and its listeners must run
+  before the change's promise resolves. The widget's `createLayoutsController` takes one (see
+  [widget](widget.md)).
+- `createMemoryWorkspaceStorage(seed?)` (since 2.5.10): revision-checked storage in memory for
+  tests, previews and hosts without IndexedDB: the IndexedDB adapter's atomic compare-and-write,
+  detached copies in and out, and nothing that outlives the page.
 - `WorkspaceConflictError`: a saved revision changed; reload before retrying.
 - `createIndexedDbWorkspaceStorage`: explicit `IDBFactory`, optional database name,
   atomic revision checks across tabs. `close()` releases the connection. Database
@@ -69,7 +83,7 @@ Runtime exports:
 Types: `WorkspaceKind`, `WorkspaceSettings`, `WorkspaceChartState`,
 `WorkspaceComparison`, `WorkspaceSlot`, `WorkspacePane`, `WorkspacePayload`,
 `WorkspaceDocument`, `IndicatorTemplateDocument`, `WorkspaceCatalog`,
-`WorkspaceStorage`, `WorkspaceRepositoryOptions`, `WorkspaceOperationOptions`, `WorkspaceOpenOptions`,
+`WorkspaceStorage`, `WorkspaceStore`, `WorkspaceRepositoryOptions`, `WorkspaceOperationOptions`, `WorkspaceOpenOptions`,
 `IndexedDbWorkspaceStorage`, `IndicatorTemplateMode`, `IndicatorTemplateInput`,
 `IndicatorTemplatePayload`, `IndicatorTemplateLayout`, `IndicatorTemplatePlotBinding`,
 `IndicatorTemplateApplyOptions`, `IndicatorTemplatePlan`.
@@ -78,10 +92,12 @@ Types: `WorkspaceKind`, `WorkspaceSettings`, `WorkspaceChartState`,
 write atomically. A read/then-write localStorage adapter does not meet this
 contract. The IndexedDB adapter resolves writes on transaction completion and
 rejects stale/corrupt revisions; custom server adapters must do the equivalent.
-`WorkspaceOperationOptions` carries an optional `signal: AbortSignal`.
-`WorkspaceOpenOptions` adds optional `expectedRevision` to reject activation when
-the catalog changed after the host prepared its grid. Capture that revision before
-preparation, then pass it with the signal to `openWorkspace`.
+`WorkspaceOperationOptions` carries an optional `signal: AbortSignal` and (since 2.5.10) an
+optional `expectedRevision` on every change: pass the revision the change was prepared from,
+so a layout another tab saved meanwhile is refused instead of overwritten. Without it a change
+applies to the catalog as stored when it runs, as before. `WorkspaceOpenOptions` keeps the
+same field for `openWorkspace`: capture the revision before preparing a grid, then pass it
+with the signal.
 `openWorkspace(id, { signal, expectedRevision })` checks cancellation before queued/read work and
 passes the signal into storage. The browser adapter aborts its pending write
 transaction, preserving active/recent IDs and revision. Custom adapters must
