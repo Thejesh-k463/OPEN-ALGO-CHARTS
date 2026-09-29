@@ -11,7 +11,7 @@
  * control in them takes the widget's buttons, menus, focus ring and
  * scrollbars rather than a second set of styles that could drift.
  */
-import { chartTypeIcon, chromeIconSvg, layoutIconPath } from 'openalgo-charts/draw';
+import { chromeIconSvg, layoutIconPath } from 'openalgo-charts/draw';
 import { h, type OverlayStack, type TipController } from './context';
 import { glyphSvg } from './form';
 import { CHART_GRID_LAYOUTS, isChartGridLayout, type ChartGridLayoutId } from './grid-layouts';
@@ -83,7 +83,7 @@ const chrome = (doc: Document, svg: string): HTMLSpanElement => {
 /** The glyph each channel row carries, from the chrome registry. */
 const CHANNEL_ICON: Readonly<Record<LinkChannel, string>> = {
   crosshair: chromeIconSvg('crosshair'), viewport: chromeIconSvg('time-range'), symbol: chromeIconSvg('search'),
-  interval: chromeIconSvg('clock'), chartType: glyphSvg(chartTypeIcon('candlestick') ?? ''), appearance: chromeIconSvg('palette'),
+  interval: chromeIconSvg('clock'), chartType: chromeIconSvg('chart-candlestick'), appearance: chromeIconSvg('palette'),
   drawings: chromeIconSvg('drawing-sync'),
 };
 const CHANNEL_LABEL = {
