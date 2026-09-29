@@ -324,6 +324,41 @@ test('a Go to request that outlasts the bar answers at the toolbar\'s Go to', as
   expect(errors).toEqual([]);
 });
 
+test('a range pressed while a load is under way loads in its place', async ({ page }) => {
+  const errors = await openHost(page);
+  // Another symbol at the interval and period 1Y takes: the chart on screen is about to go.
+  const release = await holdHistory(page);
+  const loading = page.evaluate(async () => {
+    (document.getElementById('symbol') as HTMLInputElement).value = 'MSFT';
+    await (window as any).__oac.app.load();
+  });
+  await expect.poll(() => app(page, 'Boolean(app.loading)')).toBe(true);
+  await page.locator('.host-bottombar .oac-bottombar__range[data-range="1Y"]').click();
+  release();
+  await loading;
+  await expect.poll(() => app(page, 'app.bottombar.controls.range()')).toBe('1Y');
+  await expect(page.locator('#status')).toHaveText(/^1Y: /);
+  expect(await app(page, 'app.req.symbol')).toBe('MSFT');
+  expect(errors).toEqual([]);
+});
+
+test('a range on the second chart is dropped quietly when the split closes under it', async ({ page }) => {
+  const errors = await openHost(page);
+  await page.getByRole('button', { name: /Open a second, linked chart/ }).click();
+  await expect.poll(() => app(page, 'Boolean(app.chart2?.primaryBars().length) && !app.loading2')).toBe(true);
+  await page.locator('#chart2').focus();
+  const release = await holdHistory(page);
+  await page.locator('.host-bottombar .oac-bottombar__range[data-range="5D"]').click();
+  await expect.poll(() => app(page, 'Boolean(app.loading2)')).toBe(true);
+  await page.evaluate(async () => { const source = '/examples/yfinance/src/split.js'; (await import(source)).closeSplit(); });
+  release();
+  // Closing aborts the load at once; what follows it settles within a few tasks.
+  await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 300)));
+  await expect(page.locator('#status')).not.toHaveText(/could not load/i);
+  expect(await app(page, 'app.bottombar.controls.range()')).toBe(null);
+  expect(errors).toEqual([]);
+});
+
 test('the phone shell follows the container-size rule, not every touch screen', async ({ browser }) => {
   // Four full page loads in one test: the default budget is for one.
   test.slow();

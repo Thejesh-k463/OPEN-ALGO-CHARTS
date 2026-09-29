@@ -601,9 +601,11 @@ async function applyRange(id) {
   const request = { ...target.request, interval, period };
   // History already on screen only needs the view moved: loading it again
   // would rebuild the chart, and while a bar is forming it would come from
-  // the wire, all of it, for a change of view.
+  // the wire, all of it, for a change of view. A load under way is about to
+  // replace the chart the view would move on, so the range loads in its place.
   const onScreen = target.request.interval === interval && target.request.period === period
-    && !(target.pane === 2 ? app.loadFailed2 : app.loadFailed) && !app.replay && !app.replayPicking && !app.replayLoading;
+    && !(target.pane === 2 ? app.loading2 || app.loadFailed2 : app.loading || app.loadFailed)
+    && !app.replay && !app.replayPicking && !app.replayLoading;
   if (!onScreen && target.pane === 2) {
     Object.assign(app.p2, request);
     await app.loadSecondary();
@@ -614,7 +616,9 @@ async function applyRange(id) {
   renderToolbar();
   if (mine !== rangeRequest) return { status: 'cancelled' };
   const chart = target.pane === 2 ? app.chart2 : app.chart;
-  if (!chart || (target.pane === 2 ? app.loadFailed2 : app.loadFailed)) return { status: 'error', error: new Error(`${request.symbol} history could not load`) };
+  // The split was closed while its history loaded, and the range went with it.
+  if (!chart) return { status: 'cancelled' };
+  if (target.pane === 2 ? app.loadFailed2 : app.loadFailed) return { status: 'error', error: new Error(`${request.symbol} history could not load`) };
   const bars = chart.primaryBars();
   if (bars.length === 0) return { status: 'no-data' };
   paneRanges.set(target.pane, { id, chart });
@@ -663,7 +667,8 @@ function initBottombar() {
       if (!target) return null;
       return {
         // Read when used: a range loads through the page, which builds the
-        // pane a new chart, and what the range did is read off that one.
+        // pane a new chart, and what the range did is read off that one. A
+        // split closed meanwhile leaves none, and applyRange cancels then.
         get chart() { return target.pane === 2 ? app.chart2 : app.chart; },
         interval: () => target.request.interval,
         range: () => { const held = paneRanges.get(target.pane); return held && held.chart === target.chart ? held.id : null; },
