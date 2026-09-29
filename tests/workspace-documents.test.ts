@@ -3,8 +3,10 @@ import {
   migrateWidgetWorkspace, parseIndicatorTemplate, parseWorkspaceDocument, parseWorkspacePayload,
   WorkspaceDocumentError,
 } from '../src/workspace/index';
+import type { WorkspaceLinkChannels, WorkspaceLinkGroup, WorkspacePayload, WorkspaceSync } from '../src/workspace/documents';
 import { workspaceFixture } from './helpers/workspace-fixture';
 import { Chart } from '../src/core/chart';
+import { createLinkGroup, type LinkOptions } from '../src/index';
 import { fakeDocument } from './helpers/fake-dom';
 
 const template = () => ({
@@ -164,6 +166,180 @@ describe('workspace documents', () => {
     expect(source.armed).toBe(true);
     expect(JSON.stringify(saved)).not.toContain('armed');
     expect(() => migrateWidgetWorkspace({ version: 2 }, { id: 'x', name: 'Old', now: 0 })).toThrow();
+  });
+});
+
+/**
+ * A workspace exactly as the 2.5.9 chart grid saved it: two charts on a split
+ * desk with a study, a drawing each and appearance linking on. Captured by
+ * running the v2.5.9 sources (`createChartGrid(...).getWorkspace()` wrapped in
+ * document metadata and passed through that release's `parseWorkspaceDocument`),
+ * with each drawing computed from the random-walk bars its chart held. Kept as
+ * text because text is what a store hands back.
+ */
+const SAVED_BY_2_5_9 = [
+  '{"kind":"workspace","version":1,"id":"desk-259","name":"Morning desk","createdAt":1758771900000,',
+  '"updatedAt":1758772200000,"layout":{"rows":1,"columns":2,"slots":[{"paneId":"p0","row":0,"column":0,"rowSpan":1,',
+  '"columnSpan":1},{"paneId":"p1","row":0,"column":1,"rowSpan":1,"columnSpan":1}],"preset":"1x2","rowWeights":[1],',
+  '"columnWeights":[1,1]},"panes":[{"id":"p0","symbol":"INFY","exchange":"NSE","interval":"5m",',
+  '"chartType":"candlestick","chart":{"version":1,"timezone":"Asia/Kolkata","navigation":{"mousePan":"both",',
+  '"defaultVisibleBars":0,"panEnabled":true,"zoomEnabled":true,"defaultBarSpacing":8},"canvas":{},"statusLine":{},',
+  '"watermark":{"visible":false,"text":"","color":"#9aa4b2","opacity":0.08,"fontSize":64},"trading":{},"events":{},',
+  '"axisChrome":{"sessionClock":false,"barCountdown":false},"viewport":{"from":55,"to":123},"barSpacing":8,',
+  '"grid":{"vertLines":true,"horzLines":true},"crosshairMode":"normal","crosshairSnapToBar":false,',
+  '"priceOnlyAutoScale":false,"indicatorLegendCollapsed":false,"indicators":[{"indicatorId":"ema",',
+  '"settings":{"length":20,"source":"close","color":"#f5a623","ma:opacity":100,"ma:width":1.5,',
+  '"ma:lineStyle":"solid","ma:type":"line"},"paneIndex":0,"visible":true,"instanceId":"ema-1"}],',
+  '"alerts":{"version":1,"alerts":[]},"drawings":{"version":2,"drawings":[{"tool":"trend-line",',
+  '"points":[{"time":1758789600,"price":1481.62},{"time":1758807000,"price":1580.41}],"paneIndex":0,',
+  '"style":{"extendLeft":false,"extendRight":false},"id":"d1","zIndex":0,"createdAt":1790666895042}]},',
+  '"panes":[{"weight":1,"priceScale":{"marginTop":0.1,"marginBottom":0.1,"minMove":0,"mode":"linear",',
+  '"inverted":false,"autoScale":true,"minPrecision":0,"fixedRange":null,"placement":{"side":"right","order":0}}}],',
+  '"series":[{"type":"candlestick","style":{},"paneIndex":0,"priceScaleId":"right"},{"type":"line",',
+  '"style":{"lineWidth":1.5,"color":"#f5a623","title":"EMA","visible":true,"lineStyle":"solid"},"paneIndex":0,',
+  '"priceScaleId":"right"}]},"settings":{"widget.theme":"dark"},"volume":false,"magnet":"off","stay":false,',
+  '"comparisons":[],"comparisonMode":"percent"},{"id":"p1","symbol":"RELIANCE","exchange":"NSE","interval":"5m",',
+  '"chartType":"candlestick","chart":{"version":1,"timezone":"Asia/Kolkata","navigation":{"mousePan":"both",',
+  '"defaultVisibleBars":0,"panEnabled":true,"zoomEnabled":true,"defaultBarSpacing":8},"canvas":{},"statusLine":{},',
+  '"watermark":{"visible":false,"text":"","color":"#9aa4b2","opacity":0.08,"fontSize":64},"trading":{},"events":{},',
+  '"axisChrome":{"sessionClock":false,"barCountdown":false},"viewport":{"from":55,"to":123},"barSpacing":8,',
+  '"grid":{"vertLines":true,"horzLines":true},"crosshairMode":"normal","crosshairSnapToBar":false,',
+  '"priceOnlyAutoScale":false,"indicatorLegendCollapsed":false,"indicators":[],"alerts":{"version":1,"alerts":[]},',
+  '"drawings":{"version":2,"drawings":[{"tool":"horizontal-line","points":[{"time":1758799500,"price":3002.34}],',
+  '"paneIndex":0,"style":{"showLabels":true},"id":"d2","zIndex":0,"createdAt":1790666895045}]},',
+  '"panes":[{"weight":1,"priceScale":{"marginTop":0.1,"marginBottom":0.1,"minMove":0,"mode":"linear",',
+  '"inverted":false,"autoScale":true,"minPrecision":0,"fixedRange":null,"placement":{"side":"right","order":0}}}],',
+  '"series":[{"type":"candlestick","style":{},"paneIndex":0,"priceScaleId":"right"}]},',
+  '"settings":{"widget.theme":"dark"},"volume":false,"magnet":"off","stay":false,"comparisons":[],',
+  '"comparisonMode":"percent"}],"activePaneId":"p1","sync":{"crosshair":true,"viewport":true,"symbol":false,',
+  '"interval":false,"appearance":true}}',
+].join('');
+
+/** A desk of three charts in two named groups and one chart in none. */
+function groupedDesk() {
+  const fixture = workspaceFixture();
+  const third = { ...fixture.panes[1], id: 'p2', symbol: 'SBIN' };
+  return {
+    ...fixture,
+    layout: { rows: 1, columns: 3, slots: [
+      ...fixture.layout.slots, { paneId: 'p2', row: 0, column: 2, rowSpan: 1, columnSpan: 1 },
+    ] },
+    panes: [{ ...fixture.panes[0], linkGroup: 'a' }, { ...fixture.panes[1], linkGroup: 'b' }, third] as
+      Array<(typeof fixture.panes)[number] & { linkGroup?: string }>,
+    sync: {
+      crosshair: false, viewport: false, symbol: false, interval: false,
+      groups: [
+        { id: 'a', name: 'Intraday', crosshair: true, viewport: true, symbol: true, interval: false,
+          chartType: true, drawings: true, whenMissing: 'hide' },
+        { id: 'b', name: 'Swing', crosshair: true, viewport: false, symbol: false, interval: true, appearance: true },
+        { id: 'c', name: 'Spare', crosshair: false, viewport: false, symbol: false, interval: false },
+      ],
+    },
+  };
+}
+
+describe('workspace link channels and groups', () => {
+  it('reads a workspace saved by 2.5.9 unchanged, and writes it back byte for byte', () => {
+    const document = parseWorkspaceDocument(SAVED_BY_2_5_9);
+    expect(document).toEqual(JSON.parse(SAVED_BY_2_5_9));
+    expect(JSON.stringify(document)).toBe(SAVED_BY_2_5_9);
+    expect(document.sync).not.toHaveProperty('groups');
+    expect(document.sync).not.toHaveProperty('chartType');
+    expect(document.sync).not.toHaveProperty('drawings');
+    expect(document.sync).not.toHaveProperty('whenMissing');
+    for (const pane of document.panes) expect(pane).not.toHaveProperty('linkGroup');
+    const payload = parseWorkspacePayload(SAVED_BY_2_5_9);
+    expect(parseWorkspacePayload(JSON.stringify(payload))).toEqual(payload);
+  });
+
+  it('keeps the four channel flags a host has always written, with nothing added', () => {
+    const fixture = workspaceFixture();
+    // Typed the way a host that builds `sync` itself types it; `tsc` holds the line.
+    const sync: WorkspacePayload['sync'] = { crosshair: false, viewport: true, symbol: true, interval: false };
+    const parsed = parseWorkspacePayload({ ...fixture, sync });
+    expect(parsed.sync).toEqual(sync);
+    expect(Object.keys(parsed.sync)).toEqual(['crosshair', 'viewport', 'symbol', 'interval']);
+    // A host that wrote no sync at all still reads as the engine's defaults.
+    const { sync: _omitted, ...bare } = fixture;
+    expect(parseWorkspacePayload(bare).sync).toEqual({ crosshair: true, viewport: true, symbol: false, interval: false });
+  });
+
+  it('round-trips the chart type, drawings and missing-bar channels of the one desk group', () => {
+    const fixture = workspaceFixture();
+    const sync: WorkspaceSync = { ...fixture.sync, appearance: false, chartType: true, drawings: true, whenMissing: 'hide' };
+    const parsed = parseWorkspaceDocument({ ...fixture, sync });
+    expect(parsed.sync).toEqual(sync);
+    expect(parseWorkspaceDocument(JSON.stringify(parsed))).toEqual(parsed);
+  });
+
+  it('round-trips named groups, a chart in none, and a group with no chart yet', () => {
+    const input = groupedDesk();
+    const parsed = parseWorkspaceDocument(input);
+    expect(parsed.sync).toEqual(input.sync);
+    expect(parsed.panes.map(pane => pane.linkGroup)).toEqual(['a', 'b', undefined]);
+    expect(parsed.panes[2]).not.toHaveProperty('linkGroup');
+    expect(parseWorkspaceDocument(JSON.stringify(parsed))).toEqual(parsed);
+    // Detached: the parsed groups are not the caller's objects.
+    input.sync.groups[0].symbol = false;
+    input.sync.groups[0].name = 'Changed';
+    expect(parsed.sync.groups?.[0]).toMatchObject({ symbol: true, name: 'Intraday' });
+  });
+
+  it('reads a group\'s absent flags as the engine defaults and drops what is not a channel', () => {
+    const input = groupedDesk();
+    Object.assign(input.sync.groups[2], { color: '#ff0000' });
+    delete (input.sync.groups[2] as Partial<WorkspaceLinkGroup>).crosshair;
+    delete (input.sync.groups[2] as Partial<WorkspaceLinkGroup>).viewport;
+    const [, , spare] = parseWorkspacePayload(input).sync.groups!;
+    expect(spare).toEqual({ id: 'c', name: 'Spare', crosshair: true, viewport: true, symbol: false, interval: false });
+  });
+
+  it('describes each group in the same terms the engine takes, so a group opens as a link group', () => {
+    const parsed = parseWorkspacePayload(groupedDesk());
+    const { id: _id, name: _name, ...channels } = parsed.sync.groups![0];
+    const options: LinkOptions = channels satisfies WorkspaceLinkChannels;
+    const group = createLinkGroup(options);
+    expect(group.options()).toEqual({
+      crosshair: true, viewport: true, symbol: true, interval: false, chartType: true,
+      appearance: false, drawings: true, whenMissing: 'hide',
+    });
+    group.destroy();
+  });
+
+  it.each([
+    ['a chart type flag that is not a boolean', { chartType: 'yes' }],
+    ['a drawings flag that is not a boolean', { drawings: 1 }],
+    ['an unknown missing-bar policy', { whenMissing: 'skip' }],
+    ['groups that are not a list', { groups: {} }],
+    ['more groups than a desk has charts', { groups: Array.from({ length: 17 }, (_, i) => ({ id: `g${i}`, name: `G${i}` })) }],
+  ])('rejects %s in sync', (_name, patch) => {
+    const fixture = workspaceFixture();
+    expect(() => parseWorkspaceDocument({ ...fixture, sync: { ...fixture.sync, ...patch } })).toThrow(WorkspaceDocumentError);
+  });
+
+  it.each([
+    ['a blank id', (d: ReturnType<typeof groupedDesk>) => { d.sync.groups[0].id = '  '; }],
+    ['an id over 100 characters', (d: ReturnType<typeof groupedDesk>) => { d.sync.groups[2].id = 'x'.repeat(101); }],
+    ['a duplicate id', (d: ReturnType<typeof groupedDesk>) => { d.sync.groups[1].id = 'a'; }],
+    ['a blank name', (d: ReturnType<typeof groupedDesk>) => { d.sync.groups[0].name = ''; }],
+    ['a name over 120 characters', (d: ReturnType<typeof groupedDesk>) => { d.sync.groups[0].name = 'n'.repeat(121); }],
+    ['a channel flag that is not a boolean', (d: ReturnType<typeof groupedDesk>) => {
+      (d.sync.groups[1] as unknown as Record<string, unknown>).interval = 'on';
+    }],
+    ['a group that is not a record', (d: ReturnType<typeof groupedDesk>) => {
+      (d.sync.groups as unknown[])[2] = 'Spare';
+    }],
+    ['a chart naming a group the desk does not declare', (d: ReturnType<typeof groupedDesk>) => { d.panes[1].linkGroup = 'z'; }],
+    ['a chart naming a group while the desk declares none', (d: ReturnType<typeof groupedDesk>) => {
+      delete (d.sync as { groups?: unknown }).groups;
+    }],
+    ['a group reference that is not a string', (d: ReturnType<typeof groupedDesk>) => {
+      (d.panes[0] as unknown as Record<string, unknown>).linkGroup = 1;
+    }],
+  ])('rejects %s', (_name, spoil) => {
+    const input = groupedDesk();
+    spoil(input);
+    expect(() => parseWorkspaceDocument(input)).toThrow(WorkspaceDocumentError);
   });
 });
 
