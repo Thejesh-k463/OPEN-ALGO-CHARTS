@@ -9,7 +9,10 @@ Runtime exports:
 
 - `WORKSPACE_VERSION`: document schema version `1`.
 - `parseWorkspaceDocument`, `parseWorkspacePayload`: validate/detach independent
-  panes, grid slots, focus and crosshair/viewport/symbol/interval sync settings.
+  panes, grid slots, focus and the link settings (`WorkspaceSync`: the
+  crosshair/viewport/symbol/interval flags, optional appearance, chartType, drawings
+  and whenMissing, and optional named `groups` with each pane's `linkGroup`; see
+  chart-linking.md, Saving links in a workspace).
   A chart state is version 1, or version 2 with `primaryPane`, the slot of a
   price pane moved below its studies; a `primaryPane` on version 1, or one that
   names no saved pane, is refused. Restoring a moved one needs a chart built with
