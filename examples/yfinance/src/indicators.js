@@ -1,5 +1,5 @@
 import { registeredIndicators, getIndicator, indicatorDefaults, indicatorStyleInputs, INDICATOR_SOURCES } from '/dist/openalgo-charts.mjs';
-import { el, esc, currentTheme, chartTheme, toast, closeOverlay } from './ui.js';
+import { el, esc, currentTheme, chartTheme, toast, closeOverlay, studyNames } from './ui.js';
 import { autosave } from './persist.js';
 import { capturePaneTarget } from './pane-target.js';
 import { historyGroup } from './history.js';
@@ -572,11 +572,12 @@ export function renderSettingsTab(draft) {
   const descriptor = getIndicator(inst.indicatorId);
   const inputs = settingsTab === 'style' ? indicatorStyleInputs(descriptor) : descriptor.inputs.map(input => {
     if (input.type !== 'source' || !input.allowStudyOutputs) return input;
-    // Its place on the chart tells repeated studies apart, not an internal id.
-    const studyOutputs = settingsTarget.chart.indicators().flatMap((producer, index) => producer.id === inst.id ? []
+    // Repeated studies are told apart as the widget numbers them, not by an internal id.
+    const names = studyNames(settingsTarget.chart);
+    const studyOutputs = settingsTarget.chart.indicators().flatMap(producer => producer.id === inst.id ? []
       : getIndicator(producer.indicatorId).plots.filter(plot => !plot.ohlc).map(plot => ({
         reference: { kind: 'indicator', instanceId: producer.id, plotKey: plot.key },
-        label: `${index + 1}: ${producer.name} / ${plot.title ?? plot.key}`,
+        label: `${names.get(producer.id)} / ${plot.title ?? plot.key}`,
       })));
     return { ...input, studyOutputs };
   });

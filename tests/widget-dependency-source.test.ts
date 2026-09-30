@@ -57,9 +57,9 @@ describe('widget study source selection', () => {
   it('lists scalar outputs for distinct hidden and moved instances without changing ordinary source controls', () => {
     const rig = setup();
     const labels = rig.options().map(option => option.textContent);
-    // Told apart by their place on the chart, as the alert editor numbers studies, never by an internal id.
-    expect(labels).toContain('2: Repeated study / Scalar');
-    expect(labels).toContain('3: Repeated study / Scalar');
+    // Told apart by their place among their name, as every surface numbers them, never by an internal id.
+    expect(labels).toContain('Repeated study (1) / Scalar');
+    expect(labels).toContain('Repeated study (2) / Scalar');
     expect(labels.some(label => label.includes('first') || label.includes('second') || label.includes('['))).toBe(false);
     expect(labels.some(label => label.includes('Consumer value') || label.includes('Candles'))).toBe(false);
     expect(rig.options().some(option => option.value === 'close')).toBe(true);
@@ -69,7 +69,7 @@ describe('widget study source selection', () => {
 
   it('maps opaque DOM tokens to fresh references and retains ordinary strings', () => {
     const rig = setup();
-    const token = rig.options().find(option => option.textContent.startsWith('2: '))!.value;
+    const token = rig.options().find(option => option.textContent.startsWith('Repeated study (1)'))!.value;
     expect(token).not.toContain('first');
     rig.select(token);
     expect(rig.settings().source).toEqual(reference('first'));

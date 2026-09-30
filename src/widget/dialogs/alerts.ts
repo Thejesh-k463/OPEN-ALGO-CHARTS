@@ -274,7 +274,7 @@ export function mountAlertsPanel(ctx: WidgetContext, anchor?: HTMLElement, opts:
     const scale = instance?.series(source.plotKey)?.priceScale();
     const value = (v: number): string => scale?.format(v) ?? String(v);
     return widgetText(ctx, source.upperValue === undefined ? '{name} / {plot}: {value}' : '{name} / {plot}: {value} to {upper}', {
-      name: instance?.name ?? widgetText(ctx, 'Unavailable study'), plot,
+      name: listed(controls, 'instanceId', source.instanceId) ?? widgetText(ctx, 'Unavailable study'), plot,
       value: value(source.value), upper: source.upperValue === undefined ? '' : value(source.upperValue) });
   }
   function render(): void {

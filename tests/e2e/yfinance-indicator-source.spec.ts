@@ -101,20 +101,17 @@ test('source clicks retain instance and chart ownership across a split', async (
   await split(page);
   const other = await addSample(page, 2);
   await clickSource(page, 1, 1);
-  // A study is named by its place on its chart, never by its internal id.
-  const placeOf = (pane: 1 | 2, id: string) => page.evaluate(([pane, id]) => {
-    const app = (window as unknown as DemoWindow).__oac.app;
-    return (pane === 1 ? app.chart : app.chart2!).indicators().findIndex(item => item.id === id) + 1;
-  }, [pane, id] as const);
+  // A study is numbered by its place among its name, never named by its internal id.
   await expect(page.locator('#indsource-owner')).toContainText('Chart 1');
-  await expect(page.locator('#indsource-owner')).toHaveText(new RegExp(`, study ${await placeOf(1, second)}$`));
+  await expect(page.locator('#indsource-owner')).toHaveText(new RegExp(`, ${SAMPLE} \\(2\\)$`));
   await expect(page.locator('#indsource-owner')).not.toContainText(second);
   await expect(page.locator('#indsource-code')).toContainText("markerAnchor: 'price'");
   expect(first).not.toBe(second);
   await page.locator('#indsource-close').click();
   await clickSource(page, 2);
   await expect(page.locator('#indsource-owner')).toContainText('Chart 2');
-  await expect(page.locator('#indsource-owner')).toHaveText(new RegExp(`, study ${await placeOf(2, other)}$`));
+  await expect(page.locator('#indsource-owner')).toHaveText(new RegExp(`, ${SAMPLE}$`));
+  await expect(page.locator('#indsource-owner')).not.toContainText(other);
   await expect(page.locator('#indsource-title')).toContainText(SAMPLE);
   await shot(page, info, 'source-second-chart');
   await page.keyboard.press('Escape');

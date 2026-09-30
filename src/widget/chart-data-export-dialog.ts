@@ -2,6 +2,7 @@ import type { ChartDataCsvOptions } from 'openalgo-charts';
 import type { WidgetContext } from './context';
 import { button, dialogFrame, el, openPanel, renderForm, type FormControl, type PanelHandle } from './form';
 import { errorText, widgetText } from './localization';
+import { studyNames } from './objects-panel';
 
 let sequence = 0;
 
@@ -10,7 +11,8 @@ export function openChartDataExportDialog(
   ctx: WidgetContext, anchor: HTMLElement, onDownload: (options: ChartDataCsvOptions) => void,
 ): PanelHandle {
   const chart = ctx.chart;
-  const studies = chart.indicators().map(study => ({ id: study.id, name: study.name, hidden: !study.visible() }));
+  const names = studyNames(chart);
+  const studies = chart.indicators().map(study => ({ id: study.id, name: names.get(study.id)!, hidden: !study.visible() }));
   const viewport = chart.getVisibleLogicalRange();
   const visible = chart.primaryBars().filter(bar => {
     const index = chart.dataLayer.timeToIndex(bar.time);
@@ -38,8 +40,7 @@ export function openChartDataExportDialog(
     ] },
     ...studies.map((study, index): FormControl => ({
       key: `study-${index}`, kind: 'boolean', group: widgetText(ctx, 'Studies'),
-      // Its place on the chart tells repeated studies apart, not an internal id.
-      label: `${index + 1}: ${study.hidden ? widgetText(ctx, '{name}, hidden', { name: study.name }) : study.name}`,
+      label: study.hidden ? widgetText(ctx, '{name}, hidden', { name: study.name }) : study.name,
     })),
   ];
   const form = renderForm(formHost, controls, {

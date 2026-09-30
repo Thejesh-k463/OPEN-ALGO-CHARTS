@@ -446,6 +446,45 @@ describe('widget alert list', () => {
     expect(summary(band.id)).not.toContain('1.23456789');
   });
 
+  it('gives one object one number in Objects and the alert editor, counting only listed drawings', () => {
+    const { w, root } = make();
+    const at = [{ time: 900, price: 90 }, { time: 1100, price: 110 }];
+    const add = (tool: string, listed = true) => w.draw.add({ tool, paneIndex: 0, style: {}, points: at, ...(listed ? {} : { policy: { listed: false } }) });
+    const unlisted = add('trend-line', false), first = add('trend-line'), box = add('rectangle'), second = add('trend-line');
+    // Brought to the front, the first line is now the second of its name, on both surfaces.
+    w.draw.reorder(first.id, 1); w.draw.reorder(first.id, 1);
+    const panel = widget.createObjectsPanelContent(w.context);
+    const tree = panel.element as unknown as FakeElement;
+    const row = (id: string): string => tree.querySelector(`[data-object-id="drawing:${id}"] .oac-objects__name`)!.textContent;
+    expect([row(first.id), row(box.id), row(second.id)]).toEqual(['Trend Line (2)', 'Rectangle', 'Trend Line (1)']);
+    widget.mountAlertEditor(w.context, undefined, { source: { kind: 'drawing', drawingId: second.id } });
+    const options = new Map(field(root, 'drawingId').querySelectorAll('option').map(option => [option.value, option.textContent]));
+    expect([options.get(first.id), options.get(box.id), options.get(second.id)]).toEqual(['Trend Line (2)', 'Rectangle', 'Trend Line (1)']);
+    expect(options.has(unlisted.id)).toBe(false);
+    // An unlisted drawing an alert already names is listed for it, after the listed ones.
+    const onHidden = w.alerts.add({ source: { kind: 'drawing', drawingId: unlisted.id, level: 'line' } });
+    widget.mountAlertsPanel(w.context);
+    expect(root.querySelector(`[data-alert-id="${onHidden.id}"] .oac-alerts__summary`)!.textContent).toContain('Trend Line (3) / Line');
+    panel.destroy();
+  });
+
+  it('gives one study one number in Objects, the alert editor and the alert list', () => {
+    const { w, root } = make();
+    w.chart.addIndicator('widget-alert-study', {}, { policy: { listed: false } });
+    const first = w.chart.addIndicator('widget-alert-study');
+    const second = w.chart.addIndicator('widget-alert-study');
+    const panel = widget.createObjectsPanelContent(w.context);
+    const tree = panel.element as unknown as FakeElement;
+    const row = (id: string): string => tree.querySelector(`[data-object-id="indicator:${id}"] .oac-objects__name`)!.textContent;
+    expect([row(first.id), row(second.id)]).toEqual(['Alert study (1)', 'Alert study (2)']);
+    const onSecond = w.alerts.add({ source: { kind: 'indicator', instanceId: second.id, plotKey: 'close', value: 100 } });
+    widget.mountAlertEditor(w.context, undefined, { alertId: onSecond.id });
+    expect(field(root, 'instanceId').querySelectorAll('option').map(option => option.textContent)).toEqual(['Alert study (1)', 'Alert study (2)']);
+    widget.mountAlertsPanel(w.context);
+    expect(root.querySelector(`[data-alert-id="${onSecond.id}"] .oac-alerts__summary`)!.textContent).toContain('Alert study (2) / Close reading');
+    panel.destroy();
+  });
+
   it('refreshes an open price-only list when the chart timezone changes without changing the expiry instant', () => {
     const { w, root } = make();
     w.chart.setTimezone('UTC');

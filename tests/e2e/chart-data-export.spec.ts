@@ -79,8 +79,8 @@ for (const host of ['widget', 'reference'] as const) for (const width of [1100, 
     }, host);
     let controls = await openDataDialog(page, host);
     await expect(controls.studies).toHaveCount(2);
-    // Repeated studies are told apart by their place on the chart, never by an internal id.
-    await expect(controls.dialog).toContainText(`1: ${state.names[0]}`); await expect(controls.dialog).toContainText(`2: ${state.names[1]}`);
+    // Repeated studies are told apart by their place among their name, never by an internal id.
+    await expect(controls.dialog).toContainText(`${state.names[0]} (1)`); await expect(controls.dialog).toContainText(`${state.names[1]} (2)`);
     await expect(controls.dialog).not.toContainText(state.first);
     expect(await controls.dialog.evaluate(node => node.contains(document.activeElement))).toBe(true);
     await page.keyboard.press('Tab');

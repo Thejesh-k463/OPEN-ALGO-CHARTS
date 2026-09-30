@@ -1,5 +1,5 @@
 import { widgetText } from './localization';
-import type { ChartObjects, ChartObjectSnapshot } from 'openalgo-charts';
+import type { Chart, ChartObjects, ChartObjectSnapshot, IndicatorApi } from 'openalgo-charts';
 import type { WidgetContext } from './context';
 import { chromeIconSvg } from 'openalgo-charts/draw';
 import { button, dialogFrame, el, openPanel, type PanelHandle } from './form';
@@ -31,6 +31,35 @@ const STATUS = { loading: 'Loading', ready: 'Ready', empty: 'No data', unsupport
 const FAILURES = { select: 'Could not select {name}', visibility: 'Could not change visibility for {name}', lock: 'Could not change lock for {name}', settings: 'Could not open settings for {name}', focus: 'Could not focus {name}', remove: 'Could not remove {name}' } as const;
 
 let rowSequence = 0;
+
+/**
+ * Names that tell apart objects of one name, by id: the second listed "Trend
+ * Line" is "Trend Line (2)", and a name nothing listed repeats carries no
+ * number. Objects, the alert editor, study settings and the data export all
+ * number through this, over the chart's own order (drawings back to front,
+ * studies as the chart lists them), so one object carries one number wherever
+ * it is named. Only listed items count, so a host's unlisted object never
+ * moves a number a user has seen; one a list shows anyway is numbered after.
+ */
+export function numberedNames<T extends { readonly id: string }>(items: readonly T[], name: (item: T) => string,
+  listed: (item: T) => boolean = () => true): Map<string, string> {
+  const count = (some: readonly T[]): Map<string, number> => {
+    const out = new Map<string, number>();
+    for (const item of some) out.set(name(item), (out.get(name(item)) ?? 0) + 1);
+    return out;
+  };
+  const shown = items.filter(listed), extra = items.filter(item => !listed(item));
+  const repeats = count(shown), everywhere = count(items), seen = new Map<string, number>();
+  return new Map([...shown, ...extra].map(item => {
+    const base = name(item), n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    return [item.id, ((listed(item) ? repeats : everywhere).get(base) ?? 0) > 1 ? `${base} (${n})` : base];
+  }));
+}
+
+/** The chart's studies named apart, as `numberedNames` says. */
+export const studyNames = (chart: Chart): Map<string, string> => numberedNames(chart.indicators(), study => study.name,
+  study => (study as Partial<IndicatorApi>).policy?.().listed !== false);
 
 export interface ObjectsPanelContent {
   element: HTMLElement;
@@ -464,17 +493,13 @@ export function createObjectsPanelContent(ctx: WidgetContext, opts: ObjectsPanel
   search.addEventListener('input', paint);
   const unsubscribe = objects.subscribe(items => {
     if (closed) return;
-    // Rows of one name are told apart by their place among them, the way the
-    // alert editor numbers drawings, or every one's actions read the same.
-    const counts = new Map<string, number>();
-    for (const item of items) counts.set(item.name, (counts.get(item.name) ?? 0) + 1);
-    const seen = new Map<string, number>();
-    all = items.map(item => {
-      if (counts.get(item.name)! < 2) return item;
-      const n = (seen.get(item.name) ?? 0) + 1;
-      seen.set(item.name, n);
-      return { ...item, name: `${item.name} (${n})` };
-    });
+    // Rows of one name carry their number (numberedNames), or every one's
+    // actions read the same. Drawings count in the controller's order, as the
+    // alert editor lists them, whatever order an inventory gives.
+    const drawn = new Map((ctx.draw?.drawings() ?? []).map((drawing, index) => [drawing.id, index]));
+    const place = (item: ChartObjectSnapshot): number => (item.kind === 'drawing' ? drawn.get(item.sourceId) ?? drawn.size : -1);
+    const names = numberedNames([...items].sort((a, b) => place(a) - place(b)), item => item.name);
+    all = items.map(item => (names.get(item.id) === item.name ? item : { ...item, name: names.get(item.id)! }));
     paint();
   });
   const dispose = (): void => {

@@ -50,13 +50,26 @@ describe('widget chart data download options', () => {
     expect(dialog.getAttribute('role')).toBe('dialog');
     expect(field(dialog, 'study-0').checked).toBe(true);
     expect(field(dialog, 'study-1').checked).toBe(true);
-    // Repeated instances are told apart by their place on the chart, not by an internal id.
+    // Repeated instances are told apart by their place among their name, not by an internal id.
     const label = (key: string): string => dialog.querySelector(`[data-key="${key}"] label`)!.textContent;
-    expect(label('study-0')).toBe(`1: ${first.name}`);
-    expect(label('study-1')).toBe(`2: ${hidden.name}, hidden`);
+    expect(label('study-0')).toBe(`${first.name} (1)`);
+    expect(label('study-1')).toBe(`${hidden.name} (2), hidden`);
     expect(dialog.textContent).not.toContain(first.id);
     widget.chart.addIndicator('ema', { length: 1 });
     expect(dialog.querySelectorAll('input[type="checkbox"]')).toHaveLength(2);
+  });
+
+  it('numbers only listed studies, so a host study the list never shows moves no number', () => {
+    const { widget, root } = make();
+    const host = widget.chart.addIndicator('sma', { length: 4 }, { policy: { listed: false } });
+    const first = widget.chart.addIndicator('sma', { length: 1 });
+    const second = widget.chart.addIndicator('sma', { length: 2 });
+    const lone = widget.chart.addIndicator('ema', { length: 1 });
+    const dialog = open(root);
+    const labels = dialog.querySelectorAll('[data-key]').filter(node => node.getAttribute('data-key')!.startsWith('study-'))
+      .map(node => node.querySelector('label')!.textContent);
+    // The chart's order is host, first, second, lone; the host study counts after the listed two.
+    expect(labels).toEqual([`${host.name} (3)`, `${first.name} (1)`, `${second.name} (2)`, lone.name]);
   });
 
   it('downloads only captured checked IDs and custom inclusive UTC bounds after full warmup', async () => {

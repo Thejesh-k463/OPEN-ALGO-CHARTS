@@ -13,6 +13,21 @@ export const el = (id) => document.getElementById(id);
 export const fmt = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 export const round2 = (n) => Math.round(n * 100) / 100;
+/**
+ * A chart's studies named apart, by id, the way the widget numbers them: the
+ * second listed "RSI" is "RSI (2)", a name no listed study repeats carries no
+ * number, and an unlisted study counts after the listed ones.
+ */
+export function studyNames(chart) {
+  const all = chart.indicators(), listed = (s) => s.policy?.().listed !== false, shown = all.filter(listed);
+  const count = (list) => list.reduce((m, s) => m.set(s.name, (m.get(s.name) ?? 0) + 1), new Map());
+  const repeats = count(shown), everywhere = count(all), seen = new Map();
+  return new Map([...shown, ...all.filter((s) => !listed(s))].map((s) => {
+    const n = (seen.get(s.name) ?? 0) + 1;
+    seen.set(s.name, n);
+    return [s.id, ((listed(s) ? repeats : everywhere).get(s.name) ?? 0) > 1 ? `${s.name} (${n})` : s.name];
+  }));
+}
 export function fmtVol(v) {
   if (v == null) return '';
   const a = Math.abs(v);

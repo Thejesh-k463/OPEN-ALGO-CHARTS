@@ -111,9 +111,9 @@ for (const surface of ['widget', 'demo'] as const) {
     const errors = await mount(page, surface);
     let { dialog, source, accept, cancel } = controls(page, surface);
     const producerId = await page.evaluate(() => window.__studySourceUi.producer.id);
-    // Named by their place on the chart, never by an internal id.
-    const producerLabel = '1: Source choice / Signal';
-    const consumerLabel = '2: Source choice / Signal';
+    // Numbered by their place among their name, never named by an internal id.
+    const producerLabel = 'Source choice (1) / Signal';
+    const consumerLabel = 'Source choice (2) / Signal';
     await expect(source.locator('option', { hasText: producerLabel })).toHaveCount(1);
     await expect(source.locator('option', { hasText: consumerLabel })).toHaveCount(0);
     expect(await lastValue(page)).toBe(393);

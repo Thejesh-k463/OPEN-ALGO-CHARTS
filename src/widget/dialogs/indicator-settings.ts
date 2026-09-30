@@ -14,6 +14,7 @@ import { getIndicator, indicatorDefaults, indicatorStyleInputs } from 'openalgo-
 import type { IndicatorApi, IndicatorDescriptor, IndicatorInput, IndicatorSettings, IndicatorStudySource } from 'openalgo-charts';
 import type { WidgetContext } from '../context';
 import { mountIndicatorInputControls, type IndicatorInputControlsHandle } from '../indicator-input-controls';
+import { studyNames } from '../objects-panel';
 import {
   button, controlsFromInputs, dialogFrame, el, openPanel, renderForm, tabList,
   type FormHandle, type PanelHandle,
@@ -156,16 +157,15 @@ export function mountIndicatorSettings(
       if (input.type !== 'source') continue;
       const control = controls.find(item => item.key === input.key)!;
       const options = [...(control.options ?? [])], references = new Map<string, IndicatorStudySource>();
-      const all = ctx.chart.indicators();
-      if (input.allowStudyOutputs) for (const producer of all) {
+      const names = studyNames(ctx.chart);
+      if (input.allowStudyOutputs) for (const producer of ctx.chart.indicators()) {
         if (producer.id === inst.id) continue;
         for (const plot of getIndicator(producer.indicatorId).plots) {
           if (plot.ohlc) continue;
           const token = `study-output:${references.size}`;
           references.set(token, { kind: 'indicator', instanceId: producer.id, plotKey: plot.key });
           const title = widgetText(ctx, `schema.indicator.${producer.indicatorId}.plot.${plot.key}`, {}, plot.title ?? plot.key);
-          // Its place on the chart tells repeated studies apart, as the alert editor numbers them.
-          options.push({ value: token, label: `${all.indexOf(producer) + 1}: ${producer.name} / ${title}` });
+          options.push({ value: token, label: `${names.get(producer.id)!} / ${title}` });
         }
       }
       control.options = options;
