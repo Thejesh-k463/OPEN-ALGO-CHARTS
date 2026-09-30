@@ -122,6 +122,21 @@ test('preserves populated host CSS and its nonce across widget creation', async 
   expect(errors).toEqual([]);
 });
 
+test('a part that loads on first use runs under the script policy and styles itself through the nonced sheet', async ({ page }) => {
+  const errors = await mount(page);
+  const chart = await page.locator('#first .oac-chart').boundingBox();
+  await page.mouse.move(chart!.x + chart!.width / 2, chart!.y + chart!.height / 2);
+  // The shortcuts panel is not in the tier file: `script-src 'self'` lets its
+  // file load, and its rules join the one sheet, whose nonce still covers them.
+  await page.keyboard.press('Shift+Slash');
+  await expect(page.locator('#first .oac-keys-dialog')).toBeVisible();
+  await expect(page.locator('#first .oac-keys__acts').first()).toHaveCSS('min-width', '118px');
+  await expect(page.locator('style')).toHaveCount(2);
+  expect(await page.locator('style#oac-widget-css').evaluate((node: HTMLStyleElement) => node.nonce)).toBe(NONCE);
+  await expect.poll(() => page.evaluate(() => (window as any).__cspViolations)).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 test('the strict stylesheet policy blocks the widget when no nonce is supplied', async ({ page }) => {
   const errors = await mount(page, 'fresh', null);
   await expect(page.locator('#first .oac-widget')).toHaveCSS('display', 'block');
