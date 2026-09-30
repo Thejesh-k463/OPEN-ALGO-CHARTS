@@ -123,6 +123,11 @@ test('the settings dialog opens from the top bar and closes from its own button'
   expect(await dialog.locator('.oac-form .oac-row').count()).toBeGreaterThan(0);
   // Focus moved into the dialog, so the keyboard user is where the mouse user is.
   expect(await page.evaluate(() => document.activeElement?.closest('.oac-dialog') !== null)).toBe(true);
+  // A field's help text is its description, not part of its name.
+  await dialog.getByRole('tab', { name: 'Axes' }).click();
+  const scale = dialog.getByRole('combobox', { name: 'Scale', exact: true });
+  await expect(scale).toBeVisible();
+  await expect(scale).toHaveAccessibleDescription(/Logarithmic/);
 
   await dialog.locator('.oac-dialog__head button[aria-label="Close"]').click();
   await expect(page.locator(DIALOG)).toHaveCount(0);

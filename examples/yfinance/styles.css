@@ -289,7 +289,7 @@ select.field { cursor: pointer; padding-right: 24px; }
   width: 13px; height: 13px; margin-left: 5px; vertical-align: -2px;
   border: 1px solid var(--bd); border-radius: 50%; color: var(--faint);
   font-size: 9px; font-weight: 600; line-height: 1; cursor: help; user-select: none; }
-.set-help:hover, .set-help:focus-visible { color: var(--tx); border-color: var(--bd-hover); outline: none; }
+.set-help:hover { color: var(--tx); border-color: var(--bd-hover); }
 .set-ctl { grid-column: 3; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
 .set-ctl:has([data-input-action]) { flex-wrap: wrap; }
 .oac-widget.host-input-actions { position: fixed; inset: 0; z-index: 80; display: block;

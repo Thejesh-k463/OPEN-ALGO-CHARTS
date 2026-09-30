@@ -490,8 +490,10 @@ suite('renderForm', () => {
 
   /**
    * 2.2.1: a label has nowhere to explain itself in a dense panel, so the help
-   * text rides on a mark beside it. It must not reshape the row, and it must be
-   * reachable without a pointer, or only mouse users can read the docs.
+   * text rides on a mark beside it. It must not reshape the row. Since 2.5.10
+   * the text reaches assistive technology as the control's description, not
+   * as part of its name, and the mark is no tab stop: its title never showed
+   * on focus, so the stop gave a keyboard user nothing to read.
    */
   it('renders a help mark inside the label only for a control that carries a tooltip', () => {
     const d = doc();
@@ -508,8 +510,11 @@ suite('renderForm', () => {
     expect(mark).not.toBeNull();
     expect(mark!.textContent).toBe('?');
     expect(mark!.title).toBe('Bars in the window.');
-    expect(mark!.getAttribute('aria-label')).toBe('Bars in the window.');
-    expect(mark!.tabIndex).toBe(0);
+    expect(mark!.getAttribute('aria-hidden')).toBe('true');
+    expect(mark!.getAttribute('aria-label')).toBeNull();
+    expect(mark!.getAttribute('tabindex')).toBeNull();
+    expect(rows[0].querySelector('input')!.getAttribute('aria-description')).toBe('Bars in the window.');
+    expect(rows[1].querySelector('input')!.getAttribute('aria-description')).toBeNull();
     // Inside the label, so it stays with the words when a long label wraps.
     expect(rows[0].querySelector('.oac-row__label')!.querySelector('.oac-help')).not.toBeNull();
 
@@ -528,7 +533,11 @@ suite('renderForm', () => {
     ], { values: {}, idPrefix: 't', onChange: () => {} });
     const rows = (host as unknown as FakeElement).querySelectorAll('.oac-row');
     expect(rows[0].querySelector('.oac-help')!.title).toBe('Draw the band.');
+    expect(rows[0].querySelector('input')!.getAttribute('aria-description')).toBe('Draw the band.');
     expect(rows[1].querySelector('.oac-help')!.title).toBe('Up and down colours.');
+    // The pair's label points at its first swatch, which carries the description.
+    const target = (host as unknown as FakeElement).querySelector(`#${(rows[1].querySelector('label') as FakeElement).htmlFor}`)!;
+    expect(target.getAttribute('aria-description')).toBe('Up and down colours.');
     // The pair still renders both swatches: the mark must not have displaced one.
     expect(rows[1].querySelectorAll('input[type=color]').length).toBe(2);
   });

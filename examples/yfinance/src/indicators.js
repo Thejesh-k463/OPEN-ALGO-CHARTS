@@ -231,6 +231,7 @@ function inlineItem(host, inline, input, values, onChange, unavailable) {
   label.htmlFor = host.id + '_' + input.key;
   if (input.tooltip) label.appendChild(helpMark(input.tooltip));
   const field = inputField(host, input.key, input.type, input, values[input.key], onChange, unavailable);
+  describe(field, input);
   if (input.type === 'boolean') item.append(field, label);
   else item.append(label, field._colorPicker?.el || field);
   inline.ctl.appendChild(item);
@@ -430,18 +431,22 @@ function commitNumber(field, spec, value) {
 
 /**
  * The `?` after a label. Attached to the label rather than the row so it stays
- * with the words it explains when a long label wraps, and reachable by tab so a
- * keyboard user is not the only one who cannot read the help.
+ * with the words it explains when a long label wraps. It is for the pointer:
+ * inside the label its text would be read as part of the field's name, so the
+ * field carries the help as its description instead (describe).
  */
 function helpMark(tooltip) {
   const mark = document.createElement('span');
   mark.className = 'set-help';
   mark.textContent = '?';
   mark.title = tooltip;
-  mark.tabIndex = 0;
-  mark.setAttribute('role', 'note');
-  mark.setAttribute('aria-label', tooltip);
+  mark.setAttribute('aria-hidden', 'true');
   return mark;
+}
+
+/** The help text as the field's description. */
+function describe(field, input) {
+  if (input.tooltip) field.setAttribute('aria-description', input.tooltip);
 }
 
 /** A row carrying one control. Booleans sit in the switch column, in front
@@ -459,6 +464,7 @@ function simpleRow(host, input, values, onChange, unavailable, lead = false) {
   label.htmlFor = host.id + '_' + input.key;
   if (input.tooltip) label.appendChild(helpMark(input.tooltip));
   const field = inputField(host, input.key, input.type, input, values[input.key], onChange, unavailable);
+  describe(field, input);
   if (input.type === 'boolean') {
     field.classList.add('set-sw');
     row.append(field, label);

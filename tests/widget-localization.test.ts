@@ -61,9 +61,9 @@ describe('widget translation contract', () => {
       expect(label.textContent).toContain(`Caduca <b> (${timezone})`);
       expect(label.querySelector('b')).toBeNull();
       const help = label.querySelector('.oac-help');
-      expect(help?.getAttribute('aria-label')).toBe('Vacio para no caducar');
-      expect(help?.tabIndex).toBe(0);
       expect(help?.title).toBe('Vacio para no caducar');
+      // Read as the field's description, not as part of its name.
+      expect(root.querySelector('[data-key="expiresAt"] input')!.getAttribute('aria-description')).toBe('Vacio para no caducar');
     };
     check();
     const condition = root.querySelector('[data-key="condition"] select')!;
