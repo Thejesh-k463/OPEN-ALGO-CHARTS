@@ -54,6 +54,11 @@ The unversioned URL always resolves to the newest release. That is convenient fo
 a scratch file and a liability for a page you are not watching, because a future
 release changes what your page loads without you touching it.
 
+The widget needs the exact version even in a scratch file. It fetches a few of its
+panels later, from files beside the tier file, and a tier file works only with the
+panels built with it. A range such as `@2`, or no version, can resolve the tier file and
+a panel to two different releases, and the panel then cannot load.
+
 jsDelivr serves the identical files if you prefer it:
 
 ```html
@@ -168,7 +173,8 @@ steps that do not apply here:
   custom hosts supply their own interface. There is no `openalgo-charts.css` file.
 - **There is nothing else to list for the widget.** A few of its panels load from
   files beside `openalgo-charts.widget.mjs` the first time a user opens them. They
-  resolve against the tier's own URL, so the CDN path you import from serves them.
+  resolve against the tier's own URL, so the CDN path you import from serves them,
+  provided it pins the exact version.
 - **There is no separate CDN deployment.** unpkg and jsDelivr mirror npm. A
   release is on both the moment it is published; there is no account to create
   and no upload step.
