@@ -980,6 +980,17 @@ export class Keymap {
  * keymap); an unbound command shows none. Internal: the tier entry does not
  * export it.
  */
+/**
+ * A chord as the keymap shows it, in the form aria-keyshortcuts takes
+ * (Ctrl+Shift+Z is Control+Shift+Z, Cmd+D is Meta+D, Del is Delete): a menu
+ * row shows the chord beside its name and carries it as its shortcut, so the
+ * chord is not read as part of the name.
+ */
+export function ariaKeys(chord: string): string {
+  const aria: Readonly<Record<string, string>> = { Ctrl: 'Control', Cmd: 'Meta', Opt: 'Alt', Del: 'Delete', Esc: 'Escape', Left: 'ArrowLeft', Right: 'ArrowRight', Up: 'ArrowUp', Down: 'ArrowDown' };
+  return chord.split('+').map(part => aria[part] ?? part).join('+');
+}
+
 export function commandChord(km: Keymap, command: string, fallback?: string): string | undefined {
   // The dialogs also mount over a context a host built itself, whose keymap
   // may be a stand-in; they showed the default chord there before 2.5.10.

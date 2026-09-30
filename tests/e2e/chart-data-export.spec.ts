@@ -75,11 +75,13 @@ for (const host of ['widget', 'reference'] as const) for (const width of [1100, 
       const view = chart.getVisibleLogicalRange();
       const visible = bars.filter(bar => { const i = chart.dataLayer.timeToIndex(bar.time); return i >= view.from && i <= view.to; });
       (window as any).__csvFixture = { chart, bars, first, second };
-      return { first: first.id, second: second.id, from: visible[0].time, to: visible[visible.length - 1].time };
+      return { first: first.id, second: second.id, names: [first.name, second.name], from: visible[0].time, to: visible[visible.length - 1].time };
     }, host);
     let controls = await openDataDialog(page, host);
     await expect(controls.studies).toHaveCount(2);
-    await expect(controls.dialog).toContainText(state.first); await expect(controls.dialog).toContainText(state.second);
+    // Repeated studies are told apart by their place on the chart, never by an internal id.
+    await expect(controls.dialog).toContainText(`1: ${state.names[0]}`); await expect(controls.dialog).toContainText(`2: ${state.names[1]}`);
+    await expect(controls.dialog).not.toContainText(state.first);
     expect(await controls.dialog.evaluate(node => node.contains(document.activeElement))).toBe(true);
     await page.keyboard.press('Tab');
     expect(await controls.dialog.evaluate(node => node.contains(document.activeElement))).toBe(true);

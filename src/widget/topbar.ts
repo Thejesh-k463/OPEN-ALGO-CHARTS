@@ -25,6 +25,7 @@ import type { PanelHandle } from './form';
 import type { LayoutsController } from './layouts';
 import { layoutNeedsAttention, layoutStatusText } from './layouts-widget';
 import { lazyPart, partFailed, usePart, type PartSlot } from './lazy';
+import { ariaKeys } from './keymap';
 
 /** The chart data dialog, fetched when it first opens. Internal. */
 export const dataExportPart = lazyPart(() => import('./chart-data-export-dialog'));
@@ -159,9 +160,11 @@ export function openMenu(ctx: WidgetContext, anchor: HTMLElement, rows: Readonly
         b.appendChild(s);
       }
       if (r.key) {
-        const k = h(doc, 'kbd', 'oac-menu__key');
+        // Shown beside the name, said as the row's shortcut rather than read into its name.
+        const k = h(doc, 'kbd', 'oac-menu__key', { 'aria-hidden': 'true' });
         k.textContent = r.key;
         b.appendChild(k);
+        b.setAttribute('aria-keyshortcuts', ariaKeys(r.key));
       }
       b.addEventListener('click', (e) => {
         e.stopPropagation();

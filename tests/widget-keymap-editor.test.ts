@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import type { Bar } from '../src/index';
 import {
-  createWidget, openShortcutsPanel, contextMenuEntries, mountDrawingProperties, KEYMAP_KEY, STORAGE_PREFIX,
+  createWidget, openShortcutsPanel, contextMenuEntries, mountContextMenu, mountDrawingProperties, KEYMAP_KEY, STORAGE_PREFIX,
   type Widget, type WidgetOptions, type StorageLike, type WidgetMessageKey,
 } from '../src/widget/index';
 import { fakeWidgetDocument, fakeContainer, fireKey, fire, ensureWindowGlobal, type FakeDocument, type FakeElement } from './helpers/fake-dom-widget';
@@ -129,6 +129,11 @@ describe('a moved chord does what the old one did', () => {
     const fit = contextMenuEntries(w.context, { paneIndex: 0, point: { x: 200, y: 150 }, price: 100, time: T0 + 5 * DAY, index: 5, preventDefault: () => {}, target: { kind: 'empty', id: null } })
       .find((e) => 'id' in e && e.id === 'chart-fit') as { chord?: string };
     expect(fit.chord).toBe(km.format('Alt+F'));
+    // Painted rows keep the chord out of the name and carry it as the row's shortcut.
+    mountContextMenu(w.context, undefined, { event: { paneIndex: 0, point: { x: 200, y: 150 }, price: 100, time: T0 + 5 * DAY, index: 5, preventDefault: () => {}, target: { kind: 'empty', id: null } } });
+    const row = root.querySelector('.oac-ctx [data-act="chart-fit"]') as FakeElement;
+    expect(row.querySelector('.oac-ctx__key')!.getAttribute('aria-hidden')).toBe('true');
+    expect(row.getAttribute('aria-keyshortcuts')).toBe('Alt+F');
     expect(before['draw-delete']).toBe(km.format('Delete'));
     for (const [command, combo] of [['copy', 'Alt+Shift+C'], ['cut', 'Alt+Shift+X'], ['paste', 'Alt+Shift+V'], ['duplicate', 'Alt+Shift+D'], ['delete', 'Alt+Shift+Backspace']]) {
       expect(km.rebind(command, combo).ok, command).toBe(true);

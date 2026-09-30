@@ -26,7 +26,7 @@ import type { Chart, ContextMenuEvent, ContextMenuTarget, IndicatorApi, PriceSca
 import { drawingSettingsSchema } from 'openalgo-charts/draw';
 import type { Drawing } from 'openalgo-charts/draw';
 import { editableIds, type WidgetContext } from '../context';
-import { commandChord } from '../keymap';
+import { ariaKeys, commandChord } from '../keymap';
 import { boxInRoot, chromeGlyph, el, openPanel, placePanel, stopOwnKeys, type PanelHandle } from '../form';
 import { mountDrawingProperties } from './drawing-properties';
 import { mountIndicatorPicker } from './indicator-picker';
@@ -482,7 +482,12 @@ export function mountContextMenu(ctx: WidgetContext, anchor?: HTMLElement, opts:
       row.appendChild(mark);
       row.appendChild(el(doc, 'span', 'oac-ctx__label', item.label));
       if (item.note !== undefined && item.note !== '') row.appendChild(el(doc, 'span', 'oac-ctx__note', item.note));
-      if (item.chord !== undefined) row.appendChild(el(doc, 'kbd', 'oac-ctx__key', item.chord));
+      if (item.chord !== undefined) {
+        // Shown beside the name, said as the row's shortcut rather than read into its name.
+        const key = row.appendChild(el(doc, 'kbd', 'oac-ctx__key', item.chord));
+        key.setAttribute('aria-hidden', 'true');
+        row.setAttribute('aria-keyshortcuts', ariaKeys(item.chord));
+      }
       if (item.disabled === true) {
         row.setAttribute('aria-disabled', 'true');
       } else {

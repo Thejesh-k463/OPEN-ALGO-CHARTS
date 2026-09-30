@@ -367,6 +367,10 @@ describe('drawing toolbar', () => {
       expect(row.getAttribute('role'), row.textContent).toBe('menuitem');
       expect(row.getAttribute('aria-checked'), row.textContent).toBeNull();
     }
+    // The chord beside Duplicate is shown, not read into its name; the row says it as its shortcut.
+    const duplicate = menuRow(root, 'Duplicate');
+    expect(duplicate.querySelector('.oac-menu__key')!.getAttribute('aria-hidden')).toBe('true');
+    expect(duplicate.getAttribute('aria-keyshortcuts')).toMatch(/^(Control|Meta)\+D$/);
     w.context.overlays.closeAll();
     control(root, 'width').click();
     const widths = root.querySelectorAll('.oac-menu__row');
