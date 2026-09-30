@@ -470,8 +470,8 @@ export type WidgetBuiltinMessage =
   | "{shown} of {count} object"
   | "{shown} of {count} objects"
   // The shortcuts editor (keymap-editor.ts), since 2.5.10.
-  | "{count} chart shortcut struck through: a drawing tool uses the same chord here and takes precedence."
-  | "{count} chart shortcuts struck through: a drawing tool uses the same chord here and takes precedence."
+  | "{count} chart shortcut struck through: another shortcut uses the same chord here and takes precedence."
+  | "{count} chart shortcuts struck through: another shortcut uses the same chord here and takes precedence."
   | "Change"
   | "Change {name}"
   | "Cancel changing {name}"
@@ -503,6 +503,12 @@ export type WidgetBuiltinMessage =
   | "Remove level {level}"
   | "Search {label}"
   | "{name} (pinned)"
+  | "Keep tool active: {mode}"
+  | "Delete {name}"
+  | "Magnet weak: snaps when a bar or study value is within a few pixels"
+  | "Magnet strong: every anchor lands on the nearest bar or study value"
+  | "Click for weak: snaps when a bar or study value is within a few pixels"
+  | "Click for strong: every anchor lands on the nearest bar or study value"
   // Retained so host translation catalogs written for the armed wording stay
   // type compatible. The widget says active since 2.5.10; a union member takes
   // no doc tag, so COMPATIBILITY.md lists these as deprecated, and 3.0.0 drops them.

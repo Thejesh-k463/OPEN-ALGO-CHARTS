@@ -105,7 +105,7 @@ export function mountGridBar(host: GridBarHost, el: HTMLElement): GridBarHandle 
     return s;
   };
 
-  const layout = button('oac-grid__layout', widgetText(t, 'Layout'));
+  const layout = button('oac-grid__layout', widgetText(t, 'Arrange charts'));
   layout.setAttribute('aria-haspopup', 'menu');
   const layoutGlyph = chrome(doc, chromeIconSvg('layout'));
   const layoutText = h(doc, 'span', 'oac-grid__bar-text');
@@ -113,7 +113,7 @@ export function mountGridBar(host: GridBarHost, el: HTMLElement): GridBarHandle 
   // The tip's title is also the button's name, so it carries the words the button shows.
   host.tips.attach(layout, () => {
     const id = host.layout();
-    return { title: isChartGridLayout(id) ? widgetText(t, 'Layout: {name}', { name: layoutName(t, id) }) : widgetText(t, 'Layout'), side: 'bottom' };
+    return { title: isChartGridLayout(id) ? widgetText(t, 'Arrange charts: {name}', { name: layoutName(t, id) }) : widgetText(t, 'Arrange charts'), side: 'bottom' };
   });
   layout.addEventListener('click', () => host.openMenu('layouts', layout));
   // A host that offers no layouts gets no picker, rather than one that opens empty.

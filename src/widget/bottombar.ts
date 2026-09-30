@@ -136,7 +136,7 @@ export interface BottombarHandle {
 
 /** The glyph and the words for each scale toggle; the phone layout's sheet shows the same words. */
 export const SCALE_TOGGLES: ReadonlyArray<{ id: BottombarScaleToggle; icon: string; key: `schema.${string}`; label: string }> = [
-  { id: 'auto', icon: 'scale-auto', key: 'schema.ui.bottombar.auto', label: 'Auto-fit prices' },
+  { id: 'auto', icon: 'scale-auto', key: 'schema.ui.bottombar.auto', label: 'Auto-fit to the data' },
   { id: 'log', icon: 'scale-log', key: 'schema.ui.bottombar.log', label: 'Logarithmic scale' },
   { id: 'percent', icon: 'scale-percent', key: 'schema.ui.bottombar.percent', label: 'Percent scale' },
 ];

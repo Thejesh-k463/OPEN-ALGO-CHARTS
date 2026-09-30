@@ -403,7 +403,7 @@ export function contextMenuEntries(ctx: WidgetContext, e: ContextMenuEvent, hook
   }
 
   sep();
-  out.push({ id: 'chart-fit', label: widgetText(ctx, 'Fit all bars'), icon: 'fit',
+  out.push({ id: 'chart-fit', label: widgetText(ctx, 'Fit all bars'), icon: 'fit', chord: commandChord(ctx.keymap, 'chart:fitContent'),
     disabled: chart.navigationOptions().zoomEnabled === false,
     run: () => { if (chart.navigationOptions().zoomEnabled !== false) chart.fitContent(); } });
   if (target.kind !== 'time-scale') {

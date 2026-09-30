@@ -1005,7 +1005,7 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
       if (which === 'layouts') module.openLayoutPicker(barHost, anchor);
       else if (which === 'link') module.openLinkMenu(barHost, anchor);
       else module.openCaptureMenu(barHost, anchor);
-    }, error => report(partFailed(text, widgetText(text, which === 'layouts' ? 'Layouts' : which === 'link' ? 'Linking' : 'Capture every chart'), error), 'error'),
+    }, error => report(partFailed(text, widgetText(text, which === 'layouts' ? 'Arrange charts' : which === 'link' ? 'Linking' : 'Capture every chart'), error), 'error'),
     () => !destroyed && anchor.isConnected, { slot: menuSlot, doc, from: anchor }),
   };
   let bar: GridBarHandle | null = null;

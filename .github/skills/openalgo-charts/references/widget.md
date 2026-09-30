@@ -448,7 +448,7 @@ indicator and drawing editors. Drawing actions use existing undo history.
 
 Each pane section lists its stack in draw order, back to front (`objects.stack(pane)`),
 a group at its first member's place and rows outside the stack after. A drawing row
-notes **Behind series** or **Above** and the row it sits on. Dragging a row onto the
+notes **Behind the series** or **Above** and the row it sits on. Dragging a row onto the
 upper half of another puts it under that row in paint order, the lower half over it;
 `dragover` accepts only a drop `objects.canPlace` allows, marking the row
 `is-drop-before` / `is-drop-after`, so an unpaintable drop is refused before release.

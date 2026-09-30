@@ -292,7 +292,7 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
             makeAction('cancel', widgetText(ctx, 'Cancel'), () => { ctx.draw.cancel(); refresh(); }),
             ...historyActions(),
             makeAction('magnet', widgetText(ctx, 'Magnet: {mode}', { mode: widgetText(ctx, `schema.magnet.${opts.rail?.magnetMode() ?? 'off'}`, {}, opts.rail?.magnetMode() ?? 'off') }), () => { opts.rail?.cycleMagnet(); refresh(); }),
-            makeAction('stay', widgetText(ctx, 'Stay: {mode}', { mode: opts.rail?.stayMode() ? widgetText(ctx, 'on') : widgetText(ctx, 'off') }), () => {
+            makeAction('stay', widgetText(ctx, 'Keep tool active: {mode}', { mode: opts.rail?.stayMode() ? widgetText(ctx, 'on') : widgetText(ctx, 'off') }), () => {
               if (opts.rail !== null) opts.rail.setStayMode(!opts.rail.stayMode());
               refresh();
             }),
@@ -316,7 +316,7 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
     bar.appendChild(drawButton);
   }
   if (opts.topbar && opts.indicators) {
-    studiesButton = makeAction('studies', widgetText(ctx, 'Studies'), (anchor) => { opts.onIndicators(anchor); });
+    studiesButton = makeAction('studies', widgetText(ctx, 'Indicators'), (anchor) => { opts.onIndicators(anchor); });
     bar.appendChild(studiesButton);
   }
   if (opts.topbar) {
@@ -350,7 +350,8 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
           goTo.setAttribute('aria-disabled', String(timeBuckets(opts.state().interval) === null));
           body.appendChild(goTo);
         }
-        const theme = makeAction('theme', opts.state().theme === 'dark' ? widgetText(ctx, 'Light theme') : widgetText(ctx, 'Dark theme'), () => {
+        // An action, as the top bar's theme button words it: "Light theme" read as the state.
+        const theme = makeAction('theme', opts.state().theme === 'dark' ? widgetText(ctx, 'Switch to the light theme') : widgetText(ctx, 'Switch to the dark theme'), () => {
           opts.onTheme();
           close();
         });

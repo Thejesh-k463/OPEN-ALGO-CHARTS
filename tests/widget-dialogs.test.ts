@@ -552,6 +552,8 @@ describe('mountDrawingProperties', () => {
     rig.draw.select(t.id);
     mountDrawingProperties(rig.ctx);
     expect(rig.q('[data-key="text.value"] textarea')).not.toBeNull();
+    // The same words as the right-click menu row that opens the same editor.
+    expect((rig.q('[data-act="edit-text"]') as FakeElement).textContent).toContain('Edit text');
     (rig.q('[data-act="edit-text"]') as FakeElement).click();
     expect(rig.q('.oac-textedit')).not.toBeNull();
   });

@@ -260,6 +260,17 @@ describe('mobile mode', () => {
     expect(action(root, 'more')).toBeNull();
   });
 
+  it('uses the words the rest of the widget uses for studies, the theme and the stay toggle', () => {
+    const { w, root } = make({ mobile: 'always' });
+    expect(action(root, 'studies').textContent).toBe('Indicators');
+    action(root, 'more').click();
+    expect(action(root, 'theme').textContent).toMatch(/^Switch to the (light|dark) theme$/);
+    w.context.overlays.closeAll();
+    w.draw.setTool('trend-line');
+    action(root, 'draw').click();
+    expect(action(root, 'stay').textContent).toBe('Keep tool active: off');
+  });
+
   it('keeps an accessible branding link current in the More sheet', () => {
     const { w, doc, root } = make({ mobile: 'always' });
     action(root, 'more').click();

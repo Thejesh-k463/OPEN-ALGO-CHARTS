@@ -98,7 +98,7 @@ export function mountAccountSummary(ctx: WidgetContext, host: HTMLElement, optio
     const account = s.accounts.find(a => a.id === s.selectedId);
     const label = account === undefined ? widgetText(ctx, 'Account') : (account.name ?? account.id);
     write(name, label);
-    pick.setAttribute('aria-label', widgetText(ctx, 'Account: {name}', { name: label }));
+    pick.setAttribute('aria-label', account === undefined ? label : widgetText(ctx, 'Account: {name}', { name: label }));
     pick.disabled = unsupported || s.accounts.length === 0;
     // The ledger is named whenever it is the sandbox one, so a sandbox balance
     // can never be read as money in the live account.

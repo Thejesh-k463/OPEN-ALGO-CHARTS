@@ -211,7 +211,8 @@ describe('the controls block', () => {
     expect(w.draw.magnetMode()).toBe('weak');
     expect(magnet.dataset.mode).toBe('weak');
     expect(magnet.classList.contains('is-weak')).toBe(true);
-    expect(root.querySelector('.oac-statusline__msg')?.textContent).toContain('Magnet weak');
+    // It snaps to study values as well as to the bar, and says so.
+    expect(root.querySelector('.oac-statusline__msg')?.textContent).toBe('Magnet weak: snaps when a bar or study value is within a few pixels');
     magnet.click();
     expect(w.draw.magnetMode()).toBe('strong');
     expect(magnet.classList.contains('is-on')).toBe(true);

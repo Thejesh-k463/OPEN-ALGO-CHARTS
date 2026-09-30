@@ -238,7 +238,7 @@ export function mountDrawingProperties(ctx: WidgetContext, anchor?: HTMLElement,
     if (schema.textIsContent === true && live.length === 1) {
       const row = pane.querySelector('[data-key="text.value"]');
       if (row !== null) {
-        const b = button(doc, { label: widgetText(ctx, 'Edit on chart'), icon: 'text', onClick: () => { mountTextEditor(ctx, undefined, { id: live[0].id }); } });
+        const b = button(doc, { label: widgetText(ctx, 'Edit text'), icon: 'text', onClick: () => { mountTextEditor(ctx, undefined, { id: live[0].id }); } });
         b.dataset.act = 'edit-text';
         b.disabled = why !== null;
         row.appendChild(b);

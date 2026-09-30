@@ -108,7 +108,8 @@ export function mountShortcutsPanel(ctx: WidgetContext, edit: boolean): () => vo
     for (const g of groups) {
       const box = h(doc, 'div', 'oac-keys__group');
       const gh = h(doc, 'div', 'oac-head');
-      gh.textContent = widgetText(ctx, `schema.shortcuts.group.${g.group}`, {}, g.group);
+      // The widget's own group keeps its id for hosts that register into it; a reader sees General.
+      gh.textContent = widgetText(ctx, `schema.shortcuts.group.${g.group}`, {}, g.group === 'Widget' ? 'General' : g.group);
       box.appendChild(gh);
       for (const r of g.rows) {
         const name = rowLabel(g.group, r);
@@ -162,8 +163,8 @@ export function mountShortcutsPanel(ctx: WidgetContext, edit: boolean): () => vo
       cols.appendChild(box);
     }
     note.textContent = shadowed === 0 ? '' : widgetText(ctx, shadowed === 1
-      ? '{count} chart shortcut struck through: a drawing tool uses the same chord here and takes precedence.'
-      : '{count} chart shortcuts struck through: a drawing tool uses the same chord here and takes precedence.', { count: shadowed });
+      ? '{count} chart shortcut struck through: another shortcut uses the same chord here and takes precedence.'
+      : '{count} chart shortcuts struck through: another shortcut uses the same chord here and takes precedence.', { count: shadowed });
     note.hidden = shadowed === 0;
     drawFoot();
     if (focus !== undefined) {

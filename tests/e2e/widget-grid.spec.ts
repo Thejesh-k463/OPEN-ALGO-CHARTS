@@ -276,7 +276,7 @@ test('the grid bar lays out four by four and an uneven layout from the picker, b
   const errors = await mount(page, '2x2', { width: 1360, height: 900 }, '&toolbar=1');
   await readyEvery(page);
   await page.locator('.oac-grid__layout').click();
-  const picker = page.getByRole('menu', { name: 'Layouts' });
+  const picker = page.getByRole('menu', { name: 'Arrange charts' });
   await expect(picker).toBeVisible();
   await expect(picker.getByRole('menuitemradio')).toHaveCount(26);
   await expect(picker.getByRole('menuitemradio', { name: 'Two by two' })).toHaveAttribute('aria-checked', 'true');
@@ -473,7 +473,7 @@ test('at phone width the bar stays usable: menus fit, maximize and capture say w
   await expect(page.locator('.oac-grid__tab')).toHaveCount(4);
   await expect(page.locator('.oac-grid__max')).toHaveAttribute('aria-disabled', 'true');
   await page.locator('.oac-grid__layout').click();
-  const picker = (await page.getByRole('menu', { name: 'Layouts' }).boundingBox())!;
+  const picker = (await page.getByRole('menu', { name: 'Arrange charts' }).boundingBox())!;
   expect(picker.x).toBeGreaterThanOrEqual(0);
   expect(picker.x + picker.width).toBeLessThanOrEqual(400);
   await page.screenshot({ path: info.outputPath('grid-phone-picker.png') });

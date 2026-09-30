@@ -104,7 +104,7 @@ test('drawing rows follow canvas selection and operate on the real drawing with 
   expect(await page.evaluate(() => window.__objectsDemo.widget.draw.get(window.__objectsDemo.lineId)!.locked)).toBe(true);
   await expect(line.getByRole('button', { name: 'Unlock Trend Line', exact: true })).toBeVisible();
   await page.screenshot({ path: info.outputPath('drawing-objects.png') });
-  await line.getByRole('button', { name: 'Remove Trend Line', exact: true }).click();
+  await line.getByRole('button', { name: 'Delete Trend Line', exact: true }).click();
   await expect(line).toHaveCount(0);
   await page.evaluate(() => window.__objectsDemo.widget.draw.undo());
   await expect(line).toHaveCount(1);

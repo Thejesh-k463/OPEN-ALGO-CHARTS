@@ -33,7 +33,7 @@ describe('chart grid bar', () => {
     expect(b.getAttribute('aria-label')).toBe('Chart grid');
     // Each name holds the words the control shows, and says the state the picture only draws.
     expect(b.querySelectorAll('button').map(x => x.getAttribute('aria-label')))
-      .toEqual(['Layout: Large top, three below', 'Maximize the chart', 'Link: Group A', 'Capture every chart']);
+      .toEqual(['Arrange charts: Large top, three below', 'Maximize the chart', 'Link: Group A', 'Capture every chart']);
     expect(b.querySelector('.oac-grid__layout .oac-grid__bar-text')?.textContent).toBe('Large top, three below');
   });
 
@@ -42,10 +42,10 @@ describe('chart grid bar', () => {
     const layout = bar(root).querySelector('.oac-grid__layout')!, link = bar(root).querySelector('.oac-grid__link')!;
     fire(layout, 'pointerenter');
     const tip = (): string | null | undefined => root.querySelector('.oac-tip')?.textContent;
-    expect(tip()).toBe('Layout: Two columns');
+    expect(tip()).toBe('Arrange charts: Two columns');
     grid.setPreset('corner-5');
-    expect(layout.getAttribute('aria-label')).toBe('Layout: Large corner, five around');
-    expect(tip()).toBe('Layout: Large corner, five around');
+    expect(layout.getAttribute('aria-label')).toBe('Arrange charts: Large corner, five around');
+    expect(tip()).toBe('Arrange charts: Large corner, five around');
     grid.setLinkGroup(grid.active().id, null);
     expect(link.getAttribute('aria-label')).toBe('Link: Not linked');
   });
@@ -69,7 +69,7 @@ describe('chart grid bar', () => {
   });
 
   it('names its controls through the host translator', () => {
-    const translate = (key: string, fallback: string): string => ({ 'Chart grid': 'Rejilla', 'Layout: {name}': 'Disposicion: {name}', 'Two by two': 'Dos por dos' } as Record<string, string>)[key] ?? fallback;
+    const translate = (key: string, fallback: string): string => ({ 'Chart grid': 'Rejilla', 'Arrange charts: {name}': 'Disposicion: {name}', 'Two by two': 'Dos por dos' } as Record<string, string>)[key] ?? fallback;
     const { root } = makeGrid({ preset: '2x2', toolbar: true, translate });
     expect(bar(root).getAttribute('aria-label')).toBe('Rejilla');
     expect(bar(root).querySelector('.oac-grid__layout')?.getAttribute('aria-label')).toBe('Disposicion: Dos por dos');
@@ -82,7 +82,7 @@ describe('chart grid layout picker', () => {
     const { root } = makeGrid({ preset: 'left-2', toolbar: true });
     open(root, '.oac-grid__layout');
     const picker = menu(root)!;
-    expect(picker.getAttribute('aria-label')).toBe('Layouts');
+    expect(picker.getAttribute('aria-label')).toBe('Arrange charts');
     const tiles = picker.querySelectorAll('.oac-grid__tile');
     expect(tiles.map(t => t.dataset.layout)).toEqual(Object.keys(CHART_GRID_LAYOUTS));
     expect(picker.querySelectorAll('[role="group"]').map(g => g.getAttribute('aria-label'))).toEqual([

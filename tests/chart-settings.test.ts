@@ -109,6 +109,14 @@ describe('chart settings schema', () => {
     for (const tab of tabs) expect(tab.inputs.length).toBeGreaterThan(0);
   });
 
+  it('names the scale and its auto-fit the way the axis menu does', () => {
+    const { chart } = mount();
+    const byKey = new Map(allInputs(chart).map((i) => [i.key, i]));
+    const mode = byKey.get('scales.mode') as { options?: { value: string; label: string }[] };
+    expect(mode.options?.find((o) => o.value === 'linear')?.label).toBe('Linear');
+    expect(byKey.get('scales.autoScale')?.label).toBe('Auto-fit to the data');
+  });
+
   it('offers no alerts or events tab, because neither ships', () => {
     const { chart } = mount();
     const tabs = chartSettingsSchema(chart);

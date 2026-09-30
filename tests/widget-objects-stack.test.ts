@@ -64,7 +64,7 @@ it('lists a pane back to front: behind the series, each entry with what is place
   const onA = box(r.draw); r.draw.placeInStack(onA.id, { entry: 'indicator:' + a.id }, 'above');
   const front = box(r.draw);
   expect(listed(r.root)).toEqual(['drawing:' + behind.id, 'source:primary', 'indicator:' + a.id, 'drawing:' + onA.id, 'drawing:' + front.id]);
-  expect(row(r.root, 'drawing:' + behind.id).textContent).toContain('Behind series');
+  expect(row(r.root, 'drawing:' + behind.id).textContent).toContain('Behind the series');
   expect(row(r.root, 'drawing:' + onA.id).textContent).toContain('Above SMA');
 });
 

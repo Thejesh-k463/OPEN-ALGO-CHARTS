@@ -271,7 +271,7 @@ export function createObjectsPanelContent(ctx: WidgetContext, opts: ObjectsPanel
     row.el.classList.toggle('is-group-member', item.groupId !== undefined);
     const meta = [kindLabel(item), paneLabel(item), item.visible ? widgetText(ctx, 'Visible') : widgetText(ctx, 'Hidden')];
     // Where a drawing paints, when it is not the default place in front.
-    if (item.kind === 'drawing' && item.band === 'below') meta.push(text('behind', 'Behind series'));
+    if (item.kind === 'drawing' && item.band === 'below') meta.push(text('behind', 'Behind the series'));
     if (item.kind === 'drawing' && item.band === 'series') {
       const under = all.find(other => other.id === item.stackAbove);
       meta.push(text('above', 'Above {name}', { name: under?.name ?? text('hidden', 'a hidden study') }));
@@ -304,9 +304,11 @@ export function createObjectsPanelContent(ctx: WidgetContext, opts: ObjectsPanel
       }
       const label = action === 'visibility' ? (item.visible ? widgetText(ctx, 'Hide') : widgetText(ctx, 'Show'))
         : action === 'lock' ? (item.locked ? widgetText(ctx, 'Unlock') : widgetText(ctx, 'Lock'))
-          : action === 'settings' ? widgetText(ctx, 'Settings') : action === 'focus' ? widgetText(ctx, 'Focus') : widgetText(ctx, 'Remove');
+          : action === 'settings' ? widgetText(ctx, 'Settings') : action === 'focus' ? widgetText(ctx, 'Focus')
+            // A drawing is deleted, as its menu and toolbar say; a study is removed from the chart.
+            : item.kind === 'drawing' ? widgetText(ctx, 'Delete') : widgetText(ctx, 'Remove');
       control.textContent = label;
-      control.setAttribute('aria-label', widgetText(ctx, action === 'visibility' ? (item.visible ? 'Hide {name}' : 'Show {name}') : action === 'lock' ? (item.locked ? 'Unlock {name}' : 'Lock {name}') : action === 'settings' ? 'Settings for {name}' : action === 'focus' ? 'Focus {name}' : 'Remove {name}', { name: item.name }));
+      control.setAttribute('aria-label', widgetText(ctx, action === 'visibility' ? (item.visible ? 'Hide {name}' : 'Show {name}') : action === 'lock' ? (item.locked ? 'Unlock {name}' : 'Lock {name}') : action === 'settings' ? 'Settings for {name}' : action === 'focus' ? 'Focus {name}' : item.kind === 'drawing' ? 'Delete {name}' : 'Remove {name}', { name: item.name }));
       if (row.actions.children[index] !== control) row.actions.insertBefore(control, row.actions.children[index] ?? null);
       index++;
     }

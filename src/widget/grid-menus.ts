@@ -129,7 +129,7 @@ function openRows(host: GridBarHost, anchor: HTMLElement, label: string, build: 
 export function openLayoutPicker(host: GridBarHost, anchor: HTMLElement): () => void {
   const doc = host.doc;
   addWidgetStyles(doc, GRID_MENUS_CSS);
-  const menu = h(doc, 'div', 'oac-grid__picker', { role: 'menu', 'aria-label': widgetText(txt(host), 'Layouts') });
+  const menu = h(doc, 'div', 'oac-grid__picker', { role: 'menu', 'aria-label': widgetText(txt(host), 'Arrange charts') });
   const rows: HTMLElement[][] = [];
   const current = host.layout();
   const byCount = new Map<number, ChartGridLayoutId[]>();

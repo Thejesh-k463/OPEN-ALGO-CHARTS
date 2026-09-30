@@ -16,7 +16,7 @@ export type ChartGridMessage =
   | 'Large left, three on the right' | 'Large top, three below' | 'Large left, four on the right' | 'Large top, four below'
   | 'Large corner, five around' | 'Large corner, seven around'
   // The bar and its menus.
-  | 'Chart grid' | 'Layout' | 'Layout: {name}' | 'Layouts' | '1 chart' | '{count} charts' | '{name}, {count} charts' | 'Link: {name}'
+  | 'Chart grid' | 'Arrange charts' | 'Arrange charts: {name}' | '1 chart' | '{count} charts' | '{name}, {count} charts' | 'Link: {name}'
   | 'Maximize the chart' | 'Restore the grid' | 'There is only one chart' | 'The grid shows one chart at a time at this width' | 'Link' | 'Linking' | 'Link group' | 'Not linked' | 'Group {letter}'
   | 'New group' | 'Rename group' | 'Group name' | 'Save' | 'Cancel' | 'Links in {group}'
   | 'Crosshair' | 'Time range' | 'Symbol' | 'Interval' | 'Chart type' | 'Appearance' | 'Drawings'

@@ -125,6 +125,10 @@ describe('a moved chord does what the old one did', () => {
     };
     const before = menuChords();
     expect(before['draw-copy']).toBe(km.format('Mod+C'));
+    // Fit all bars names the chart's chord too, as every other row with one does.
+    const fit = contextMenuEntries(w.context, { paneIndex: 0, point: { x: 200, y: 150 }, price: 100, time: T0 + 5 * DAY, index: 5, preventDefault: () => {}, target: { kind: 'empty', id: null } })
+      .find((e) => 'id' in e && e.id === 'chart-fit') as { chord?: string };
+    expect(fit.chord).toBe(km.format('Alt+F'));
     expect(before['draw-delete']).toBe(km.format('Delete'));
     for (const [command, combo] of [['copy', 'Alt+Shift+C'], ['cut', 'Alt+Shift+X'], ['paste', 'Alt+Shift+V'], ['duplicate', 'Alt+Shift+D'], ['delete', 'Alt+Shift+Backspace']]) {
       expect(km.rebind(command, combo).ok, command).toBe(true);
@@ -438,11 +442,19 @@ describe('the shortcuts panel as an editor', () => {
     expect(m.w.context.overlays.size()).toBe(0);
   });
 
-  it('says a drawing tool takes precedence, in the active wording', () => {
+  it('heads the own group of the widget General', () => {
+    const m = make();
+    open(m);
+    const heads = m.root.querySelectorAll('.oac-keys__group h3, .oac-keys__group .oac-head').map((h) => h.textContent);
+    expect(heads).toContain('General');
+    expect(heads).not.toContain('Widget');
+  });
+
+  it('says another shortcut takes precedence, in the active wording', () => {
     const m = make();
     open(m);
     const note = m.root.querySelector('.oac-keys__note')?.textContent ?? '';
-    expect(note).toMatch(/a drawing tool uses the same chord here and takes precedence/);
+    expect(note).toMatch(/another shortcut uses the same chord here and takes precedence/);
     expect(note).not.toMatch(/\barm/i);
   });
 
@@ -457,7 +469,7 @@ describe('the shortcuts panel as an editor', () => {
     const asked: string[] = [];
     const m = make({ translate: (key, fallback) => { asked.push(key); return messages[key as WidgetMessageKey] ?? fallback; } });
     open(m);
-    expect(asked).toContain('{count} chart shortcuts struck through: a drawing tool uses the same chord here and takes precedence.');
+    expect(asked).toContain('{count} chart shortcuts struck through: another shortcut uses the same chord here and takes precedence.');
     expect(asked.some((k) => /arms a drawing tool/.test(k))).toBe(false);
   });
 

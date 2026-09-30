@@ -278,9 +278,10 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
   const cycleMagnet = (): MagnetMode => {
     const next = MAGNET_MODES[(MAGNET_MODES.indexOf(prefs.magnet) + 1) % MAGNET_MODES.length];
     setMagnetMode(next);
+    // The magnet snaps to study values too (draw/snap.ts), not only to O/H/L/C.
     ctx.status(next === 'off' ? widgetText(ctx, 'Magnet off')
-      : next === 'weak' ? widgetText(ctx, 'Magnet weak: snaps when O/H/L/C is within a few pixels')
-      : widgetText(ctx, 'Magnet strong: every anchor lands on the nearest O/H/L/C'));
+      : next === 'weak' ? widgetText(ctx, 'Magnet weak: snaps when a bar or study value is within a few pixels')
+      : widgetText(ctx, 'Magnet strong: every anchor lands on the nearest bar or study value'));
     return next;
   };
   const setStayMode = (on: boolean): void => {
@@ -540,8 +541,8 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
       glyphEl: toolGlyph(doc, 'magnet'),
       tip: () => ({
         title: widgetText(ctx, 'Magnet: {mode}', { mode: widgetText(ctx, `schema.magnet.${prefs.magnet}`, {}, prefs.magnet) }),
-        sub: prefs.magnet === 'off' ? widgetText(ctx, 'Click for weak: snaps when O/H/L/C is within a few pixels')
-          : prefs.magnet === 'weak' ? widgetText(ctx, 'Click for strong: every anchor lands on the nearest O/H/L/C')
+        sub: prefs.magnet === 'off' ? widgetText(ctx, 'Click for weak: snaps when a bar or study value is within a few pixels')
+          : prefs.magnet === 'weak' ? widgetText(ctx, 'Click for strong: every anchor lands on the nearest bar or study value')
           : widgetText(ctx, 'Click to switch the magnet off'),
         side: 'right',
       }),
