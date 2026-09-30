@@ -28,8 +28,6 @@ export type ChartGridMessage =
   | 'Show every chart to capture them together'
   // Cells and their marks.
   | 'Chart {index}, linked in {name}' | 'Chart {index}, not linked' | 'Linked in {name}'
-  | 'Drag the bar background to swap charts; double-click it to maximize'
-  | 'Moved the chart to {place}'
   // Chords, in the shortcuts panel's Chart grid section.
   | 'Maximize or restore the chart' | 'Make the chart to the left active' | 'Make the chart to the right active'
   | 'Make the chart above active' | 'Make the chart below active' | 'Swap with the chart to the left'
