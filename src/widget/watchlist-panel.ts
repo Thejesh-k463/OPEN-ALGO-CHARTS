@@ -19,7 +19,7 @@ import type { InstrumentKey, QuoteFeed } from 'openalgo-charts';
 import type { Watchlist, WatchlistCatalog, WatchlistEntry, WatchlistStore } from 'openalgo-charts/workspace';
 import type { WidgetContext } from './context';
 import { button, el, selectBox } from './form';
-import { widgetText } from './localization';
+import { errorText, widgetText } from './localization';
 import type { PanelDockContent } from './panel-dock';
 import { QuoteBoard, quoteChange, type QuoteBoardStatus, type QuoteRowStatus } from './quote-board';
 import { mountSymbolPicker, type SymbolPickerHandle } from './symbol-picker';
@@ -248,7 +248,7 @@ export function mountWatchlistPanel(ctx: WidgetContext, host: HTMLElement, optio
   function fail(error: unknown): void {
     const conflict = error instanceof Error && error.name === 'WatchlistConflictError';
     showMessage(conflict ? text('conflict', 'The watchlists changed in another session. The saved lists are shown.')
-      : error instanceof Error ? error.message : String(error));
+      : errorText(ctx, error));
     void reload();
   }
 
@@ -490,7 +490,7 @@ export function mountWatchlistPanel(ctx: WidgetContext, host: HTMLElement, optio
     catch (error) {
       if (destroyed) return;
       loadFailed = true;
-      showMessage(text('loadFailed', 'Watchlists could not load: {error}', { error: error instanceof Error ? error.message : String(error) }));
+      showMessage(text('loadFailed', 'Watchlists could not load: {error}', { error: errorText(ctx, error) }));
       paint();
     }
   }

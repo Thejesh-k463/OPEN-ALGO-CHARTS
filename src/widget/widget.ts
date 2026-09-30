@@ -52,7 +52,7 @@ import { mountMobile, type MobileHandle, type MobileMode } from './mobile';
 import { mountDrawingToolbar, type DrawingToolbarHandle } from './drawing-toolbar';
 import { createDrawingTemplates, type DrawingTemplates } from './drawing-templates';
 import type { DrawingTemplateStore } from 'openalgo-charts/workspace';
-import { widgetText, type WidgetTranslator } from './localization';
+import { errorText, widgetText, type WidgetTranslator } from './localization';
 import { EventDetailsPopup, type EventDetailsPopupOptions } from './event-details';
 import type { ChartEventClick } from 'openalgo-charts';
 import { mountDataWindow } from './data-window';
@@ -665,7 +665,7 @@ class WidgetImpl implements Widget {
       // Through the shell, so the top bar and the persisted layout follow.
       setChartType: id => this.setChartType(id),
       onError: ({ direction, error }) => {
-        const reason = error instanceof Error ? error.message : String(error);
+        const reason = errorText(this.context, error);
         this._toasts.toast(direction === 'undo'
           ? widgetText(this.context, 'That step could not be undone: {error}', { error: reason })
           : widgetText(this.context, 'That step could not be redone: {error}', { error: reason }), 'error');

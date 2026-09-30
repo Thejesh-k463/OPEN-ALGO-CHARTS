@@ -13,7 +13,7 @@
 import type { AccountSnapshot, AccountStateSource } from 'openalgo-charts/trade';
 import { chromeIconSvg } from 'openalgo-charts/draw';
 import { h, type WidgetContext } from './context';
-import { widgetText } from './localization';
+import { errorText, widgetText } from './localization';
 import { openMenu } from './topbar';
 
 export interface AccountSummaryOptions {
@@ -139,7 +139,7 @@ export function mountAccountSummary(ctx: WidgetContext, host: HTMLElement, optio
         const failed = (reason: string): void => { ctx.toast(widgetText(ctx, 'Could not switch account: {error}', { error: reason }), 'error'); };
         void source.select(account.id).then(
           result => { if (!result.ok && result.cancelled !== true) failed(result.reason); },
-          (error: unknown) => failed(String((error as Error)?.message ?? error)),
+          (error: unknown) => failed(errorText(ctx, error)),
         );
       },
     })), { ariaLabel: widgetText(ctx, 'Accounts') });

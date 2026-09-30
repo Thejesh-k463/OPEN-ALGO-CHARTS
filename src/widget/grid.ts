@@ -47,7 +47,7 @@ import {
 import { defaultWidgetStore } from './storage';
 import { mountBottombar, type BottombarHandle } from './bottombar';
 import type { LayoutsController } from './layouts';
-import { widgetText } from './localization';
+import { errorText, widgetText } from './localization';
 import { applyTokens, widgetTokens, TOKEN_PREFIX, WIDGET_FONT, type WidgetThemeName } from './tokens';
 import { captureName, type MenuRow } from './topbar';
 import { GRID_BAR_CHARTS, createWidget, resolveTheme, SAVE_DEBOUNCE_MS, type Widget, type WidgetOptions } from './widget';
@@ -348,7 +348,7 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
     // first loads take the status line over at once.
     onError: failure => {
       if (destroyed || active === null) return;
-      const error = failure.error instanceof Error ? failure.error.message : String(failure.error);
+      const error = errorText(text, failure.error);
       const context = active.widget.context;
       if (failure.operation !== 'load') {
         context.status(widgetText(text, 'Saved chart settings could not be written: {error}', { error }), 'error');
@@ -947,7 +947,7 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   const copyAll = (): void => {
     const canvas = grid.takeScreenshot();
     if (canvas === null) return;
-    const fail = (error: unknown): void => report(widgetText(text, 'Copy failed: {error}', { error: String((error as Error)?.message ?? error) }), 'error');
+    const fail = (error: unknown): void => report(widgetText(text, 'Copy failed: {error}', { error: errorText(text, error) }), 'error');
     try {
       canvas.toBlob(blob => {
         if (blob === null) { report(widgetText(text, 'The canvas produced no image'), 'error'); return; }
@@ -1435,7 +1435,7 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
       restoring = false;
       // `ready` never rejects: a desk that cannot be applied is reported, as the widget reports its own.
       try { restore(true); } catch (error) {
-        grid.active().widget.context.toast(widgetText(text, 'The saved layout could not be restored: {error}', { error: error instanceof Error ? error.message : String(error) }), 'error');
+        grid.active().widget.context.toast(widgetText(text, 'The saved layout could not be restored: {error}', { error: errorText(text, error) }), 'error');
       } finally { root.style.visibility = ''; }
     });
   }

@@ -1,4 +1,4 @@
-import { widgetText, type WidgetTranslationOptions } from './localization';
+import { errorText, widgetText, type WidgetTranslationOptions } from './localization';
 /**
  * The top bar: symbol, interval, chart type, indicators, settings, capture
  * and theme, left to right.
@@ -528,11 +528,11 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
           const Item = (globalThis as { ClipboardItem: new (parts: Record<string, Blob>) => unknown }).ClipboardItem;
           (globalThis.navigator.clipboard as unknown as { write(items: unknown[]): Promise<void> })
             .write([new Item({ 'image/png': blob })])
-            .then(() => ctx.status(widgetText(ctx, 'Chart copied')), (err: unknown) => ctx.status(widgetText(ctx, 'Copy failed: {error}', { error: String((err as Error)?.message ?? err) }), 'error'));
+            .then(() => ctx.status(widgetText(ctx, 'Chart copied')), (err: unknown) => ctx.status(widgetText(ctx, 'Copy failed: {error}', { error: errorText(ctx, err) }), 'error'));
         }, 'image/png');
       } },
       { label: widgetText(ctx, 'Download chart data (CSV)'), disabled: !dataAvailable(), onSelect: () => {
-        const failed = (error: unknown): void => ctx.status(widgetText(ctx, 'Data export failed: {error}', { error: String((error as Error)?.message ?? error) }), 'error');
+        const failed = (error: unknown): void => ctx.status(widgetText(ctx, 'Data export failed: {error}', { error: errorText(ctx, error) }), 'error');
         // The dialog loads on first use (lazy.ts), and the chart it captures is checked again when it arrives.
         usePart(dataExportPart, module => {
           try {

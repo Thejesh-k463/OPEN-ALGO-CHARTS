@@ -20,7 +20,7 @@ import type { Drawing, DrawingChangeEvent } from 'openalgo-charts/draw';
 import type { DrawingTemplate, DrawingTemplateCatalog, DrawingTemplateStore, DrawingTemplateValues } from 'openalgo-charts/workspace';
 import { editableIds, type WidgetContext } from './context';
 import { button, dialogFrame, el, openPanel, type PanelHandle } from './form';
-import { widgetText } from './localization';
+import { errorText, widgetText } from './localization';
 
 /** What the widget holds for a template store; see `createDrawingTemplates`. */
 export interface DrawingTemplates {
@@ -143,7 +143,7 @@ export function createDrawingTemplates(ctx: WidgetContext, store: DrawingTemplat
       if (!destroyed) ctx.toast(done, 'success');
       return result;
     } catch (error) {
-      if (!destroyed) ctx.toast(widgetText(ctx, 'The drawing template could not be saved: {error}', { error: error instanceof Error ? error.message : String(error) }), 'error');
+      if (!destroyed) ctx.toast(widgetText(ctx, 'The drawing template could not be saved: {error}', { error: errorText(ctx, error) }), 'error');
       throw error;
     }
   };
@@ -285,7 +285,7 @@ export function openTemplateNamePrompt(
       await save(name);
       handle.close();
     } catch (reason) {
-      error.textContent = reason instanceof Error ? reason.message : String(reason);
+      error.textContent = errorText(ctx, reason);
       error.hidden = false;
       input.setAttribute('aria-invalid', 'true');
     } finally { busy = false; }

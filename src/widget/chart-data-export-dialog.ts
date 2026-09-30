@@ -1,7 +1,7 @@
 import type { ChartDataCsvOptions } from 'openalgo-charts';
 import type { WidgetContext } from './context';
 import { button, dialogFrame, el, openPanel, renderForm, type FormControl, type PanelHandle } from './form';
-import { widgetText } from './localization';
+import { errorText, widgetText } from './localization';
 
 let sequence = 0;
 
@@ -90,7 +90,7 @@ export function openChartDataExportDialog(
         range, alignment: draft.alignment === 'display' ? 'display' : 'source' });
       close();
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const message = errorText(ctx, cause);
       error.textContent = message;
       ctx.status(widgetText(ctx, 'Data export failed: {error}', { error: message }), 'error');
     }

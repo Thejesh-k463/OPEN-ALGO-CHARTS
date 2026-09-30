@@ -390,6 +390,14 @@ describe('the Layouts menu', () => {
     expect(widget.context.document.activeElement).toBe(must(menu, '[data-action="save"]'));
   });
 
+  it('says why the list could not be read in words, even when the store rejects with a plain object', async () => {
+    const repo = account().repo();
+    repo.load = () => Promise.reject({ code: 1 });
+    const { widget, root } = await make({}, repo);
+    const menu = await openMenu(widget, root);
+    expect(must(menu, '.oac-layouts__error').textContent).toBe('The saved layouts could not be read: unknown error');
+  });
+
   it('says the list could not be read, and does not go on saying it is loading', async () => {
     const repo = account().repo();
     let fail = false;

@@ -492,6 +492,8 @@ export type WidgetBuiltinMessage =
   | "{chord} presses the focused control. Add {mod} or {alt}."
   | "That key cannot be used here. Press another."
   | "Nothing changed."
+  // The label pass, since 2.5.10.
+  | "unknown error"
   // Retained so host translation catalogs written for the armed wording stay
   // type compatible. The widget says active since 2.5.10; a union member takes
   // no doc tag, so COMPATIBILITY.md lists these as deprecated, and 3.0.0 drops them.
@@ -540,4 +542,14 @@ export function widgetText(context: WidgetTranslationOptions, key: WidgetMessage
     } catch { /* A missing host catalog must not disable a chart control. */ }
   }
   return message.replace(PARAMETER, (token, name: string) => Object.prototype.hasOwnProperty.call(values, name) ? String(values[name]) : token);
+}
+
+/**
+ * The words of a failure for a message: its own message, else a fallback. A
+ * host store, feed or clipboard may reject with a plain object or an Error
+ * with no message, which String() prints as "[object Object]" or nothing.
+ */
+export function errorText(context: WidgetTranslationOptions, error: unknown): string {
+  const text = typeof error === 'string' ? error : (error as { message?: unknown } | null | undefined)?.message;
+  return typeof text === 'string' && text.trim() !== '' ? text : widgetText(context, 'unknown error');
 }

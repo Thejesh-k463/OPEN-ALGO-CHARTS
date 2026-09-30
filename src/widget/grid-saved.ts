@@ -30,7 +30,7 @@ import type { ChartGrid } from './grid';
 import { createLayoutsController, type LayoutsController, type LayoutTarget } from './layouts';
 import { layoutChartState, widgetLayoutTarget } from './layouts-target';
 import { layoutStatusText, showLayoutsMenu, type LayoutsMenuSlot } from './layouts-widget';
-import { widgetText } from './localization';
+import { errorText, widgetText } from './localization';
 import type { WidgetChartState } from './widget';
 
 /** What the saved layouts read from the grid. */
@@ -120,7 +120,7 @@ export function attachGridSaved(host: GridSavedHost): GridSaved | null {
       const opened = await own.open(catalog.activeWorkspaceId);
       if (!opened.applied && !destroyed) report(text('notReopened', 'The last layout could not open here: {error}', { error: opened.reason ?? '' }));
     }).catch((error: unknown) => {
-      if (!destroyed) report(text('notLoaded', 'Saved layouts could not be read: {error}', { error: error instanceof Error ? error.message : String(error) }));
+      if (!destroyed) report(text('notLoaded', 'Saved layouts could not be read: {error}', { error: errorText(host.context(), error) }));
     });
   }
   return {
