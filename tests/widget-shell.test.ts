@@ -273,6 +273,8 @@ describe('symbol, interval and chart type', () => {
     expect(a.root.querySelectorAll('.oac-pills > button').map((b) => b.dataset.interval)).toEqual(['1m', '5m', '15m', '1h', '1d', '1w', '2h']);
     const b = make({ intervals: ['5m', '1d'], interval: '1d' });
     expect(b.root.querySelectorAll('.oac-pills > button').map((x) => x.textContent)).toEqual(['5m', 'D']);
+    // Each name carries the text the pill shows.
+    expect(b.root.querySelectorAll('.oac-pills > button').map((x) => x.getAttribute('aria-label'))).toEqual(['Interval 5m', 'Interval D']);
     (b.root.querySelector('.oac-pills > button[data-interval="5m"]') as FakeElement).click();
     expect(b.w.interval()).toBe('5m');
   });

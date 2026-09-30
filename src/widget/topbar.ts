@@ -360,7 +360,7 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
   const pills = h(doc, 'div', 'oac-pills', { role: 'radiogroup', 'aria-label': widgetText(ctx, 'Interval') });
   const pillByCode = new Map<string, HTMLButtonElement>();
   for (const code of opts.intervals) {
-    const b = h(doc, 'button', undefined, { type: 'button', role: 'radio', 'aria-pressed': 'false', 'aria-label': widgetText(ctx, 'Interval {code}', { code }) });
+    const b = h(doc, 'button', undefined, { type: 'button', role: 'radio', 'aria-pressed': 'false', 'aria-label': widgetText(ctx, 'Interval {code}', { code: intervalLabel(code) }) });
     b.textContent = intervalLabel(code);
     b.dataset.interval = code;
     b.addEventListener('click', () => opts.onInterval(code));
