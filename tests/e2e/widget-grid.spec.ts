@@ -587,6 +587,8 @@ test('the grid bar keeps the desk saved layouts: save, change, and the saved des
   await page.evaluate(() => (window as any).fixture.grid.setPreset('1x1'));
   await expect(control).toHaveAttribute('data-attention', 'true');
   await expect(control).toHaveAccessibleName('Layouts: Morning desk, Unsaved changes');
+  await control.focus();
+  await expect(control).toHaveAccessibleName('Layouts: Morning desk, Unsaved changes');
   // The grid's own desk comes back as the one chart, and then the layout that was active opens over it.
   await page.reload();
   await page.waitForFunction(version => (window as any).fixture?.version === version, VERSION);

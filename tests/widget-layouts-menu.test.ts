@@ -123,6 +123,11 @@ describe('the Layouts button', () => {
     expect(button.dataset.attention).toBe('true');
     // The mark is a dot; the name says it too.
     expect(button.getAttribute('aria-label')).toBe('Layouts: Morning, Unsaved changes');
+    // Reaching it by keyboard or pointer re-reads the tip, and keeps the status in the name.
+    fire(button, 'focus');
+    expect(button.getAttribute('aria-label')).toBe('Layouts: Morning, Unsaved changes');
+    fire(button, 'pointerenter');
+    expect(button.getAttribute('aria-label')).toBe('Layouts: Morning, Unsaved changes');
     expect(widget.openLayouts()).toBe(true);
   });
 });

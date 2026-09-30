@@ -72,6 +72,10 @@ test('saves, renames, reloads and reopens a layout, asking before it drops a cha
 
   // A change, then Save.
   await page.locator('.oac-pills button[data-interval="15m"]').click();
+  // The dot's meaning is in the name, and stays there when the keyboard reaches the button.
+  await expect(page.locator('.oac-topbar__layouts')).toHaveAttribute('aria-label', /, Unsaved changes$/);
+  await page.locator('.oac-topbar__layouts').focus();
+  await expect(page.locator('.oac-topbar__layouts')).toHaveAttribute('aria-label', /, Unsaved changes$/);
   await openMenu(page);
   await expect(menu(page).locator('.oac-layouts__line')).toHaveText('Unsaved changes');
   await expect(page.locator('.oac-topbar__layouts')).toHaveAttribute('data-attention', 'true');

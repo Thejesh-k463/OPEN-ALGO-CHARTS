@@ -428,16 +428,16 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
     layouts.appendChild(label);
     ctx.tips.attach(layouts, () => {
       const name = held();
-      return { title: name === null ? title : `${title}: ${name}`, sub: layoutStatusText(ctx, controller.state()), side: 'bottom' };
+      const state = controller.state();
+      const said = name === null ? title : `${title}: ${name}`;
+      const status = layoutStatusText(ctx, state);
+      // The mark is a dot: a screen reader hears what it means with the name.
+      return { title: said, label: layoutNeedsAttention(state) ? `${said}, ${status}` : undefined, sub: status, side: 'bottom' };
     });
     const paintLayouts = (): void => {
-      const state = controller.state();
-      const attention = layoutNeedsAttention(state);
       label.textContent = held() ?? title;
-      layouts.dataset.attention = String(attention);
+      layouts.dataset.attention = String(layoutNeedsAttention(controller.state()));
       ctx.tips.refreshLabel(layouts);
-      // The mark is a dot: a screen reader hears what it means with the name.
-      if (attention) layouts.setAttribute('aria-label', `${layouts.getAttribute('aria-label') ?? title}, ${layoutStatusText(ctx, state)}`);
     };
     offLayouts = controller.subscribe(paintLayouts);
     paintLayouts();

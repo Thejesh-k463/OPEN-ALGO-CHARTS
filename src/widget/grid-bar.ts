@@ -165,14 +165,15 @@ export function mountGridBar(host: GridBarHost, el: HTMLElement): GridBarHandle 
     b.append(chrome(doc, chromeIconSvg('folder')), name);
     host.tips.attach(b, () => {
       const at = held();
-      return { title: at === null ? title : `${title}: ${at}`, sub: host.saved?.status(), side: 'bottom' };
+      const said = at === null ? title : `${title}: ${at}`;
+      const status = host.saved?.status();
+      // The dot's meaning stays in the name whenever the dot shows.
+      return { title: said, label: layoutNeedsAttention(controller.state()) ? `${said}, ${status ?? ''}` : undefined, sub: status, side: 'bottom' };
     });
     const paint = (): void => {
-      const attention = layoutNeedsAttention(controller.state());
       name.textContent = held() ?? title;
-      b.dataset.attention = String(attention);
+      b.dataset.attention = String(layoutNeedsAttention(controller.state()));
       host.tips.refreshLabel(b);
-      if (attention) b.setAttribute('aria-label', `${b.getAttribute('aria-label') ?? title}, ${host.saved?.status() ?? ''}`);
     };
     offSaved = controller.subscribe(paint);
     paint();
