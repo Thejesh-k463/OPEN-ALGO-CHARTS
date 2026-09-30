@@ -2,7 +2,19 @@ import { test, expect, type Page } from '@playwright/test';
 import type { Chart, IndicatorApi, IndicatorRequestState, ReplayController, SeriesApi } from '../../src/index';
 import type { Tier2Context, Tier2Descriptor, Tier2Point } from '../../src/indicators/external';
 import type * as Charts from '../../src/index';
-import { stockBars } from '../../website/components/synthetic-market';
+import type { StockBar } from '../../website/components/synthetic-market';
+import { readFileSync } from 'node:fs';
+
+// The generator is built from its source string, as the page below builds it,
+// rather than imported: website/ declares no module type, so under Node 20 the
+// test loader reads that file as CommonJS and a named import of it fails to
+// link, which stops the whole suite before a single test is listed.
+const STOCK_BARS_SOURCE = readFileSync(new URL('../../website/components/synthetic-market.ts', import.meta.url), 'utf8')
+  .split('STOCK_BARS_SOURCE = `')[1].split('`;')[0];
+const stockBars = new Function(`${STOCK_BARS_SOURCE}\nreturn stockBars;`)() as (
+  startTime: number, count: number, intervalSec: number, startPrice: number, seed: number,
+  volatility?: number, baseVolume?: number,
+) => StockBar[];
 
 type Request = Tier2Context & { asOf?: number; requestState?: Readonly<IndicatorRequestState> };
 type Descriptor = Tier2Descriptor & { supportsReplay?: boolean };
