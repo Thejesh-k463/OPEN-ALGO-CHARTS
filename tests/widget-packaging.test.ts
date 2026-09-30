@@ -129,7 +129,9 @@ describe('the widget shares one engine with the page rather than inlining a seco
   });
 
   it('writes its first-use parts beside it, and keeps the shell in the tier file', () => {
-    expect(widget.output.chunkFileNames).toBe('openalgo-charts.widget.[name].mjs');
+    // The hash: a part imports the tier's helpers by minified names, so a
+    // tier file must never be handed a part a cache kept from another build.
+    expect(widget.output.chunkFileNames).toBe('openalgo-charts.widget.[name]-[hash].mjs');
     // Without it rollup moves the shell into a chunk behind a re-exporting
     // entry, and the tier's size row would measure only that entry.
     expect(widget.preserveEntrySignatures).toBe('allow-extension');
@@ -146,6 +148,10 @@ describe('the widget is budgeted', () => {
     const own = sizeRows.filter((r) => pathsOf(r).length === 1 && pathsOf(r)[0] === WIDGET_BUNDLE);
     expect(own).toHaveLength(1);
     expect(own[0].limit).toMatch(/^\d+(?:\.\d+)? kB$/);
+  });
+
+  it('its first-use parts have a row, by glob, since each name changes with its content', () => {
+    expect(sizeRows.filter((r) => r.path === 'dist/openalgo-charts.widget.*.mjs')).toHaveLength(1);
   });
 
   it('the Everything row measures every tier bundle, the widget included', () => {
