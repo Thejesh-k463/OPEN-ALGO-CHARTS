@@ -494,10 +494,13 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
     for (const c of cells) c.element.hidden = solo() && c !== active;
     for (const split of splits) split.hidden = solo();
     tabs.hidden = !solo() || cells.length < 2;
-    tabs.replaceChildren(...(tabs.hidden ? [] : cells.map(c => {
+    const said = (c: Cell): string => `${c.widget.symbol()} ${c.widget.interval()}`.trim();
+    tabs.replaceChildren(...(tabs.hidden ? [] : cells.map((c, i) => {
       // One tab stop for the row; the arrows walk it (see the listener below).
       const tab = h(doc, 'button', 'oac-grid__tab', { type: 'button', role: 'tab', 'aria-selected': String(c === active), tabindex: c === active ? '0' : '-1' });
-      tab.textContent = `${c.widget.symbol()} ${c.widget.interval()}`.trim();
+      tab.textContent = said(c);
+      // Two charts of one symbol and interval are told apart by their place.
+      if (cells.some(o => o !== c && said(o) === said(c))) tab.setAttribute('aria-label', `${said(c)} (${i + 1})`);
       tab.addEventListener('click', () => grid.setActive(c.id, { focus: true }));
       return tab;
     })));

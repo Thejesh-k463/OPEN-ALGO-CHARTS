@@ -977,11 +977,20 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
 
   let lastGroup: string | undefined;
   let head: HTMLElement | undefined;
+  // Where rows go: the form, or the group of the heading above them.
+  let box = host;
   let inline: { id: string; row: HTMLElement; ctl: HTMLElement } | null = null;
   for (const c of controls) {
     if (c.group !== undefined && c.group !== lastGroup) {
       head = el(doc, 'div', 'oac-head', c.group);
       host.appendChild(head);
+      // The rows under a heading are a group it names, so a second Color says
+      // whose. The box takes no layout (display: contents), the rows stay the grid's.
+      head.id = idFor(`group-${members.length}`);
+      box = el(doc, 'div', 'oac-form__group');
+      box.setAttribute('role', 'group');
+      box.setAttribute('aria-labelledby', head.id);
+      host.appendChild(box);
       inline = null;
     }
     lastGroup = c.group ?? lastGroup;
@@ -1019,7 +1028,7 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
       const ctl = el(doc, 'div', 'oac-row__ctl');
       ctl.appendChild(body);
       row.appendChild(ctl);
-      host.appendChild(row);
+      box.appendChild(row);
       // The body is the dialog's own markup, so there is nothing here to
       // disable: a condition can only show or hide it.
       member(c, row, head, [], [row]).offEl = null;
@@ -1058,7 +1067,7 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
       }
       if (pair.enabled === undefined && first !== undefined) bindLabel(label, first, c);
       row.appendChild(ctl);
-      host.appendChild(row);
+      box.appendChild(row);
       // Inert only when both halves are: one live half keeps the row live and
       // dims the swatch with nothing to paint.
       member(c, row, head, fields, [row]).offKeys = [pair.up.key, pair.down.key];
@@ -1106,7 +1115,7 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
       inline = { id: c.inline as string, row, ctl: row.lastChild as HTMLElement };
     }
     errorLine(c.key, f.b, row);
-    host.appendChild(row);
+    box.appendChild(row);
     const m = member(c, row, head, [f.b], parts);
     m.titles = titles;
     rows.get(c.key)!.member = m;

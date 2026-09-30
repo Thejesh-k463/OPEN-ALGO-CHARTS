@@ -166,6 +166,8 @@ describe('arming a tool', () => {
     expect(root.querySelector('.oac-fly')).not.toBeNull();   // pinning keeps the list open
     const fav = rail.querySelector('.oac-rail__fav') as FakeElement;
     expect(fav.dataset.tools).toBe('ellipse');
+    // Not the name of the group button that may show the same tool.
+    expect(fav.getAttribute('aria-label')).toBe('Ellipse (pinned)');
     fire(root.ownerDocument.body, 'pointerdown');
     fire(fav, 'contextmenu');
     const unpin = root.querySelector('.oac-menu .oac-menu__row') as FakeElement;

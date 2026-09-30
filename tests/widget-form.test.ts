@@ -542,6 +542,16 @@ suite('renderForm', () => {
     expect(rows[1].querySelectorAll('input[type=color]').length).toBe(2);
   });
 
+  it('puts the rows under a heading in a group it names, so a second Color says whose', () => {
+    const { host } = mount();
+    const groups = host.querySelectorAll('[role="group"]');
+    expect(groups).toHaveLength(2);
+    const heads = host.querySelectorAll('.oac-head');
+    expect(groups.map((g) => host.querySelector(`#${g.getAttribute('aria-labelledby')}`))).toEqual(heads);
+    expect(groups[0].querySelectorAll('.oac-row').map((r) => r.dataset.key)).toEqual(['a.on', 'a.n']);
+    expect(groups[1].querySelectorAll('.oac-row').map((r) => r.dataset.key)).toEqual(['a.pair', 'a.sel', 'a.op', 'a.txt']);
+  });
+
   it('draws group heads once, a switch in the switch column, and a pair as one row of two swatches', () => {
     const { host } = mount();
     expect(host.querySelectorAll('.oac-head').map((h) => h.textContent)).toEqual(['One', 'Two']);

@@ -77,6 +77,8 @@ export function mountIndicatorInputControls(ctx: WidgetContext, options: Indicat
     return true;
   };
 
+  // A study with two such inputs has two of each button, so each is named with its input.
+  const labelOf = (item: IndicatorInput): string => widgetText(ctx, `schema.indicator.${instance.indicatorId}.${item.key}.label`, {}, item.label);
   for (const input of options.inputs) {
     const field = options.field(input.key);
     if (!field) continue;
@@ -84,6 +86,7 @@ export function mountIndicatorInputControls(ctx: WidgetContext, options: Indicat
       const trigger = button(ctx.document, { label: widgetText(ctx, 'Search'), onClick: () => {
         if (current()) picker?.open(field.value);
       } });
+      trigger.setAttribute('aria-label', widgetText(ctx, 'Search {label}', { label: labelOf(input) }));
       trigger.dataset.inputAction = input.key;
       field.parentElement?.appendChild(trigger); buttons.push(trigger);
       refreshers.push(() => {
@@ -124,6 +127,8 @@ export function mountIndicatorInputControls(ctx: WidgetContext, options: Indicat
     // from one click and commits them in one patch.
     const time = input.type === 'price' && input.timeKey !== undefined
       ? options.inputs.find(item => item.key === input.timeKey && item.type === 'timestamp') : undefined;
+    const said = time ? widgetText(ctx, 'Pick {time} and {price} on the chart', { time: labelOf(time), price: labelOf(input) })
+      : widgetText(ctx, 'Pick {label} on the chart', { label: labelOf(input) });
     const trigger = button(ctx.document, { label: widgetText(ctx, time ? 'Pick point on chart' : 'Pick on chart'), onClick: () => {
       if (!current()) return;
       const why = reason();
@@ -133,9 +138,7 @@ export function mountIndicatorInputControls(ctx: WidgetContext, options: Indicat
       const target = input.type === 'price' ? studyInputTarget(ctx.chart, instance, input.key)! : undefined;
       const resume = options.suspend?.() ?? ctx.overlays.suspend!(options.panel);
       const hint = el(ctx.document, 'div', 'oac-input-pick');
-      hint.appendChild(el(ctx.document, 'span', undefined, time
-        ? widgetText(ctx, 'Pick {time} and {price} on the chart', { time: time.label, price: input.label })
-        : widgetText(ctx, 'Pick {label} on the chart', { label: input.label })));
+      hint.appendChild(el(ctx.document, 'span', undefined, said));
       const cancel = button(ctx.document, { label: widgetText(ctx, 'Cancel pick'), onClick: cancelPick });
       hint.appendChild(cancel);
       hint.addEventListener('pointerdown', event => event.stopPropagation());
@@ -189,6 +192,7 @@ export function mountIndicatorInputControls(ctx: WidgetContext, options: Indicat
         ctx.toast(error instanceof Error ? error.message : widgetText(ctx, 'The value could not be picked'), 'error');
       }
     } });
+    trigger.setAttribute('aria-label', said);
     trigger.dataset.inputAction = input.key;
     field.parentElement?.appendChild(trigger); buttons.push(trigger);
     refreshers.push(() => { const why = reason(); trigger.disabled = why !== null; trigger.title = why ?? ''; });

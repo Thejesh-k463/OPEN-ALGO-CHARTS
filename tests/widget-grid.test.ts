@@ -411,6 +411,8 @@ describe('chart grid splitters and resizing', () => {
     expect(root.querySelectorAll('.oac-grid__split').every(split => split.hidden)).toBe(true);
     const tabs = root.querySelectorAll('.oac-grid__tab');
     expect(tabs.map(tab => tab.textContent)).toEqual(['AAA 1m', 'AAA 1m', 'ZZZ 1m', 'AAA 1m']);
+    // Tabs that read the same are named by their place, a unique one by its text.
+    expect(tabs.map(tab => tab.getAttribute('aria-label'))).toEqual(['AAA 1m (1)', 'AAA 1m (2)', null, 'AAA 1m (4)']);
     tabs[2].click();
     expect(grid.active().id).toBe(grid.cells()[2].id);
     expect(grid.cells().map(cell => (cell.element as unknown as FakeElement).hidden)).toEqual([true, true, false, true]);

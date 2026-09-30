@@ -275,6 +275,7 @@ select.field { cursor: pointer; padding-right: 24px; }
 .set-group { color: var(--faint); font-size: 10px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .8px; line-height: 15px; margin: 8px 0 1px; }
 .set-group:first-child { margin-top: 0; }
+.set-rows { display: contents; }
 /* A 3px gap with 24px rows: the row itself carries the breathing room, and
    the densest tab (Appearance, 17 controls over 4 groups) has to fit in one
    panel without a scrollbar. Groups get their air from the header margin. */

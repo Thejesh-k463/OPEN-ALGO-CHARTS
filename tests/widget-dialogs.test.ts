@@ -13,7 +13,7 @@ import {
   Chart, darkTheme, readChartSettings, registerIndicator, chartSettingsSchema,
 } from 'openalgo-charts';
 import type { Bar, ContextMenuEvent, ContextMenuTarget, IndicatorDescriptor } from 'openalgo-charts';
-import { DrawingController, registerBuiltinDrawingTools, DEFAULT_FIB, type FibLevel } from 'openalgo-charts/draw';
+import { DrawingController, registerBuiltinDrawingTools, DEFAULT_FIB, formatRatio, type FibLevel } from 'openalgo-charts/draw';
 import { createOverlayStack, WidgetBus, WidgetStorage, type OverlayStack, type WidgetContext } from '../src/widget/context';
 import {
   mountSettingsDialog, tabDefaults,
@@ -585,6 +585,24 @@ describe('mountLevelEditor', () => {
     (rig.q('.oac-color__palette button') as FakeElement).click();
     expect(rig.draw.get(f.id)?.style.levels?.[0].color).toBe('#4f8cff');
   });
+  it('names the controls of each row by its level, so no two rows read the same', () => {
+    const rig = makeRig();
+    const f = fib(rig.draw);
+    rig.draw.select(f.id);
+    mountLevelEditor(rig.ctx);
+    const rows = rig.qa('.oac-levels__row');
+    const names = (selector: string): string[] => rows.map((row) => (row.querySelector(selector) as FakeElement).getAttribute('aria-label') ?? '');
+    for (const selector of ['input[type="checkbox"]', 'input[type="number"]', '.oac-color__trigger', 'input[type="text"]', '.oac-levels__x']) {
+      expect(new Set(names(selector)).size, selector).toBe(rows.length);
+    }
+    expect(names('.oac-levels__x')[1]).toBe(`Remove level ${formatRatio(DEFAULT_FIB[1].ratio)}`);
+    // A changed ratio renames its row at once.
+    const ratio = rows[1].querySelector('input[type="number"]') as FakeElement;
+    ratio.value = '0.25';
+    ratio.fire('change');
+    expect((rows[1].querySelector('.oac-levels__x') as FakeElement).getAttribute('aria-label')).toBe(`Remove level ${formatRatio(0.25)}`);
+  });
+
   it('draws one row per level and writes the whole list back on every edit', () => {
     const rig = makeRig();
     const f = fib(rig.draw);

@@ -352,7 +352,8 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
     const b = makeBtn({
       cls: 'oac-rail__tool oac-rail__fav',
       glyphEl: toolGlyph(doc, id),
-      tip: () => ({ title: translatedTool(id), chord: chordOf(id), sub: widgetText(ctx, 'Pinned. Right-click to unpin'), side: 'right' }),
+      // Its name is not the group button's, which may show the same tool.
+      tip: () => ({ title: widgetText(ctx, '{name} (pinned)', { name: translatedTool(id) }), chord: chordOf(id), sub: widgetText(ctx, 'Pinned. Right-click to unpin'), side: 'right' }),
       onClick: (e) => {
         if (e.detail >= 2 && !prefs.stay) { hold(id); return; }
         setDrawLock(false);

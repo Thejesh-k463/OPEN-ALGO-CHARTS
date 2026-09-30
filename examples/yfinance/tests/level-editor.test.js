@@ -31,6 +31,15 @@ describe('buildLevelEditor', () => {
   };
   beforeEach(() => { installDom(); changes = []; labels = []; build(); });
 
+  it('names the controls of each row by its level, so no two rows read the same', () => {
+    const names = (selector) => rows().map((row) => row.querySelector(selector).getAttribute('aria-label'));
+    for (const selector of ['input[type="checkbox"]', 'input[type="number"]', 'input[type="color"]', 'input[type="text"]', '.lved__x']) {
+      expect(new Set(names(selector)).size, selector).toBe(3);
+    }
+    expect(names('.lved__x')[1]).toMatch(/^Remove level /);
+    expect(names('input[type="color"]').every((name) => !name.includes('Colour'))).toBe(true);
+  });
+
   it('draws one row per level with its state, and does not touch the list it was given', () => {
     const r = rows();
     expect(r.length).toBe(3);

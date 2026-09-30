@@ -179,7 +179,7 @@ describe('widget translation contract', () => {
     widget.context.overlays.closeAll();
     mountLevelEditor(widget.context, undefined, { ids: [drawing.id] });
     expect(root.querySelector('[aria-label="Local Levels"]')).not.toBeNull();
-    expect(root.querySelector('[aria-label="Local Ratio"]')).not.toBeNull();
+    expect(root.querySelector('.oac-levels__row input[type="number"]')?.getAttribute('aria-label')).toMatch(/^Local Level .* ratio$/);
     widget.context.overlays.closeAll();
     openShortcutsPanel(widget.context);
     expect(root.querySelector('.oac-keys-dialog')?.getAttribute('aria-label')).toBe('Local Keyboard shortcuts');

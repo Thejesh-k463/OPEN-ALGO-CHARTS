@@ -164,7 +164,7 @@ export function renderInputRows(host, inputs, values, onChange, unavailable) {
   applyTokens(host, widgetTokens(chartTheme(), currentTheme()));
   host.innerHTML = '';
   const members = [];
-  let group = null, head = null, inline = null;
+  let group = null, head = null, inline = null, box = host;
   for (const input of inputs) {
     if (input.group && input.group !== group) {
       group = input.group;
@@ -172,6 +172,14 @@ export function renderInputRows(host, inputs, values, onChange, unavailable) {
       head.className = 'set-group';
       head.textContent = group;
       host.appendChild(head);
+      // The rows under a heading are a group it names, so a second Up or
+      // Color says whose; the box takes no layout of its own.
+      head.id = `${host.id}-group-${members.length}`;
+      box = document.createElement('div');
+      box.className = 'set-rows';
+      box.setAttribute('role', 'group');
+      box.setAttribute('aria-labelledby', head.id);
+      host.appendChild(box);
       inline = null;
     }
     if (inline && (!inlinable(input) || input.inline !== inline.id)) inline = null;
@@ -183,7 +191,7 @@ export function renderInputRows(host, inputs, values, onChange, unavailable) {
     const row = input.type === 'colorPair'
       ? colorPairRow(host, input, values, onChange, unavailable)
       : simpleRow(host, input, values, onChange, unavailable, lead);
-    host.appendChild(row);
+    box.appendChild(row);
     const fields = [...row.querySelectorAll('[data-key]')];
     const member = { input, row, head, fields, parts: [row], offEl: row, offClass: 'set-row--off', titles: [row],
       offKeys: input.type === 'colorPair' ? [input.up.key, input.down.key] : [input.key] };
@@ -522,8 +530,10 @@ function colorPairRow(host, input, values, onChange, unavailable) {
     // Which swatch is which is not obvious at 26px, and the pair is too
     // tight for two more labels: the name goes on the control itself, and
     // keeps the reason alongside it when this half has nothing to paint.
-    sw.title = sw.disabled ? half.label + ' - ' + sw.title : half.label;
-    sw._title = why => why === null ? half.label : half.label + ' - ' + why;
+    sw.title = sw.disabled ? half.label + ': ' + sw.title : half.label;
+    sw._title = why => why === null ? half.label : half.label + ': ' + why;
+    // "Body Up", as the widget names it: three rows each have an Up.
+    (sw._colorPicker?.trigger || sw).setAttribute('aria-label', `${input.label} ${half.label}`);
     ctl.appendChild(sw._colorPicker?.el || sw);
   }
   row.append(label, ctl);

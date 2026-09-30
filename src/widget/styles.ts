@@ -117,6 +117,8 @@ export const WIDGET_CSS = `
   border: 1px solid ${v('bd')}; border-radius: 50%; color: ${v('faint')};
   font-size: 9px; font-weight: 600; line-height: 1; cursor: help; user-select: none; }
 .oac-widget .oac-help:hover { color: ${v('tx')}; border-color: ${v('bd-hover')}; }
+/* A heading's rows as one named group, laid out as if the box were not there. */
+.oac-widget .oac-form__group { display: contents; }
 
 /* Buttons: flat, 28px tall, a tint when pressed or armed. */
 .oac-widget .oac-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px;
