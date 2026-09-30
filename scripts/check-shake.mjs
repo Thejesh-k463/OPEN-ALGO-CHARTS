@@ -241,7 +241,12 @@ const BUNDLE = new URL('../dist/openalgo-charts.mjs', import.meta.url).pathname.
 // of level tags, and a detached container stops answering hover shortcuts,
 // 86853 bytes (84.82 KiB), up 60. Drawing interaction, the widget's drawing UI
 // and replay's simulated forming all shake out of this build; allow 84.82 KiB.
-const LIMIT_BYTES = 84.82 * 1024;
+// 2.5.10: text markers are laid out in lanes so neighbouring labels no longer
+// overlap, a fix every chart with text markers needs: 919 bytes here. The
+// rest of the release nets 13 bytes, because the session phases and shading
+// and the link channels for the chart type and drawings shake out of this
+// build. 87785 bytes (85.73 KiB), up 932 from 86853; allow 85.73 KiB.
+const LIMIT_BYTES = 85.73 * 1024;
 
 // Absent from a chart-only build. Each is a string that appears in the adapter
 // source and nowhere in the rendering core.
