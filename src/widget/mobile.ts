@@ -479,7 +479,7 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
       const fixed = String(editableIds(ctx.draw, ids).length === 0);
       if (ids.length > 0 && lockButton !== null) {
         const locked = ids.every((id) => ctx.draw.get(id)?.locked === true);
-        lockButton.textContent = locked ? widgetText(ctx, 'Unlock') : widgetText(ctx, 'Lock');
+        // One name; the pressed state says locked.
         lockButton.setAttribute('aria-pressed', String(locked));
         lockButton.setAttribute('aria-disabled', fixed);
       }

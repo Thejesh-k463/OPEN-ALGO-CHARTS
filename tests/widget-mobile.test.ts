@@ -237,7 +237,8 @@ describe('mobile mode', () => {
 
     action(root, 'lock').click();
     expect(w.draw.get(drawing.id)?.locked).toBe(true);
-    expect(action(root, 'lock').textContent).toBe('Unlock');
+    expect(action(root, 'lock').textContent).toBe('Lock');
+    expect(action(root, 'lock').getAttribute('aria-pressed')).toBe('true');
     action(root, 'properties').click();
     expect(root.querySelector('.oac-props')).not.toBeNull();
     w.context.overlays.closeAll();

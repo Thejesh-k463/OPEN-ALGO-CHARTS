@@ -90,7 +90,7 @@ export interface MenuRow {
   sub?: string;
   /** Shown at the right edge, for a chord. */
   key?: string;
-  /** Marks the row as the current choice. */
+  /** Makes the row one of a set of choices, true for the current one; a row without it is an action. */
   on?: boolean;
   disabled?: boolean;
   danger?: boolean;
@@ -144,9 +144,11 @@ export function openMenu(ctx: WidgetContext, anchor: HTMLElement, rows: Readonly
         body.appendChild(g);
         pending = null;
       }
+      // A row with an `on` is one of a set of choices; any other is an action, which has no checked state.
       const b = h(doc, 'button', 'oac-menu__row' + (r.danger ? ' is-danger' : ''), {
-        type: 'button', role: 'menuitemradio', 'aria-checked': String(r.on === true), 'aria-disabled': String(r.disabled === true),
+        type: 'button', role: r.on === undefined ? 'menuitem' : 'menuitemradio', 'aria-disabled': String(r.disabled === true),
       });
+      if (r.on !== undefined) b.setAttribute('aria-checked', String(r.on));
       if (glyphs) b.appendChild(glyph(doc, rowGlyph(r.icon), 'chrome'));
       const label = h(doc, 'span', 'oac-menu__label');
       label.textContent = r.label;

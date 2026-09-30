@@ -327,6 +327,53 @@ describe('drawing toolbar', () => {
     expect(asked.root.querySelector('.oac-drawbar')).not.toBeNull();
   });
 
+  it('names Delete by the chord in force, moved or unbound', () => {
+    const { w, root } = make();
+    const d = line(w);
+    w.draw.select(d.id);
+    expect(control(root, 'delete').title).toBe('Delete (Del)');
+    w.context.keymap.rebind('delete', 'Shift+Delete');
+    w.draw.select(null);
+    w.draw.select(d.id);
+    expect(control(root, 'delete').title).toBe('Delete (Shift+Del)');
+    w.context.keymap.rebind('delete', null);
+    w.draw.select(null);
+    w.draw.select(d.id);
+    expect(control(root, 'delete').title).toBe('Delete');
+  });
+
+  it('keeps one name on the lock and lets the pressed state say it is locked', () => {
+    const { w, root } = make();
+    const d = line(w);
+    w.draw.update(d.id, { locked: true });
+    w.draw.select(d.id);
+    expect(control(root, 'lock').getAttribute('aria-label')).toBe('Lock');
+    expect(control(root, 'lock').getAttribute('aria-pressed')).toBe('true');
+    expect(control(root, 'lock').title).toBe('Lock');
+    const fixed = w.draw.add({ tool: 'trend-line', paneIndex: 0, style: {}, locked: true, policy: { editable: false },
+      points: [{ time: bars[10].time, price: bars[10].low }, { time: bars[40].time, price: bars[40].low }] });
+    w.draw.select(fixed.id);
+    expect(control(root, 'lock').getAttribute('aria-label')).toBe('Lock');
+    expect(control(root, 'lock').title).toBe('Lock (read-only)');
+  });
+
+  it('marks action rows as plain menu items and only choices as radio items', () => {
+    const { w, root } = make();
+    w.draw.select(line(w).id);
+    control(root, 'more').click();
+    const rows = root.querySelectorAll('.oac-menu__row');
+    expect(rows.length).toBeGreaterThan(3);
+    for (const row of rows) {
+      expect(row.getAttribute('role'), row.textContent).toBe('menuitem');
+      expect(row.getAttribute('aria-checked'), row.textContent).toBeNull();
+    }
+    w.context.overlays.closeAll();
+    control(root, 'width').click();
+    const widths = root.querySelectorAll('.oac-menu__row');
+    expect(widths.every((row) => row.getAttribute('role') === 'menuitemradio')).toBe(true);
+    expect(widths.filter((row) => row.getAttribute('aria-checked') === 'true')).toHaveLength(1);
+  });
+
   it('is gone with the widget', () => {
     const { w, root } = make();
     w.draw.select(line(w).id);

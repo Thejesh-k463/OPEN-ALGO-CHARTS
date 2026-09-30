@@ -334,7 +334,7 @@ test('a chart maximizes from the bar, a double click on its bar and Alt+Enter, a
   await expect(page.locator('.oac-grid__cell:visible')).toHaveCount(1);
   await expect(cells.nth(1)).toBeVisible();
   await expect(page.locator('.oac-grid__tab')).toHaveCount(4);
-  await expect(page.locator('.oac-grid__max')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.oac-grid__max')).toHaveAttribute('aria-label', 'Restore the grid');
   await expect.poll(() => cells.nth(1).locator('.oac-chart').evaluate(el => el.clientWidth)).toBeGreaterThan(1200);
   await expect.poll(() => painted(page, 1)).toBe(true);
   await page.screenshot({ path: info.outputPath('grid-maximized.png') });
@@ -460,7 +460,7 @@ test('one PNG of the whole grid puts each chart own pixels at its place, from th
   await page.locator('.oac-grid__cell').nth(1).locator('.oac-topbar button[aria-label="Capture chart"]').click();
   await expect(page.locator('.oac-grid__cell').nth(1).locator('.oac-menu .oac-head')).toHaveText('Every chart');
   const second = page.waitForEvent('download');
-  await page.locator('.oac-grid__cell').nth(1).getByRole('menuitemradio', { name: 'Download PNG of every chart' }).click();
+  await page.locator('.oac-grid__cell').nth(1).getByRole('menuitem', { name: 'Download PNG of every chart' }).click();
   expect((await second).suggestedFilename()).toMatch(/^charts-1x2-/);
   await page.screenshot({ path: info.outputPath('grid-capture.png') });
   expect(errors).toEqual([]);

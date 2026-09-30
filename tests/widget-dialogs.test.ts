@@ -499,8 +499,11 @@ describe('mountDrawingProperties', () => {
     act('lock').click();
     expect(rig.draw.get(a.id)?.locked).toBe(true);
     expect(act('lock').getAttribute('aria-pressed')).toBe('true');
+    // The toggles keep their names; the pressed state says locked or hidden.
+    expect(act('lock').getAttribute('aria-label')).toBe('Lock');
     act('visible').click();
     expect(rig.draw.get(a.id)?.visible).toBe(false);
+    expect([act('visible').getAttribute('aria-label'), act('visible').getAttribute('aria-pressed')]).toEqual(['Hide', 'true']);
     act('behind').click();
     expect(rig.draw.get(a.id)?.zIndex).toBeLessThan(0);
     expect(act('behind').getAttribute('aria-pressed')).toBe('true');
@@ -812,16 +815,29 @@ describe('contextMenuEntries', () => {
     const del = items(again).find((i) => i.id === 'draw-delete') as MenuItem;
     expect(del.disabled).toBe(true);
     expect(del.note).toBe('locked');
-    expect((items(again).find((i) => i.id === 'draw-lock') as MenuItem).label).toBe('Unlock');
+    const lock = items(again).find((i) => i.id === 'draw-lock') as MenuItem;
+    // A checkbox row keeps its name; the check says locked.
+    expect([lock.label, lock.on]).toEqual(['Lock', true]);
     (items(again).find((i) => i.id === 'draw-duplicate') as MenuItem).run?.();
     expect(rig.draw.drawings().length).toBe(3);
+  });
+
+  it('names the hide row Hide and checks it for a hidden drawing', () => {
+    const rig = makeRig();
+    const a = line(rig.draw);
+    rig.draw.update(a.id, { visible: false });
+    const hide = items(contextMenuEntries(rig.ctx, event(rig, { kind: 'drawing', id: `draw:${a.id}` }))).find((i) => i.id === 'draw-hide') as MenuItem;
+    expect([hide.label, hide.on]).toEqual(['Hide', true]);
   });
 
   it('adds text and level rows only for tools that have them', () => {
     const rig = makeRig();
     const t = text(rig.draw);
     const f = fib(rig.draw);
-    expect(ids(contextMenuEntries(rig.ctx, event(rig, { kind: 'drawing', id: `draw:${t.id}` })))).toContain('draw-text');
+    const onText = contextMenuEntries(rig.ctx, event(rig, { kind: 'drawing', id: `draw:${t.id}` }));
+    expect(ids(onText)).toContain('draw-text');
+    // No key opens the text editor in the widget, so the row names none.
+    expect((items(onText).find((i) => i.id === 'draw-text') as MenuItem).chord).toBeUndefined();
     const fibIds = ids(contextMenuEntries(rig.ctx, event(rig, { kind: 'drawing', id: `draw:${f.id}` })));
     expect(fibIds).toContain('draw-levels');
     expect(fibIds).not.toContain('draw-text');

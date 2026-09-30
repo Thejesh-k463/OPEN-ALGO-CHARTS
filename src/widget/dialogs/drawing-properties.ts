@@ -190,9 +190,10 @@ export function mountDrawingProperties(ctx: WidgetContext, anchor?: HTMLElement,
       tools.appendChild(b);
     };
     const sep = (): void => { tools.appendChild(el(doc, 'span', 'oac-sep')); };
-    add({ label: locked ? widgetText(ctx, 'Unlock') : widgetText(ctx, 'Lock'), icon: locked ? 'lock' : 'unlock',
+    // The toggles keep one name each; the pressed state and the icon say locked or hidden.
+    add({ label: widgetText(ctx, 'Lock'), icon: locked ? 'lock' : 'unlock',
       onClick: () => { draw.updateMany(ids.map((id) => ({ id, patch: { locked: !locked } }))); } }, 'lock', locked, true);
-    add({ label: hidden ? widgetText(ctx, 'Show') : widgetText(ctx, 'Hide'), icon: hidden ? 'eye-off' : 'eye',
+    add({ label: widgetText(ctx, 'Hide'), icon: hidden ? 'eye-off' : 'eye',
       onClick: () => { draw.updateMany(ids.map((id) => ({ id, patch: { visible: hidden } }))); } }, 'visible', hidden, true);
     sep();
     // The controller reorders one drawing at a time (the list position is part

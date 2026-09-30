@@ -168,16 +168,19 @@ describe('chart grid layout picker', () => {
 });
 
 describe('chart grid maximize button', () => {
-  it('maximizes and restores the active chart, pressed while maximized', () => {
+  it('maximizes and restores the active chart, named for what the press does next', () => {
     const { grid, root } = makeGrid({ preset: '1x2', toolbar: true });
     const max = bar(root).querySelector('.oac-grid__max')!;
     grid.setActive(grid.cells()[1].id);
     max.click();
     expect(grid.maximized()).toBe(grid.cells()[1].id);
-    expect(max.getAttribute('aria-pressed')).toBe('true');
+    // The name is the action, so no pressed state says the opposite.
+    expect(max.getAttribute('aria-label')).toBe('Restore the grid');
+    expect(max.getAttribute('aria-pressed')).toBeNull();
     max.click();
     expect(grid.maximized()).toBeNull();
-    expect(max.getAttribute('aria-pressed')).toBe('false');
+    expect(max.getAttribute('aria-label')).toBe('Maximize the chart');
+    expect(max.getAttribute('aria-pressed')).toBeNull();
   });
 
   it('is off with its reason while there is one chart or the grid is compact', () => {

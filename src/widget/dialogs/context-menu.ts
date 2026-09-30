@@ -137,7 +137,7 @@ function drawingEntries(ctx: WidgetContext, primary: Drawing, ids: readonly stri
   out.push({ id: 'draw-props', label: many ? widgetText(ctx, 'Properties of the selection...') : widgetText(ctx, 'Properties...'), icon: 'settings',
     run: () => { mountDrawingProperties(ctx, undefined, { ids }); } });
   if (!many && isTextContent(primary)) {
-    out.push({ id: 'draw-text', label: widgetText(ctx, 'Edit text'), icon: 'text', chord: 'Enter', disabled: fixed, note: why, run: () => { mountTextEditor(ctx, undefined, { id: primary.id }); } });
+    out.push({ id: 'draw-text', label: widgetText(ctx, 'Edit text'), icon: 'text', disabled: fixed, note: why, run: () => { mountTextEditor(ctx, undefined, { id: primary.id }); } });
   }
   if (schema.fields.some((f) => f.kind === 'levels')) {
     out.push({ id: 'draw-levels', label: widgetText(ctx, 'Edit levels...'), disabled: fixed, note: why, run: () => { mountLevelEditor(ctx, undefined, { ids }); } });
@@ -148,9 +148,10 @@ function drawingEntries(ctx: WidgetContext, primary: Drawing, ids: readonly stri
     run: () => { void draw.cut(ids); } });
   out.push({ id: 'draw-duplicate', label: widgetText(ctx, 'Duplicate'), icon: 'duplicate', chord: commandChord(ctx.keymap, 'duplicate', 'Mod+D'), run: () => { draw.duplicate(ids); } });
   out.push(SEP);
-  out.push({ id: 'draw-lock', label: locked ? widgetText(ctx, 'Unlock') : widgetText(ctx, 'Lock'), icon: locked ? 'lock' : 'unlock', mark: 'check', on: locked, disabled: fixed, note: why,
+  // Checkbox rows keep their names; the check says locked or hidden.
+  out.push({ id: 'draw-lock', label: widgetText(ctx, 'Lock'), icon: locked ? 'lock' : 'unlock', mark: 'check', on: locked, disabled: fixed, note: why,
     run: () => { draw.updateMany(ids.map((id) => ({ id, patch: { locked: !locked } }))); } });
-  out.push({ id: 'draw-hide', label: hidden ? widgetText(ctx, 'Show') : widgetText(ctx, 'Hide'), icon: hidden ? 'eye-off' : 'eye', mark: 'check', on: hidden, disabled: fixed, note: why,
+  out.push({ id: 'draw-hide', label: widgetText(ctx, 'Hide'), icon: hidden ? 'eye-off' : 'eye', mark: 'check', on: hidden, disabled: fixed, note: why,
     run: () => { draw.updateMany(ids.map((id) => ({ id, patch: { visible: hidden } }))); } });
   out.push(SEP);
   out.push(header(widgetText(ctx, 'Order')));

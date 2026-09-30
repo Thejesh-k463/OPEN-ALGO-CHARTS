@@ -199,8 +199,8 @@ export function mountGridBar(host: GridBarHost, el: HTMLElement): GridBarHandle 
     layoutText.textContent = known ? layoutName(t, id) : '';
     layoutText.hidden = !known;
     const maxed = host.maximized();
+    // Named for what a press does next (maxLabel), so no pressed state as well.
     maxGlyph.innerHTML = chromeIconSvg(maxed ? 'restore' : 'maximize');
-    max.setAttribute('aria-pressed', String(maxed));
     const blocked = host.maximizeBlocked();
     max.classList.toggle('is-off', blocked !== null);
     max.setAttribute('aria-disabled', String(blocked !== null));

@@ -158,8 +158,11 @@ describe('arming a tool', () => {
     fire(groupBtn(rail, 'shapes'), 'contextmenu');
     const star = root.querySelector('.oac-fly__row[data-tool="ellipse"] .oac-fly__star') as FakeElement;
     expect(star.getAttribute('aria-pressed')).toBe('false');
+    expect(star.getAttribute('aria-label')).toBe('Pin to rail');
     star.click();
     expect(star.getAttribute('aria-pressed')).toBe('true');
+    // One name, the pressed state saying it is pinned.
+    expect(star.getAttribute('aria-label')).toBe('Pin to rail');
     expect(root.querySelector('.oac-fly')).not.toBeNull();   // pinning keeps the list open
     const fav = rail.querySelector('.oac-rail__fav') as FakeElement;
     expect(fav.dataset.tools).toBe('ellipse');
@@ -237,14 +240,33 @@ describe('the controls block', () => {
     for (const b of [lock, eye, trash]) expect(b.classList.contains('is-off')).toBe(false);
     lock.click();
     expect(w.draw.get(id)?.locked).toBe(true);
+    // The glyph shows the state, as the eye beside it does; the name stays and the pressed state says locked.
+    expect(lock.dataset.glyph).toBe('lock');
+    expect(lock.getAttribute('aria-label')).toBe('Lock drawing');
+    expect(lock.getAttribute('aria-pressed')).toBe('true');
+    lock.click();
+    expect(w.draw.get(id)?.locked).toBe(false);
     expect(lock.dataset.glyph).toBe('unlock');
-    expect(lock.getAttribute('aria-label')).toBe('Unlock drawing');
+    expect(lock.getAttribute('aria-pressed')).toBe('false');
     eye.click();
     expect(w.draw.get(id)?.visible).toBe(false);
     expect(eye.dataset.glyph).toBe('eye-off');
+    expect(eye.getAttribute('aria-label')).toBe('Hide drawing');
+    expect(eye.getAttribute('aria-pressed')).toBe('true');
     trash.click();
     expect(w.draw.drawings()).toHaveLength(0);
     expect(trash.classList.contains('is-off')).toBe(true);
+  });
+
+  it('keeps a locked selection from the trash, as the drawing toolbar and the menu do', () => {
+    const { w, rail } = make();
+    const [, , lock, , trash] = rail.querySelectorAll('.oac-rail__ctl .oac-rail__btn');
+    const id = addLine(w);
+    w.draw.select(id);
+    lock.click();
+    expect(trash.getAttribute('aria-disabled')).toBe('true');
+    trash.click();
+    expect(w.draw.get(id)).toBeDefined();
   });
 
   it('undo and redo follow the history', () => {
