@@ -73,7 +73,7 @@ export function registeredDrawingTools(): DrawingTool[] {
 /** Keyboard event fields a shortcut is matched against. */
 export interface ShortcutEvent {
   key: string;
-  /** The physical key (`KeyT`): under Alt the letter is read from it, as macOS Option types a symbol. Since 2.5.10. */
+  /** The physical key (`KeyT`): under Alt it names the letter when `key` is not one, as macOS Option types a symbol. Since 2.5.10. */
   code?: string;
   altKey?: boolean;
   ctrlKey?: boolean;
@@ -100,9 +100,10 @@ function parseShortcut(spec: string): { key: string; alt: boolean; ctrl: boolean
  * treated as Ctrl, which is what a Mac user expects.
  */
 export function matchDrawingShortcut(e: ShortcutEvent): string | null {
-  // Option+T is a dagger in e.key on macOS; the physical key still says T.
-  const letter = e.altKey === true ? /^Key([A-Z])$/.exec(e.code ?? '') : null;
-  const key = (letter !== null ? letter[1] : e.key ?? '').toLowerCase();
+  // Option+T types a dagger on macOS, where the physical key still says T; a
+  // letter typed wins, so a non-QWERTY layout keeps its own letters.
+  const typed = e.key ?? '', letter = e.altKey === true && !/^[a-z]$/i.test(typed) ? /^Key([A-Z])$/.exec(e.code ?? '') : null;
+  const key = (letter !== null ? letter[1] : typed).toLowerCase();
   if (key === '') return null;
   const alt = e.altKey === true;
   const ctrl = e.ctrlKey === true || e.metaKey === true;
