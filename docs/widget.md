@@ -438,12 +438,14 @@ cannot name a part either: allow the origin, or the directory as a path ending i
 
 ## Size
 
-Budgets from `.size-limit.json`, Brotli, enforced by `npm run size`:
+Budgets from `.size-limit.json` and measurements from the 2.5.10 build, Brotli, enforced by
+`npm run size`:
 
-| Row | Files | Budget |
-|---|---|---|
-| Widget tier | `openalgo-charts.widget.mjs` | 49.25 kB |
-| Widget terminal | base + draw + indicators + widget | 207.75 kB |
+| Row | Files | Budget | Actual |
+|---|---|---|---|
+| Widget tier | `openalgo-charts.widget.mjs` | 121.45 kB | 121.44 kB |
+| Widget first-use parts | `openalgo-charts.widget.<part>-<hash>.mjs`, seven files | 18.19 kB | 18.19 kB |
+| Widget terminal | base + draw + indicators + widget | 354.55 kB | 354.54 kB |
 
 The widget is a tier because of these rows. A host that never calls `createWidget`
 downloads none of it, and the base engine's own budget is unchanged. Measure, do not

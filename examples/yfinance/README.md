@@ -496,9 +496,9 @@ count switches back to count mode. Existing saved navigation preferences are ret
 This example is a custom host around the DOM-free engine and draw tier. Its responsive
 controls belong to `examples/yfinance`; it does not use the packaged widget's
 `WidgetOptions.mobile`. At 900 CSS pixels or less, or with a coarse primary pointer at
-most 960 pixels wide and under 600 tall (a phone on its side; tablets and touch laptops
-keep the rail), the desktop drawing rail yields to a bottom touch bar and the top toolbar
-becomes one scrollable row. Every touch bar control is at least 44 CSS pixels high, and
+most 960 pixels wide and under 600 tall (a phone on its side), the desktop drawing rail yields to a bottom touch bar and the top toolbar
+becomes one scrollable row. A tablet or touch laptop keeps the rail only when it is wider
+than 900 pixels, so a tablet in portrait (820 pixels, say) gets the touch bar. Every touch bar control is at least 44 CSS pixels high, and
 any coarse pointer grows the other controls to 40 pixel targets. The native drawing picker exposes
 the registered tools, followed by Cursor, Undo, Redo, Magnet, Zoom out, Zoom in and Fit.
 Drawing actions use the existing controller and navigation uses the chart's public logical

@@ -180,9 +180,17 @@ strings a host may match on are reworded. See the upgrade notes.
   drawing level, a study plot and a price as the editor does, on the scale
   each belongs to. `renderForm` groups the rows under a heading in a
   `div.oac-form__group` with `role="group"` and gives a field's help text as its
-  `aria-description`. A failure reads "unknown error" rather than
+  `aria-description`. Level editor rows are named by their level ("Level
+  0.618 enabled", "Remove level 0.618"), indicator input buttons by their
+  input ("Search {label}", "Pick {label} on the chart"), a pinned rail tool
+  as "{name} (pinned)" and an interval pill by the text it shows; the Layouts
+  button keeps its status in its name; the Objects add-to-selection button
+  and the grid's Maximize are plain buttons, with no pressed state; and the
+  chart data dialog lists a hidden study as "{name}, hidden" and names no
+  study by its instance id. A failure reads "unknown error" rather than
   "[object Object]", a count of one is singular, and the phone bar says
-  Indicators.
+  Indicators and names its theme action "Switch to the light theme" or
+  "Switch to the dark theme".
 - The maximize, restore, check and calendar glyphs are redrawn.
 
 ### Deprecated
@@ -217,8 +225,9 @@ strings a host may match on are reworded. See the upgrade notes.
 - **Marker lanes** read at most two windows of 256 marks before the first one
   drawn and measure text only for the marks a paint lays out: ten thousand
   labels over twenty thousand bars paint in 2.0 to 4.2 ms.
-- **The widget tier file carries what a plain widget uses.** The seven
-  first-use parts keep about 18 kB (Brotli) of UI out of it.
+- **The widget tier file carries what a plain widget uses.** Moving the seven
+  first-use parts out took 9.94 kB (Brotli) off it; the parts measure 18.19 kB
+  on their own and are fetched only when used.
 
 ### Website
 
@@ -233,7 +242,11 @@ strings a host may match on are reworded. See the upgrade notes.
 ### Tests
 
 - 11118 unit tests across 469 files and 683 reference host tests across 64
-  files pass. New guards fail on a control with no name or a leaked value in
+  files pass, and the browser suite passes 1967 cases in three browser
+  engines. Of the 13 skipped, 12 are checks an engine cannot run and one is a
+  reference host case whose fixture server did not answer under the full run
+  (it passes when run alone). Against 2.5.9, render parity finds no differing
+  pixel. New guards fail on a control with no name or a leaked value in
   the widget chrome and the reference host (`tests/e2e/labels.spec.ts`), a
   dash, arrow or emoji in anything a reader sees, a message key nothing shows,
   a chrome icon id the registry lacks, a doc comment stranded off its
@@ -241,6 +254,35 @@ strings a host may match on are reworded. See the upgrade notes.
 
 Saved layouts, drawings and workspace documents from 2.5.9 load unchanged, and
 no runtime dependencies or package tiers were added.
+
+Sizes, measured on this release and against 2.5.9 (Brotli, decimal kB): base
+engine 131.68 to 134.69, base plus trade 148.36 to 151.38, indicators 40.38 to
+40.43, draw 55.61 to 57.98, profile 14.96 to 14.97, widget 99.64 to 121.44,
+workspace 11.33 to 11.53, widget terminal 327.32 to 354.54 and every tier
+together 381.78 to 409.21; the transform, WebGL2 and trade tiers are unchanged.
+The widget's seven first-use parts, a new row, measure 18.19 together and are
+fetched only when used. The chart-only import grows from 84.82 to 85.73 KiB
+(932 bytes).
+
+Where the growth goes. In the base engine (3,013 bytes) the marker lanes cost
+845 bytes, and 919 of the chart-only import's 932: a fix every chart with text
+markers needs. The session phases, the market status and session shading, and
+the link channels for the chart type and drawings make up most of the rest and
+cost nothing in a chart-only import, where a chart that never asks for them
+shakes them out. The draw tier's growth is almost all the chrome icon registry,
+from 29 glyphs to 110 and a glyph per chart type, and the workspace tier's is
+the named link groups in its schema. The widget tier grew by the features it
+adds, each measured on its own branch so the figures overlap slightly once
+merged: the chart grid's layouts, bar, groups and capture 8.48 kB, the Layouts menu and
+indicator templates 6.78 kB, the bottom bar 5.84 kB, the shortcuts editor
+4.11 kB, the IndexedDB store 2.98 kB and the layouts controller 1.45 kB. The
+lean pass then moved 9.94 kB of it into the first-use parts: the Layouts menu
+2.99 kB, the grid bar, its menus and saved desks 2.77 kB, the shortcuts editor
+1.69 kB, the templates list 1.14 kB, the IndexedDB store 0.84 kB and the chart
+data dialog 0.69 kB, less 0.18 kB for opening each part once and only while it
+is still wanted. The label fixes add 982 bytes to the widget. Each budget is the
+smallest two-decimal value that passes, the transform, profile and WebGL2 rows
+included, which until now kept round budgets.
 
 ## 2.5.9
 

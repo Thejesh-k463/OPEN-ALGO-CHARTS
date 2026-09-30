@@ -18,6 +18,22 @@ itself, or tests the widget's words and roles should check these points:
   `oac-widget:<namespace>:` keys 2.5.9 left in localStorage and leaves them there. To keep the
   2.5.9 behaviour call for call, pass `storage: localStorage` or any synchronous store. See
   [Persistence](/docs/widget#persistence).
+- **What `ready` settles on.** `widget.ready` and `grid.ready` never reject. A store that
+  fails, or does not answer within 4 seconds, is reported on the status line and in a toast;
+  the widget then opens on its defaults and keeps that session's changes in memory only.
+  When the saved state lands, the saved symbol and interval arrive as `symbol` and `interval`
+  events, and the layout as a `layout` event with the reason `restore`. Add default studies
+  or drawings after `ready`, because what a host adds before it may be replaced by the saved
+  layout; a symbol, an interval or a `restoreState` given before `ready` is newer than the
+  stored one and wins. On a grid, a workspace applied with `applyWorkspace` before `ready`
+  wins, while `setPreset`, or a symbol set on one of its charts, before `ready` is replaced by
+  the stored desk, and `grid.restored()` is null until then. To name the database, pass
+  `storage: createIndexedDbWidgetStorage(indexedDB, 'my-app-charts')`. A test that seeds or
+  reads `oac-widget:` keys in localStorage reads IndexedDB instead or passes
+  `storage: localStorage`, and a test that takes a screenshot or queries the chart right
+  after `createWidget` awaits `ready` first. Every change after the copy lands in IndexedDB
+  only, so a page that goes back to 2.5.9 finds the localStorage keys as they were when they
+  were copied.
 - **Serve the widget's parts with the tier.** Seven parts a plain widget never opens (the
   shortcuts editor, the Layouts menu, the templates list, the chart data dialog, the grid bar
   and its menus, and the IndexedDB store) load on first use from files beside the widget tier,
@@ -25,26 +41,60 @@ itself, or tests the widget's words and roles should check these points:
   `dist/` itself deploys the whole directory from one release, revalidates the tier files,
   whose names stay the same, and may cache the hashed parts for a long time. A strict
   `script-src` allows their directory, never a part by name. A CDN URL pinned to the version
-  needs nothing.
+  needs nothing. A part's rules join the widget's one stylesheet and keep its `styleNonce`,
+  so `style-src` needs no change. A part that cannot load says so in a toast, or on the
+  status line for the store, the chart data dialog and a grid's menus, and asking again gives
+  the same answer until the page reloads; the rest of the widget goes on working.
+  `openShortcutsPanel` still returns its closer at once, but its first call opens the panel
+  only once the part has arrived, so a test that looks for the panel right after the call
+  waits for it to appear. `openLayoutsMenu`, new in this release, resolves with the menu once
+  it is open and rejects when it cannot load or the widget was destroyed first. The widget
+  file also exports, under minified names, the helpers its parts import: they are not API,
+  no declaration names them, and a host never imports them.
 - **The bottom bar is on by default.** It carries the preset ranges, Go to (moved from the top
   bar), the market status, a clock with a timezone menu and the scale toggles, and the widget
   attaches session shading, which shades nothing unless the calendar has pre-open, post-close
   or extended hours. `bottombar: false` gives the 2.5.9 chrome back, with Go to in the top bar
   and the market status on the status line, and `sessionShading: false` turns the shading off.
-  A chart grid shows one bar for the active chart only with `bottombar: true`.
+  A chart grid shows one bar for the active chart only with `bottombar: true`; without it each
+  chart keeps Go to in its top bar and its footer shows the market status. The bar is 28 px
+  tall, so the chart is 28 px shorter in the same container. A widget built with
+  `topbar: false` gets the bar too, `ranges: []` leaves the range buttons out, and a timezone
+  picked in the bar, or anywhere else, is saved with the layout and emits `layout` with the
+  reason `timezone`, which a host that saves on `layout` events now sees. Refresh screenshot
+  baselines of the widget.
 - **Auto mobile mode follows the container's size.** Tablets and touch laptops now keep the
-  toolbar and the drawing rail, and phones keep the compact controls. Pass `mobile: 'always'`
-  or `'never'` to force either, and refresh screenshot baselines taken on touch devices.
+  toolbar and the drawing rail, and phones keep the compact controls. The rule: a container
+  at most 640 CSS px wide, or, with a coarse pointer, at most 960 px wide and under 600 px
+  tall. On a tablet a touch on a rail group picks its tool, and a long press, or a second tap
+  on the active tool, opens the list. Pass `mobile: 'always'` or `'never'` to force either;
+  to keep the compact controls on every touch device, pass
+  `mobile: matchMedia('(pointer: coarse)').matches ? 'always' : 'auto'`. A test at a tablet
+  viewport that expected the phone layout now finds the desktop chrome, and screenshot
+  baselines taken on touch devices need refreshing.
 - **Users can move shortcuts.** The ? panel edits every chord the widget owns, and with
   `persist` the chords are saved. `shortcutsEditor: false` keeps the panel a list and applies
-  no saved chords.
+  no saved chords, and `openShortcutsPanel(ctx, { edit: false })` opens the list from a host
+  control. A chart command resets to the chord it had when the widget mounted, so chords a
+  host passes in `shortcuts.overrides` count as its defaults, and in a chart grid the chords
+  belong to the desk. Leave the engine's own `shortcuts.persist` off on a widget: the widget
+  saves the chords itself, and with both on a chord chosen in an earlier visit is read back as
+  the default and Reset has nothing to return to.
 - **Words a host test may match on.** Trading capability reasons are in words ("Placing orders
   is not supported", "Stop-loss orders are not supported", "Live trading is not supported")
   where they named ids; test `supported` rather than the text. `DEFAULT_KEYMAP` says "Reset
   view" and "Fit all bars", the indicators `williams-vix-fix` and `roc` are named "Williams VIX
   Fix" and "Rate of Change" (the ids are unchanged), chart settings say "Linear" and "Auto-fit
   to the data", and the unknown indicator and missing transform tier errors use a comma where
-  they had an em dash. The widget says active, not armed.
+  they had an em dash. The widget says active, not armed. The theme button shows a sun or a
+  moon and no text, so a host or test that read its text reads its accessible name or
+  `widget.theme()` instead. A host that types a complete catalog as
+  `Record<WidgetBuiltinMessage, string>` adds the new keys, the chart grid's words among them
+  (`ChartGridMessage` is now part of `WidgetBuiltinMessage`). The bottom bar, the ranges, the
+  market status, the Layouts menu and the templates list speak through new `schema.ui.*` keys
+  (`schema.ui.bottombar.*`, `schema.ui.range.*`, `schema.ui.market.*`, `schema.ui.layouts.*`,
+  `schema.ui.templates.*` and their neighbours); a translator that returns `undefined` for
+  them keeps the English text.
 - **Widget roles and names.** An action row in a widget menu has the role `menuitem` (for
   example "Download chart data (CSV)"), and only a choice keeps `menuitemradio`. A toggle keeps
   one name ("Lock", "Hide", "Pin to rail") and reports its state through `aria-pressed` or
@@ -53,7 +103,13 @@ itself, or tests the widget's words and roles should check these points:
   alert editor and its list, study settings and the CSV dialog, where the alert editor wrote
   "2: Relative Strength Index". `renderForm` puts the rows under a heading in a
   `div.oac-form__group` with `role="group"` and `display: contents`, so a stylesheet with
-  `.oac-form > .oac-form__row` child selectors allows for it.
+  `.oac-form > .oac-form__row` child selectors allows for it. A field's help text is its
+  control's `aria-description`, not part of its name. Level editor rows are named by their
+  level (`Level 0.618 enabled`, `Remove level 0.618`), the search and pick buttons of an indicator
+  input by the input's label, a pinned rail tool as `Trend Line (pinned)`,
+  and an interval pill by the text it shows. The Objects add-to-selection button and the
+  grid's Maximize no longer carry `aria-pressed`, and a menu row's chord is its
+  `aria-keyshortcuts`, so its name no longer ends in the chord.
 - **Deprecated message keys.** A translation catalog keeps compiling. The keys the widget no
   longer shows are listed on the [compatibility page](/docs/compatibility) with the keys to
   translate instead, and are dropped in 3.0.0.
@@ -62,7 +118,57 @@ itself, or tests the widget's words and roles should check these points:
   2.5.9.
 - **Chrome glyphs.** Every widget picture comes from the icon registry, the theme button shows
   a sun or a moon, and the maximize, restore, check and calendar glyphs are redrawn. Refresh
-  screenshot baselines of the widget chrome.
+  screenshot baselines of the widget chrome. `chromeIcon`, `chromeIconAccent`,
+  `drawingToolIcon`, `drawingToolAccent` and `chartTypeIcon` read only a registry's own
+  entries: an inherited name such as `toString` now gives `undefined`, and the SVG builders
+  throw for it as for any unknown id.
+- **The chart grid.** `CHART_GRID_PRESETS` lists every uniform layout up to four by four, and
+  `ChartGridPreset` is wider to match: an exhaustive switch over it handles the new ids, and a
+  host that labels the presets itself reads `CHART_GRID_LAYOUT_NAMES`. `preset` and
+  `setPreset` take any `ChartGridLayoutId`, uneven layouts included. A cell narrower than 560
+  or shorter than 340 CSS px is dense: it hides its drawing rail and keeps its top bar to one
+  row, which applies to 2.5.9 desks too (a two by two grid on a laptop screen under about
+  700 px tall); drawing shortcuts still work, and maximizing a chart shows everything again.
+  `layout` events carry two more reasons, `maximize` and `swap`. `linkOptions()` reads the
+  active chart's group, and `setLinks` switches that group, or every group while the active
+  chart is in none. Until the user makes a second group, names one or takes a chart out of
+  it, `getWorkspace()` writes what 2.5.9 wrote; with groups, a 2.5.9 reader drops them and
+  applies the flat flags. The grid bar (`toolbar`) and the bar under the charts
+  (`bottombar`) are off unless the host turns them on. Refresh screenshot baselines of small
+  cells.
+- **The status line and text markers.** In `mountStatusline`, `setBar(null)` now lets the row
+  follow the latest bar where it used to clear the readings, and `setSymbol` with a title
+  other than the one set clears the readings until the chart's data is next replaced. Text
+  markers take lanes, so pixels move where neighbouring labels collided: refresh screenshot
+  baselines of charts that show text markers.
+- **Interfaces a host implements itself.** A host object written to one of these types adds
+  the new members: `Widget` (`ready`, `layouts`, `openLayouts`, `setRange`, `range`),
+  `ChartGrid` (`ready`, `maximize`, `restore`, `maximized`, `swap`, `linkGroups`,
+  `setLinkGroup`, `addLinkGroup`, `setGroupLinks`, `renameLinkGroup`, `shareDrawings`,
+  `takeScreenshot`, `downloadScreenshot`), `ChartGridCell` (`linkGroup`) and `KeyBinding`
+  (`defaultCombo`, `command`, `rebindable`). The new members of `SessionCalendarSource`,
+  `ChartShortcutSource`, `KeyEventLike`, `LinkOptions`, `LinkMemberOptions`, `MenuRow`,
+  `TopbarOptions`, `MobileOptions`, `StatuslineOptions` and `IndicatorPickerOptions` are
+  optional. `WidgetOptions.storage` and `ChartGridOptions.storage` also take an
+  `AsyncStorageLike`, `WorkspacePayload.sync` is a `WorkspaceSync` (a four-flag sync a host
+  builds still type checks), `KeymapGroup.rows` is a `KeymapRow`, and `CHART_GRID_CSS` is
+  typed `string`; the grid bar's own rules left it and arrive with the bar's part.
+- **Worth knowing, nothing to do.** `WorkspaceRepository` methods take an optional last
+  `options` argument; without `expectedRevision` a change applies to the catalog as stored,
+  and `subscribe` is new. `ShortcutManager.onChange` is new, and the time navigator's key
+  hints follow a rebind unless the host passed hints of its own. `ChartHistory.clear()`
+  empties its stacks in place. Session phases, market status, session shading, the link
+  channels, the layouts controller and the grid's groups are opt-in outside the widget's
+  defaults above.
+
+**From 2.5.1.** A host on 2.5.1 meets every point above and the notes of each release from
+2.5.2 to 2.5.9 under Earlier upgrades. On its first visit a 2.5.1 layout is copied from
+localStorage into IndexedDB, and when it lands, the drawings it saved as one set are
+attached to the symbol it was saved on (the 2.5.9 rule); the localStorage copy stays as
+2.5.1 left it. Every release from 2.5.4 to 2.5.10 adds widget message keys, and several
+move pixels on purpose, so refresh screenshot baselines once, on 2.5.10. Before moving a
+production host from 2.5.1, install the packed 2.5.10 in an isolated checkout of it and run
+its own tests, typecheck, production build and browser harness against it.
 
 See the [release notes](/docs/release-notes#2510) for everything 2.5.10 adds.
 
