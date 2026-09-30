@@ -844,25 +844,6 @@ export const MEASURE: DrawingTool = {
   distance: (x, y, h) => distToRect(x, y, h.pts[0], h.pts[1], true),
 };
 
-/**
- * Long / short position calculator: entry, target, stop, anchored in that
- * order (the order 1.9.x saved, so an old layout loads unchanged).
- *
- * Placed in two clicks: the entry, then the target. The second click is also
- * the profit direction: release above the entry and the trade is a long,
- * below and it is a short, whichever tool was armed. The armed tool only
- * decides which way a bare click faces. The stop lands opposite the entry at
- * one part risk to {@link POSITION_RR} parts reward, and all three levels
- * stay handles; a level dragged through the entry flips the other side across
- * it rather than piling both on one side, so a long turns into a short in
- * place with its ratio intact.
- *
- * A bare click's box is sized on screen, not as a fraction of price. One
- * percent of a 2.87 stock and one percent of a 24,000 index are the same
- * fraction and very different boxes, and either turns into a hairline or a
- * pane-filler with the zoom; 64 px of risk and 150 px of width read the same
- * everywhere. A host with no pixel mapping falls back to chart units.
- */
 /** Reward per unit of risk for a default box and a derived stop. */
 const POSITION_RR = 2;
 /** A bare click's stop distance on screen, in media px. */
@@ -936,6 +917,25 @@ function sizeText(qty: number): string {
   return qty.toPrecision(3).replace(/\.?0+$/, '');
 }
 
+/**
+ * Long / short position calculator: entry, target, stop, anchored in that
+ * order (the order 1.9.x saved, so an old layout loads unchanged).
+ *
+ * Placed in two clicks: the entry, then the target. The second click is also
+ * the profit direction: release above the entry and the trade is a long,
+ * below and it is a short, whichever tool was armed. The armed tool only
+ * decides which way a bare click faces. The stop lands opposite the entry at
+ * one part risk to {@link POSITION_RR} parts reward, and all three levels
+ * stay handles; a level dragged through the entry flips the other side across
+ * it rather than piling both on one side, so a long turns into a short in
+ * place with its ratio intact.
+ *
+ * A bare click's box is sized on screen, not as a fraction of price. One
+ * percent of a 2.87 stock and one percent of a 24,000 index are the same
+ * fraction and very different boxes, and either turns into a hairline or a
+ * pane-filler with the zoom; 64 px of risk and 150 px of width read the same
+ * everywhere. A host with no pixel mapping falls back to chart units.
+ */
 function positionTool(id: string, name: string, long: boolean): DrawingTool {
   return {
     id, name, points: 2,

@@ -674,18 +674,6 @@ function fillLeftTag(
 }
 
 /**
- * The current value of one plotted series, as a tag in the price-axis strip.
- *
- * This is the last-price tag's smaller sibling and is deliberately the same
- * shape, because it means the same thing: where this line is right now. What it
- * does not get is the dashed line across the plot, since the series already
- * draws itself all the way to the edge, nor the bar countdown, which belongs to
- * the instrument and not to a study computed from it.
- *
- * The price is formatted by the scale the series maps to, so a tag reads at the
- * same precision as the ticks above and below it.
- */
-/**
  * One filled tag in the axis strip, sized to its own text. Shared by the
  * last-price tag and the per-series ones so the two cannot drift apart in
  * padding, height or baseline.
@@ -702,6 +690,18 @@ function fillTag(
   ctx.fillText(label, xStart + 1 + padX, y);
 }
 
+/**
+ * The current value of one plotted series, as a tag in the price-axis strip.
+ *
+ * This is the last-price tag's smaller sibling and is deliberately the same
+ * shape, because it means the same thing: where this line is right now. What it
+ * does not get is the dashed line across the plot, since the series already
+ * draws itself all the way to the edge, nor the bar countdown, which belongs to
+ * the instrument and not to a study computed from it.
+ *
+ * The price is formatted by the scale the series maps to, so a tag reads at the
+ * same precision as the ticks above and below it.
+ */
 export function drawSeriesValueTag(
   ctx: CanvasRenderingContext2D,
   priceScale: PriceScale,

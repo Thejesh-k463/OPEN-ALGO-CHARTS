@@ -52,12 +52,12 @@ const sessionId = (() => {
 let nextLineage = 1;
 
 /**
- * Whether a drawing can travel between linked charts: price pane only, and in
- * data space. A viewport drawing is a place on this chart's screen, and the
- * same fraction of another chart's pane would sit over different bars at a
- * different size, so it stays on the chart it was drawn on.
+ * Whether a drawing can travel between linked charts: on this chart's price
+ * pane, in whatever slot it keeps there, and in data space. A viewport drawing
+ * is a place on this chart's screen, and the same fraction of another chart's
+ * pane would sit over different bars at a different size, so it stays on the
+ * chart it was drawn on.
  */
-/** Shared through a link: on this chart's price pane, in whatever slot it keeps it, and not pinned to the viewport. */
 const linkable = (drawing: Drawing, pricePane: number): boolean => drawing.paneIndex === pricePane && drawing.space !== 'viewport';
 
 function lineageOf(drawing: Drawing, context: string): string | undefined {

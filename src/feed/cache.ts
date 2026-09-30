@@ -97,10 +97,6 @@ export interface BarCacheOptions {
   /** Injectable clock (ms), for tests and for hosts with a server clock. */
   now?: () => number;
   /**
-   * Interval token to seconds, for feeds with tokens this does not know
-   * (tick, Renko, range bars). Return 0 to disable caching for that interval.
-   */
-  /**
    * Override how the cache decides when a bar closes. Return null for "unknown",
    * which makes the cache refuse to store the series rather than guess. Defaults
    * to {@link barCloseSec}, which asks the interval registry.

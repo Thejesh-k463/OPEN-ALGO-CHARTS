@@ -204,11 +204,11 @@ export class ChartInput {
   public _axisDrag: 'price' | 'time' | 'empty' | null = null;
   /** The scale a price-axis drag is rescaling: either side's, whichever strip was grabbed. */
   public _axisDragScale: PriceScale | null = null;
-  /** Active pane-divider drag: which boundary, and the weights/heights at grab time. */
   /** True once a primitive drag has actually moved (see the pointerup note). */
   private _dragMoved = false;
   /** Where the drag was grabbed, in data space, so deltas start at the press. */
   private _dragFrom: { time: number; price: number } = { time: 0, price: 0 };
+  /** Active pane-divider drag: which boundary, and the weights/heights at grab time. */
   private _paneResize: {
     a: number; b: number; startY: number;
     aWeight: number; bWeight: number; aHeight: number; bHeight: number;
