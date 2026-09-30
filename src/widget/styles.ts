@@ -120,7 +120,7 @@ export const WIDGET_CSS = `
 /* A heading's rows as one named group, laid out as if the box were not there. */
 .oac-widget .oac-form__group { display: contents; }
 
-/* Buttons: flat, 28px tall, a tint when pressed or armed. */
+/* Buttons: flat, 28px tall, a tint when pressed or active. */
 .oac-widget .oac-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   height: ${v('ctl-h')}; padding: 0 9px; background: transparent; border: 1px solid transparent;
   border-radius: ${v('radius')}; color: ${v('tx')}; white-space: nowrap; transition: background .1s, border-color .1s, color .1s; }

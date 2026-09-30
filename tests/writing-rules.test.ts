@@ -1,14 +1,18 @@
 /**
  * The house writing rules, held mechanically over the words a person reads:
- * every string the engine and the widget spell out in src, and the markup,
- * strings and text of the examples. No em or en dash, no arrow, tick or
- * cross character standing in for a word, no emoji, and no "arm" wording in
- * the examples' UI (Live, On, Off and Active say it). 2.5.10 found dashes in
- * page titles, thrown messages and canvas placeholders, arrows in hints, a
- * camera emoji on a button and "Arm trading" on an order gate, none of which
- * any check had looked at. Comments are left alone; identifiers too.
+ * every string the engine and the widget spell out in src, the markup,
+ * strings and text of the examples, and the prose of the examples' guides
+ * and the website's pages. No em or en dash, no arrow, tick or cross
+ * character standing in for a word, no emoji, no "arm" wording in what src
+ * or the examples show (Live, On, Off and Active say it), and sandbox or
+ * analyzer mode, never paper or virtual trading. 2.5.10 found dashes in page
+ * titles, thrown messages and canvas placeholders, arrows in hints, a camera
+ * emoji on a button and "Arm trading" on an order gate, none of which any
+ * check had looked at. Comments are left alone; identifiers too.
  *
  * A deliberate exception goes in writing-rules-allow.json with its reason.
+ * The deprecated message keys that still say armed are listed there one by
+ * one, so a new one is caught.
  */
 /// <reference types="vite/client" />
 import ts from 'typescript';
@@ -19,6 +23,7 @@ type Sources = Record<string, string>;
 type Glob = { glob(pattern: string | string[], options: { query: string; import: string; eager: true }): Sources };
 const SRC = (import.meta as unknown as Glob).glob('../src/**/*.ts', { query: '?raw', import: 'default', eager: true });
 const EXAMPLES = (import.meta as unknown as Glob).glob(['../examples/**/*.html', '../examples/**/*.js', '!../examples/**/tests/**'], { query: '?raw', import: 'default', eager: true });
+const DOCS = (import.meta as unknown as Glob).glob(['../examples/**/*.md', '../website/pages/**/*.mdx', '!../examples/**/tests/**'], { query: '?raw', import: 'default', eager: true });
 
 /** Characters that stand in for words: dashes, arrows, ticks and crosses, pictographs. */
 // Written by code point, so this file holds none of the characters it forbids:
@@ -28,6 +33,8 @@ const FORBIDDEN = [[0x2013, 0x2014], [0x2190, 0x21ff], [0x2713, 0x2713], [0x2715
 const SYMBOL = new RegExp(`[${FORBIDDEN}]|&mdash;|&ndash;|&rarr;|&larr;|${/\p{Extended_Pictographic}/u.source}`, 'u');
 /** "Arm" in a reader's words; the examples say Live, On, Off or Active. */
 const ARM = /\barm(?:ed|ing|s)?\b/i;
+/** The house words are sandbox and analyzer mode. */
+const PAPER = /\b(?:paper|virtual) trading\b/i;
 
 interface Finding { file: string; line: number; text: string }
 
@@ -62,8 +69,10 @@ function pageText(file: string, html: string): { line: number; text: string }[] 
   return out;
 }
 
+/** An entry marked whole names one literal exactly; otherwise any literal holding its text. */
 const allowed = (file: string, text: string): boolean =>
-  (allow as { file: string; text: string; reason: string }[]).some(entry => file.endsWith(entry.file) && text.includes(entry.text));
+  (allow as { file: string; text: string; whole?: boolean; reason: string }[])
+    .some(entry => file.endsWith(entry.file) && (entry.whole === true ? text === entry.text : text.includes(entry.text)));
 
 /** Numeric character references as the characters a reader sees. */
 const decoded = (text: string): string => text
@@ -81,12 +90,21 @@ function scan(sources: Sources, read: (file: string, text: string) => { line: nu
 }
 
 const read = (file: string, text: string): { line: number; text: string }[] => (file.endsWith('.html') ? pageText(file, text) : literals(file, text));
+/** A guide's every line: its prose, and the code it shows, are both read. */
+const lines = (_file: string, text: string): { line: number; text: string }[] => text.split('\n').map((line, index) => ({ line: index + 1, text: line }));
+/**
+ * The strings src spells out, less a whole literal that is one lower-case word:
+ * that is a value compared in code (the alert state 'armed'), not a word shown.
+ */
+const shownLiterals = (file: string, text: string): { line: number; text: string }[] => literals(file, text).filter(item => !/^[a-z]+$/.test(item.text));
 
 describe('the house writing rules', () => {
   it('finds the files it is meant to read', () => {
     expect(Object.keys(SRC).length).toBeGreaterThan(300);
     expect(Object.keys(EXAMPLES).some(file => file.endsWith('examples/yfinance/index.html'))).toBe(true);
     expect(Object.keys(EXAMPLES).some(file => file.includes('/tests/'))).toBe(false);
+    expect(Object.keys(DOCS).some(file => file.endsWith('examples/live/README.md'))).toBe(true);
+    expect(Object.keys(DOCS).some(file => file.endsWith('website/pages/docs/profiles-and-orderflow.mdx'))).toBe(true);
   });
 
   it('keeps dashes, arrows, ticks, crosses and emoji out of the strings src spells out', () => {
@@ -97,7 +115,18 @@ describe('the house writing rules', () => {
     expect(scan(EXAMPLES, read, SYMBOL)).toEqual([]);
   });
 
-  it('says Live, On, Off or Active in the examples, never arm', () => {
+  it('keeps them out of the guides of the examples and the pages of the website', () => {
+    expect(scan(DOCS, lines, SYMBOL)).toEqual([]);
+  });
+
+  it('says Live, On, Off or Active in src and the examples, never arm', () => {
+    expect(scan(SRC, shownLiterals, ARM)).toEqual([]);
     expect(scan(EXAMPLES, read, ARM)).toEqual([]);
+  });
+
+  it('says sandbox or analyzer mode, never paper or virtual trading', () => {
+    expect(scan(SRC, literals, PAPER)).toEqual([]);
+    expect(scan(EXAMPLES, read, PAPER)).toEqual([]);
+    expect(scan(DOCS, lines, PAPER)).toEqual([]);
   });
 });

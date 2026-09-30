@@ -10,15 +10,15 @@ import { Callout } from 'nextra/components'
 
 `chart.trading` is a **data-driven** trade layer. Your app pushes exchange state - positions,
 resting orders, bracket orders (TP/SL), and trade fills - and the chart renders broker-style
-segmented pill groups (`[badge][qty][label][✕]`) and fill markers, with hover/dragging
-states and a drag ghost built in. When the user drags an order or clicks the ✕ segment, the
+segmented pill groups (`[badge][qty][label][close]`) and fill markers, with hover/dragging
+states and a drag ghost built in. When the user drags an order or clicks the close segment, the
 chart emits a `trading:*` event for your app to relay to the exchange.
 
 ```
-Your app ──setOrders()──▶ chart renders line + pill
-                          │
-   user drags the order   ▼
-Your app ◀─'trading:order_modify'── chart  ──▶ Exchange API
+Your app --setOrders()--> chart renders line + pill
+                          |
+   user drags the order   v
+Your app <--'trading:order_modify'-- chart  --> Exchange API
 ```
 
 It is created on first access (`chart.trading`), works with any data source, and has no
@@ -33,7 +33,7 @@ alert-drag behavior in 2.4.7 belongs to `AlertController`.
 ## Live example
 
 A long position pill, a resting limit order, TP/SL brackets, and two fill markers - all from
-`chart.trading`. Drag the order lines; the ✕ boxes fire cancel/close events.
+`chart.trading`. Drag the order lines; the close boxes fire cancel/close events.
 
 <RunnableExample height={380} code={`const chart = lib.createChart(el);
 const bars = lib.generateBars(1700000000, 140, 3600);
@@ -90,7 +90,7 @@ chart.trading.on('trading:order_cancel', ({ orderId }) => exchange.cancel(orderI
 | `pnlText` | `string?` | pre-formatted P&L shown on the pill (e.g. `'+$100.00'`) |
 | `pnlPercent` | `string?` | pre-formatted P&L percent |
 | `color` | `string?` | per-position line color override |
-| `readOnly` | `boolean?` | hide the close (✕) button |
+| `readOnly` | `boolean?` | hide the close button |
 | `variant` | `'standard' \| 'line-only'` | `line-only` renders just the line + axis tag (no pill) |
 
 ### `TradingOrder`
@@ -105,7 +105,7 @@ chart.trading.on('trading:order_cancel', ({ orderId }) => exchange.cancel(orderI
 | `parentId` | `string?` | link to a position/order (bracket child) |
 | `bracketRole` | `'tp' \| 'sl'` | take-profit / stop-loss (colors + `TP`/`SL` label) |
 | `color` / `lineStyle` / `lineWidth` | `string?` / `'solid'\|'dashed'\|'dotted'` / `number?` | line styling |
-| `readOnly` | `boolean?` | hide the cancel (✕) button |
+| `readOnly` | `boolean?` | hide the cancel button |
 | `draggable` | `boolean?` | allow drag-to-modify (default: `!readOnly`) |
 | `variant` | `'standard' \| 'line-only'` | line-only skips the pill |
 
@@ -147,8 +147,8 @@ Subscribe with `chart.trading.on(event, cb)`.
 |---|---|---|
 | `trading:order_modify` | `{ orderId, newPrice, previousPrice }` | an order line is dragged and released; `newPrice` is on the tick schedule when one is set |
 | `trading:bracket_modify` | `{ parentId, bracketRole, newPrice }` | a TP/SL bracket line is dragged; `newPrice` is on the tick schedule when one is set |
-| `trading:order_cancel` | `{ orderId }` | the ✕ on an order pill is clicked |
-| `trading:position_close` | `{ positionId }` | the ✕ on a position pill is clicked |
+| `trading:order_cancel` | `{ orderId }` | the close box on an order pill is clicked |
+| `trading:position_close` | `{ positionId }` | the close box on a position pill is clicked |
 | `trading:order_click` | `{ order }` | an order pill body is clicked |
 | `trading:position_click` | `{ position }` | a position pill body is clicked |
 

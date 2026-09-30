@@ -2,10 +2,10 @@
 
 Streams a real OpenAlgo instance into the chart: historical candles over REST
 (`/api/v1/history`) plus live updates over the OpenAlgo WebSocket proxy
-(LTP → `CandleBuilder` → forming candle + a live LTP line).
+(each LTP runs through `CandleBuilder` into the forming candle, plus a live LTP line).
 
 It uses the library's real adapters unchanged: `OpenAlgoDataFeed` (history),
-`OpenAlgoWsFeed` (live), and `CandleBuilder` (tick → interval bar).
+`OpenAlgoWsFeed` (live), and `CandleBuilder` (ticks into interval bars).
 
 ## Run
 
@@ -43,9 +43,9 @@ broker-dependent, some brokers return `subscribe partial`.)
 
 Right-click the chart to place an order **at the cursor price**, Buy/Sell
 **Market / Limit / Stop (SL)**, via OpenAlgo's `placeorder` API. Working orders
-appear as draggable lines (drag and release to **modify**, click the ✕ to
+appear as draggable lines (drag and release to **modify**, click its close box to
 **cancel**); the net position shows as a line with **live P&L marked to the LTP**
-and its own ✕ to **exit** (square off to flat via `placesmartorder position_size 0`).
+and its own close box to **exit** (square off to flat via `placesmartorder position_size 0`).
 Orders/positions are polled from `/orderbook` + `/positionbook` every 3s.
 
 Safety:
@@ -54,7 +54,7 @@ Safety:
   `ANALYZE (sandbox)` or `LIVE - real orders`. In **LIVE** mode every order asks
   for an explicit confirm first.
 - Set OpenAlgo to **Analyzer** mode (`/analyzer`) to test against the ₹1 Cr
-  sandbox with no real fills. Validated end-to-end in sandbox: place → modify →
+  sandbox with no real fills. Validated end-to-end in sandbox: place, modify and
   cancel through the proxy.
 
 ## Notes

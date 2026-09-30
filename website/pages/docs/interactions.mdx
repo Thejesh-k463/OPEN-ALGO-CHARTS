@@ -194,8 +194,8 @@ changes. When focused:
 
 | Key | Action |
 |---|---|
-| ← / → | pan time |
-| ↑ / ↓ | pan price |
+| Left / Right arrow | pan time |
+| Up / Down arrow | pan price |
 | + / − | zoom |
 | Home / 0 | reset (`chart.resetScale()`) |
 
@@ -206,7 +206,7 @@ const chart = createChart(el, { ariaLabel: 'RELIANCE 5-minute candlestick chart'
 ## Screenshots & grid
 
 ```ts
-const canvas = chart.takeScreenshot();           // composites all panes + overlays → canvas
+const canvas = chart.takeScreenshot();           // composites all panes and overlays into one canvas
 chart.downloadScreenshot('reliance-5m.png');     // same composite, downloaded as a PNG
 const svg = chart.exportSVG();                   // the same frame as a standalone SVG string
 chart.setGridOptions({ vertLines: false });      // toggle grid lines at runtime

@@ -144,8 +144,8 @@ range). Direct manipulation:
 Programmatic conversion between price and pixels (for DOM overlays):
 
 ```ts
-const y = chart.priceToCoordinate(101.5);   // price → container px
-const p = chart.coordinateToPrice(y);        // px → price
+const y = chart.priceToCoordinate(101.5);   // price to container px
+const p = chart.coordinateToPrice(y);        // px to price
 ```
 
 ### One axis at a time
@@ -595,7 +595,7 @@ switches.
 <Callout type="info">
 Legends draw on the **canvas**, not in the DOM, like `BuySellButtons` and the DOM ladder.
 They composite into `takeScreenshot()`, cost no DOM per pane, and their icons are vector
-strokes rather than text glyphs (`⛶` and `🗑` render as emoji on some platforms).
+strokes rather than text glyphs (the maximize and delete glyphs render as emoji on some platforms).
 </Callout>
 
 ## Left, right & overlay price scales
