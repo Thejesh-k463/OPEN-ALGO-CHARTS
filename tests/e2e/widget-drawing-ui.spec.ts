@@ -339,7 +339,7 @@ test('the objects panel reorders by dragging a row and by Alt with an arrow key'
   const errors = await mount(page);
   await page.evaluate(() => window.__drawUi.widget.openObjects());
   const stack = () => page.evaluate(() => window.__drawUi.widget.objects.stack(0).map(item => item.name));
-  expect(await stack()).toEqual(['RELIANCE', 'Trend line', 'Horizontal line', 'Rectangle']);
+  expect(await stack()).toEqual(['RELIANCE', 'Trend Line', 'Horizontal Line', 'Rectangle']);
   const rows = page.locator('.oac-objects__row[data-object-id^="drawing:"]');
   await expect(page.locator('.oac-objects__hint')).toContainText('back to front');
   await expect(rows.first().locator('.oac-objects__grip')).toBeVisible();
@@ -355,11 +355,11 @@ test('the objects panel reorders by dragging a row and by Alt with an arrow key'
   await page.mouse.move(target.x + 62, target.y + target.height - 5, { steps: 3 });
   await page.waitForTimeout(100);
   await page.mouse.up();
-  await expect.poll(stack).toEqual(['RELIANCE', 'Horizontal line', 'Rectangle', 'Trend line']);
+  await expect.poll(stack).toEqual(['RELIANCE', 'Horizontal Line', 'Rectangle', 'Trend Line']);
   await page.screenshot({ path: info.outputPath('objects-dragged.png') });
   await page.locator('.oac-objects__row[data-object-id^="drawing:"]').last().locator('.oac-objects__summary').focus();
   await page.keyboard.press('Alt+ArrowUp');
-  await expect.poll(stack).toEqual(['RELIANCE', 'Horizontal line', 'Trend line', 'Rectangle']);
+  await expect.poll(stack).toEqual(['RELIANCE', 'Horizontal Line', 'Trend Line', 'Rectangle']);
   expect(errors).toEqual([]);
 });
 

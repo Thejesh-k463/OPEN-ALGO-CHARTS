@@ -39,7 +39,7 @@ import {
 import { defaultWidgetStore } from './storage';
 import { ChartHistory } from './history';
 import { Keymap } from './keymap';
-import { mountRail, type RailHandle, type RailOptions, type RailPrefs } from './rail';
+import { mountRail, toolName, type RailHandle, type RailOptions, type RailPrefs } from './rail';
 import { mountStatusline, type StatuslineHandle } from './statusline';
 import { mountTopbar, type MenuRow, type SymbolSearch, type TopbarHandle } from './topbar';
 import { mountToasts, type ToastHandle, type ToastKind, type Toaster } from './toast';
@@ -650,6 +650,8 @@ class WidgetImpl implements Widget {
     this.alerts = new AlertController(this.chart, { drawings: this.draw });
     this.objects = new ChartObjects(this.chart, {
       drawings: this.draw,
+      // The name the rail and the properties title give the tool, translated.
+      drawingName: tool => widgetText(options, `schema.drawing.${tool}.name`, {}, toolName(tool)),
       onSettings: object => {
         if (object.kind === 'source') this.openSettings();
         else if (object.kind === 'indicator') mountIndicatorSettings(this.context, undefined, { instanceId: object.sourceId });

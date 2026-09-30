@@ -138,6 +138,12 @@ export interface ChartObjectsOptions {
   drawings?: ChartObjectDrawingSource;
   /** Opens the host's existing editor for a built-in object. */
   onSettings?(object: ChartObjectSnapshot): void;
+  /**
+   * A drawing row's name from its tool id, such as the draw registry's
+   * display name. This tier cannot read that registry, so without it the
+   * row is named from the id ("Trend line"). Since 2.5.10.
+   */
+  drawingName?(tool: string): string;
 }
 
 type Actions = Pick<ChartObjectProvider, 'select' | 'setVisible' | 'setLocked' | 'remove' | 'openSettings' | 'focus' | 'reorder' | 'move'>
@@ -562,7 +568,7 @@ export class ChartObjects {
           && drawing.points.every(p => Number.isFinite(p.time) && Number.isFinite(p.price))
           && chart.panes()[drawing.paneIndex] !== undefined;
         add(id, drawing.id, {
-          kind: 'drawing', groupId: membership.get(drawing.id), name: drawing.tool.replace(/-/g, ' ').replace(/^./, c => c.toUpperCase()),
+          kind: 'drawing', groupId: membership.get(drawing.id), name: this._options.drawingName?.(drawing.tool) ?? drawing.tool.replace(/-/g, ' ').replace(/^./, c => c.toUpperCase()),
           paneIndex: drawing.paneIndex, visible: drawing.visible !== false,
           locked: drawing.locked === true, selected: selected.includes(drawing.id), hiddenOnInterval,
         }, {

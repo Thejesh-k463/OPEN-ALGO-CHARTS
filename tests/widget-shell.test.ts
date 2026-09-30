@@ -87,6 +87,15 @@ describe('default candle density', () => {
 });
 
 describe('the frame', () => {
+  it('names drawing rows the way the rail and the properties title do', () => {
+    const { w } = make();
+    const at = [{ time: 1, price: 2 }];
+    const line = w.draw.add({ tool: 'trend-line', paneIndex: 0, style: {}, points: at });
+    const xabcd = w.draw.add({ tool: 'xabcd-pattern', paneIndex: 0, style: {}, points: at });
+    expect(w.objects.get('drawing:' + line.id)?.name).toBe('Trend Line');
+    expect(w.objects.get('drawing:' + xabcd.id)?.name).toBe('XABCD Pattern');
+  });
+
   it('owns a live objects panel and routes edits to existing settings dialogs', () => {
     const { w, root, doc } = make();
     const drawing = w.draw.add({ tool: 'trend-line', paneIndex: 0, style: {}, points: [] });

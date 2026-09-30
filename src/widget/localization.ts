@@ -417,6 +417,7 @@ export type WidgetBuiltinMessage =
   | "{count} bars"
   | "{count} drawings"
   | "{count} instances on the chart"
+  | "{count} object"
   | "{count} objects"
   | "{group}: chevron for the rest"
   | "{group}: chevron for the rest. Double-click keeps it active"
@@ -465,6 +466,7 @@ export type WidgetBuiltinMessage =
   | "A freehand stroke has {count} points. Move it on the chart."
   | "Coordinates"
   | "Times are on the chart clock, {zone}."
+  | "{shown} of {count} object"
   | "{shown} of {count} objects"
   // The shortcuts editor (keymap-editor.ts), since 2.5.10.
   | "{count} chart shortcut struck through: a drawing tool uses the same chord here and takes precedence."

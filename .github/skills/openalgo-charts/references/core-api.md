@@ -324,8 +324,10 @@ off();
 objects.destroy(); // releases observers, not the chart or its objects
 ```
 
-`ChartObjectsOptions` contains optional `drawings: ChartObjectDrawingSource` and
-`onSettings(object: ChartObjectSnapshot)`. `ChartObjectDrawingSource` describes
+`ChartObjectsOptions` contains optional `drawings: ChartObjectDrawingSource`,
+`onSettings(object: ChartObjectSnapshot)` and, since 2.5.10, `drawingName(tool)`,
+which names a drawing row (pass the draw registry's `getDrawingTool(tool).name`;
+without it the row is named from the tool id, "Trend line"). `ChartObjectDrawingSource` describes
 `drawings`, `get`, `selection`, `select`, `update`, `remove` and an optional `removeMany`; the draw tier's
 `DrawingController` satisfies it. `ChartObjectDrawing` is the structural record
 with `id`, `tool`, `paneIndex`, `points: { time, price }[]`, optional `visible`, `locked`

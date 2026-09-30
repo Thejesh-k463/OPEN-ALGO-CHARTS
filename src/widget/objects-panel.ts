@@ -320,8 +320,8 @@ export function createObjectsPanelContent(ctx: WidgetContext, opts: ObjectsPanel
         row.buttons.set('add-selection', control);
       }
       control.textContent = text(item.selected ? 'deselect' : 'selectMore', item.selected ? 'Deselect' : 'Select');
+      // Named for the action it takes, so it carries no pressed state; the row's summary says selected.
       control.setAttribute('aria-label', text(item.selected ? 'deselectLabel' : 'selectMoreLabel', item.selected ? 'Remove {name} from selection' : 'Add {name} to selection', { name: item.name }));
-      control.setAttribute('aria-pressed', String(item.selected));
       if (row.actions.children[index] !== control) row.actions.insertBefore(control, row.actions.children[index] ?? null);
       index++;
     }
@@ -450,7 +450,9 @@ export function createObjectsPanelContent(ctx: WidgetContext, opts: ObjectsPanel
     updateGroupButton();
     empty.hidden = shown.length > 0;
     empty.textContent = all.length === 0 ? widgetText(ctx, 'No objects on this chart.') : widgetText(ctx, 'No objects match your search.');
-    count.textContent = query === '' ? widgetText(ctx, '{count} objects', { count: all.length }) : widgetText(ctx, '{shown} of {count} objects', { shown: shown.length, count: all.length });
+    const one = all.length === 1;
+    count.textContent = query === '' ? widgetText(ctx, one ? '{count} object' : '{count} objects', { count: all.length })
+      : widgetText(ctx, one ? '{shown} of {count} object' : '{shown} of {count} objects', { shown: shown.length, count: all.length });
     if (heldFocus) {
       if (!list.contains(focused)) search.focus();
       else if (doc.activeElement !== focused) focused!.focus();
@@ -460,7 +462,17 @@ export function createObjectsPanelContent(ctx: WidgetContext, opts: ObjectsPanel
   search.addEventListener('input', paint);
   const unsubscribe = objects.subscribe(items => {
     if (closed) return;
-    all = items;
+    // Rows of one name are told apart by their place among them, the way the
+    // alert editor numbers drawings, or every one's actions read the same.
+    const counts = new Map<string, number>();
+    for (const item of items) counts.set(item.name, (counts.get(item.name) ?? 0) + 1);
+    const seen = new Map<string, number>();
+    all = items.map(item => {
+      if (counts.get(item.name)! < 2) return item;
+      const n = (seen.get(item.name) ?? 0) + 1;
+      seen.set(item.name, n);
+      return { ...item, name: `${item.name} (${n})` };
+    });
     paint();
   });
   const dispose = (): void => {
