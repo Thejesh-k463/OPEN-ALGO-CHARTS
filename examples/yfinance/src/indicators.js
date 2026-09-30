@@ -59,7 +59,8 @@ export function renderIndicatorChips() {
     }
     const x = document.createElement('button');
     x.textContent = '×';
-    x.title = 'remove';
+    x.setAttribute('aria-label', `Remove ${inst.name}`);
+    x.title = `Remove ${inst.name}`;
     x.addEventListener('click', () => {
       if (!target.current()) return;
       chart.removeIndicator(inst.id);

@@ -76,8 +76,8 @@ test('Ctrl+Z and Ctrl+Y walk a study, a line, a scale and a type rebuild on the 
   await page.mouse.click(5, 5);
 
   // A chart type, which the demo builds as a new chart.
-  await page.getByRole('button', { name: 'Chart type', exact: true }).click();
-  await page.getByRole('button', { name: 'Line', exact: true }).click();
+  await page.getByRole('button', { name: /^Chart type, / }).click();
+  await page.getByRole('menuitemradio', { name: 'Line', exact: true }).click();
   await expect.poll(() => model(page).then(m => m.type)).toBe('line');
   await paint(page);
   await page.screenshot({ path: info.outputPath('reference-all-steps.png') });
@@ -151,7 +151,7 @@ test('a study settings session is one step, and a linked appearance change is un
   await page.getByRole('button', { name: /Open a second, linked chart/ }).click();
   await page.waitForFunction(() => (window as any).__oac?.app.chart2?.primaryBars().length > 0 && !(window as any).__oac.app.loading2);
   await page.getByRole('button', { name: /^Chart linking \(/ }).click();
-  await page.getByRole('button', { name: /^Appearance/ }).click();
+  await page.getByRole('menuitemcheckbox', { name: /^Appearance/ }).click();
   await page.keyboard.press('Escape');
   const up = () => page.evaluate(async () => {
     const { readChartSettings } = await import('/dist/openalgo-charts.mjs' as string);

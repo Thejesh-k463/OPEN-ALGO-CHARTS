@@ -44,7 +44,7 @@ const onNewest = (page: Page, key: string): Promise<boolean> => page.evaluate(na
 /** Pick a layout from the grid bar's picker by its name. */
 async function pickLayout(page: Page, name: string): Promise<void> {
   await page.locator('.oac-grid__layout').click();
-  await page.getByRole('menu', { name: 'Layouts' }).getByRole('menuitemradio', { name, exact: true }).click();
+  await page.getByRole('menu', { name: 'Arrange charts' }).getByRole('menuitemradio', { name, exact: true }).click();
 }
 const layoutText = (page: Page) => page.locator('.oac-grid__layout .oac-grid__bar-text');
 
@@ -96,7 +96,7 @@ test('the grid view offers every layout to sixteen charts, names it with its gly
   await page.waitForFunction(() => (window as any).__grid?.cells().length === 4);
   await expect.poll(() => loaded(page), { timeout: 20_000 }).toBe(true);
   await page.locator('.oac-grid__layout').click();
-  await expect(page.getByRole('menu', { name: 'Layouts' }).getByRole('menuitemradio')).toHaveCount(26);
+  await expect(page.getByRole('menu', { name: 'Arrange charts' }).getByRole('menuitemradio')).toHaveCount(26);
   await page.keyboard.press('Escape');
 
   // An uneven layout: the status line names it with the library's own glyph.

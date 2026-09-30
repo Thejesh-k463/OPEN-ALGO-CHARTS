@@ -5,7 +5,7 @@ import { attachInspection, detachInspection } from './inspection.js';
 import { DrawingController, DrawingLinkGroup } from '/dist/openalgo-charts.draw.mjs';
 import { el, fmt, fmtVol, UP, DOWN, chartTheme, chartMotionOptions, toast, MOD } from './ui.js';
 import { clipboardPort } from './clipboard.js';
-import { armCursor, magnetMode, stayMode, syncMobileControls, observeMobileControls, focusChart } from './rail.js';
+import { armCursor, magnetMode, stayMode, syncMobileControls, observeMobileControls, focusChart, toolName } from './rail.js';
 import { fetchBars, fetchNote, feedErrorState } from './feed.js';
 import { attachComparison, comparisonState, invalidateComparisons, restoreComparisons, syncComparisons } from './compare.js';
 import { autosave, stripView } from './persist.js';
@@ -350,7 +350,7 @@ export function buildChart2({ keepView = true, typeChanged = false, state } = {}
   app.chart2.on('draw:select', ({ id }) => {
     const d = id ? app.draw2.get(id) : null;
     if (d && typeof app.draw2.copy === 'function') {
-      el('status').textContent = `chart 2: ${d.tool} selected · ${MOD}+C copy · ${MOD}+X cut · ${MOD}+V paste`;
+      el('status').textContent = `Chart 2: ${toolName(d.tool)} selected · ${MOD}+C copy · ${MOD}+X cut · ${MOD}+V paste`;
     }
   });
   joinLink();
@@ -501,7 +501,7 @@ export function renderPane2Bar() {
   note.textContent = app.p2.note || '';
   bar.appendChild(note);
 
-  const x = tbtn('&times;', 'Close the split view');
+  const x = tbtn('&times;', 'Close the second chart');
   x.classList.add('tbtn--icon');
   x.addEventListener('click', closeSplit);
   bar.appendChild(x);

@@ -72,7 +72,7 @@ export function openSnapMenu(anchor) {
     menu.id = 'snapmenu';
     menu.innerHTML =
       '<div class="head">Chart snapshot</div>'
-      + '<button id="snap-save">' + ticon('download') + '<span>Download image</span>'
+      + '<button id="snap-save">' + ticon('download') + '<span>Save PNG</span>'
       + '<span class="key">Ctrl+Alt+S</span></button>'
       + '<button id="snap-copy">' + ticon('copy') + '<span>Copy image</span>'
       + '<span class="key">Ctrl+Shift+S</span></button>'

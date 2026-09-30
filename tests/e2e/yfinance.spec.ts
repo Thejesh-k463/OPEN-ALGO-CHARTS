@@ -566,7 +566,7 @@ test('a session mark selects read-only, stays out of the layout, and only the ho
   await page.mouse.click(at.x, at.y, { button: 'right' });
   const mark = page.locator('#ctxmenu [data-act="mark"]');
   await expect(mark).toBeVisible();
-  await expect(mark).toHaveText(/^Mark .+ for This Session$/);
+  await expect(mark).toHaveText(/^Mark .+ for this session$/);
   await mark.click();
   const marks = () => page.evaluate(() => (window as any).__oac.draw.drawings()
     .filter((d: { policy?: { persistent?: boolean } }) => d.policy?.persistent === false)
@@ -620,9 +620,144 @@ test('a session mark selects read-only, stays out of the layout, and only the ho
   // The host's own row clears it.
   await page.mouse.click(at.x, at.y, { button: 'right' });
   const clear = page.locator('#ctxmenu [data-act="unmark"]');
-  await expect(clear).toHaveText('Clear Session Marks (1)');
+  await expect(clear).toHaveText('Clear session marks (1)');
   await expect(page.locator('#ctxmenu [data-act="delall"]')).toBeHidden();
   await clear.click();
   expect(await marks()).toEqual([]);
   expect(errors).toEqual([]);
+});
+
+// ── labels ────────────────────────────────────────────────────────────────
+// What each control is called, to a reader and to assistive technology. The
+// 2.5.10 label audit found controls named "[object Object]", toggles whose
+// name said the opposite of their pressed state, twin names for different
+// actions, and codes where words belong; each check below failed before it.
+
+/** Add a drawing of `tool` over recent bars and select it; its id. */
+const addSelected = (page: Page, tool: string, extra: Record<string, unknown> = {}) => page.evaluate(([tool, extra]) => {
+  const { draw, app } = (window as any).__oac;
+  const bars = app.currentBars;
+  const a = bars[bars.length - 40], b = bars[bars.length - 10];
+  const points = tool === 'text' ? [{ time: a.time, price: a.high }] : [{ time: a.time, price: a.low }, { time: b.time, price: b.high }];
+  const d = draw.add({ tool, paneIndex: 0, style: {}, points, ...extra });
+  draw.select(d.id);
+  return d.id as string;
+}, [tool, extra] as const);
+
+test('the properties bar names every control, and lock and hide keep their names while the state flips', async ({ page }) => {
+  const errors = watchErrors(page);
+  await openDemo(page);
+  const bar = page.locator('#propbar');
+  await addSelected(page, 'trend-line');
+  await expect(bar).toBeVisible();
+  await expect(bar.locator('[data-act="duplicate"]')).toHaveAttribute('aria-label', 'Duplicate');
+  await expect(bar.locator('[data-act="delete"]')).toHaveAttribute('aria-label', 'Delete');
+  await bar.locator('[data-act="duplicate"]').hover();
+  await expect(page.locator('#tip')).toHaveText(/^Duplicate(Ctrl|Cmd)\+D$/);
+  const names = await bar.locator('[aria-label]').evaluateAll(nodes => nodes.map(n => n.getAttribute('aria-label')));
+  expect(names.filter(name => /\[object/.test(name ?? ''))).toEqual([]);
+
+  // Pressed from the keyboard, with no pointer to refresh the name.
+  for (const [act, name] of [['lock', 'Lock'], ['visible', 'Hide']] as const) {
+    const control = bar.locator(`[data-act="${act}"]`);
+    await expect(control).toHaveAttribute('aria-label', name);
+    await expect(control).toHaveAttribute('aria-pressed', 'false');
+    await control.focus();
+    await page.keyboard.press('Enter');
+    await expect(control).toHaveAttribute('aria-label', name);
+    await expect(control).toHaveAttribute('aria-pressed', 'true');
+    await page.keyboard.press('Enter');
+    await expect(control).toHaveAttribute('aria-pressed', 'false');
+  }
+
+  await addSelected(page, 'text', { text: { value: 'Breakout' } });
+  await expect(bar.locator('[data-act="edit-text"]')).toHaveAttribute('aria-label', 'Edit text');
+  await addSelected(page, 'horizontal-line', { policy: { editable: false } });
+  await expect(bar.locator('.pb-note')).toHaveText('Read-only');
+  await expect(bar.locator('[data-act="duplicate"]')).toHaveAttribute('aria-label', 'Duplicate as your own drawing');
+  expect(errors).toEqual([]);
+});
+
+test('a fill opacity slider is named by its label', async ({ page }) => {
+  await openDemo(page);
+  await addSelected(page, 'rectangle');
+  await page.locator('#propbar [data-path="style.fillColor"]').click();
+  await expect(page.getByRole('slider', { name: 'Fill opacity', exact: true })).toBeVisible();
+});
+
+test('the sandbox broker names its panel close apart from closing the position', async ({ page }) => {
+  await openDemo(page);
+  await page.locator('#account').click();
+  const panel = page.locator('#acctpanel');
+  await expect(panel.getByRole('button', { name: 'Close position', exact: true })).toHaveCount(1);
+  await expect(panel.getByRole('button', { name: 'Close panel', exact: true })).toHaveCount(1);
+});
+
+test('a bracket prints its P&L with no currency the instrument does not trade in', async ({ page }) => {
+  await openDemo(page);
+  await page.getByRole('button', { name: /^Place a Buy OCO bracket/ }).click();
+  await expect(page.locator('#bk-tp .pnl')).toHaveText(/^[+-][\d,]+$/);
+  await expect(page.locator('#bk-sl .pnl')).toHaveText(/^[+-][\d,]+$/);
+});
+
+test('the chart menu speaks in sentence case and says what each row does', async ({ page }) => {
+  await openDemo(page);
+  await addSelected(page, 'trend-line');
+  const box = await chartBox(page);
+  await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.35, { button: 'right' });
+  const menu = page.locator('#ctxmenu');
+  await expect(menu).toBeVisible();
+  const rows = await menu.locator('button:visible').evaluateAll(nodes => nodes.map(n => n.firstChild?.textContent ?? ''));
+  // After the first word, capitals only in acronyms and names.
+  for (const row of rows) expect(row.split(' ').slice(1).filter(word => /^[A-Z][a-z]/.test(word)), row).toEqual([]);
+  await expect(menu.locator('[data-act="cancelall"]')).toHaveText('Cancel orders and close position');
+  await expect(menu.locator('[data-act="volshow"]')).toHaveAttribute('role', 'menuitemcheckbox');
+  await expect(menu.locator('[data-act="volshow"]')).toHaveAttribute('aria-checked', 'true');
+  await expect(menu.getByRole('menuitem', { name: 'Copy drawing', exact: true })).toHaveAttribute('aria-keyshortcuts', /^(Control|Meta)\+C$/);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#cset-ok')).toHaveText('OK');
+  await expect(page.locator('#bk-entry [data-act="modify"]')).toHaveText('Show bracket summary');
+});
+
+test('the status line and the legend use names, not ids and codes', async ({ page }) => {
+  await openDemo(page);
+  await page.locator('#rail .rail__group[data-group="lines"]').click();
+  const box = await chartBox(page);
+  await page.mouse.click(box.x + box.width * 0.30, box.y + box.height * 0.40);
+  await page.mouse.click(box.x + box.width * 0.55, box.y + box.height * 0.25);
+  await expect(page.locator('#status')).toContainText('Trend Line');
+  await expect(page.locator('#status')).not.toContainText('trend-line');
+  await page.getByRole('button', { name: '1W', exact: true }).click();
+  await page.waitForFunction(() => (window as any).__oac.app.req.interval === '1wk' && !(window as any).__oac.app.loading);
+  const params = await page.evaluate(() => (window as any).__oac.app.symbolLegend.options().params as string);
+  expect(params).toMatch(/^1W /);
+  await expect(page.getByRole('button', { name: '5M', exact: true })).toHaveAttribute('title', '5 minute bars');
+});
+
+test('menus and pills expose which option is on, and value buttons carry their value in the name', async ({ page }) => {
+  await openDemo(page);
+  const pill = page.getByRole('button', { name: '1D', exact: true });
+  await expect(pill).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: /AAPL/ }).first()).toBeVisible();
+  await page.getByRole('button', { name: /^Chart type/ }).click();
+  await expect(page.getByRole('menuitemradio', { name: 'Candles', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Escape');
+  const box = await chartBox(page);
+  await page.mouse.click(box.x + box.width - 20, box.y + box.height * 0.3, { button: 'right' });
+  await expect(page.locator('#axmenu')).toBeVisible();
+  await expect(page.locator('#axmenu').getByRole('menuitemradio', { name: 'Linear', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Escape');
+  // Each chip's cross names the study it removes.
+  const chips = await page.locator('#indlist .chip').evaluateAll(nodes => nodes.map(n => [n.querySelector('b')?.textContent, n.querySelector('button')?.getAttribute('aria-label')]));
+  expect(chips.length).toBeGreaterThan(0);
+  for (const [name, remove] of chips) expect(remove).toBe(`Remove ${name}`);
+});
+
+test('one action keeps one name across the page', async ({ page }) => {
+  await openDemo(page);
+  await expect(page.getByRole('button', { name: 'Save PNG', exact: true })).toHaveCount(1);
+  await page.locator('.tbtn[aria-label="Chart snapshot"]').click();
+  await expect(page.locator('#snap-save')).toContainText('Save PNG');
+  await page.getByRole('button', { name: /Compare/ }).first().click();
+  await expect(page.locator('#cmp-title')).toHaveText('Compare symbols: Chart 1');
 });

@@ -132,10 +132,10 @@
         <button id="mobile-cursor" type="button">Cursor</button>
         <button id="mobile-undo" type="button">Undo</button>
         <button id="mobile-redo" type="button">Redo</button>
-        <button id="mobile-magnet" type="button" aria-pressed="false">Magnet off</button>
+        <button id="mobile-magnet" type="button" aria-pressed="false">Magnet: off</button>
         <button id="mobile-zoom-out" type="button">Zoom out</button>
         <button id="mobile-zoom-in" type="button">Zoom in</button>
-        <button id="mobile-fit" type="button">Fit</button>
+        <button id="mobile-fit" type="button">Reset view</button>
       </div>
 
       <!-- What the stage says when there are no bars to draw. One overlay,
@@ -170,7 +170,7 @@
            the bar you start from is the whole premise of the exercise, so it is
            chosen, not guessed at from the viewport. -->
       <div id="replaypick" role="status" hidden>
-        <button id="rp-pick-scope" type="button" aria-label="Replay scope: Chart 1" aria-pressed="false">Chart 1</button>
+        <button id="rp-pick-scope" type="button" aria-label="Replay scope: Chart 1">Chart 1</button>
         <span><strong>Select a bar</strong> <span class="hint">then replay from its close</span></span>
         <span class="hint" id="rp-picked"></span>
         <button id="rp-pick-cancel">Cancel</button>
@@ -179,11 +179,11 @@
       <!-- Leaving replay throws away the playhead, so it asks first. -->
       <div id="replayleave" hidden>
         <div class="box" role="alertdialog" aria-modal="true" aria-labelledby="rp-leave-title" aria-describedby="rp-leave-text">
-          <h4 id="rp-leave-title">Leave replay?</h4>
+          <h4 id="rp-leave-title">Exit replay?</h4>
           <p id="rp-leave-text">The chart goes back to the live session and the playhead is lost.</p>
           <div class="row">
             <button id="rp-leave-stay">Stay</button>
-            <button id="rp-leave-go" class="primary">Leave</button>
+            <button id="rp-leave-go" class="primary">Exit</button>
           </div>
         </div>
       </div>
@@ -214,7 +214,7 @@
       <span>Qty: <b class="q">0</b></span>
       <span>Risk/Reward: <b class="rr">0</b></span>
       <button class="bk-buy" data-act="place">1-Click</button>
-      <button class="bk-mod" data-act="modify">Modify</button>
+      <button class="bk-mod" data-act="modify">Show bracket summary</button>
     </div>
     <div class="bk sl" id="bk-sl">
       <span>SL: <b class="pts">0</b> Pts (<span class="pct">0%</span>)</span>
@@ -363,7 +363,7 @@
       <div class="set-foot">
         <button id="cset-defaults" class="btn btn--ghost set-lead">Restore this tab</button>
         <button id="cset-cancel" class="btn btn--ghost">Cancel</button>
-        <button id="cset-ok" class="btn btn--primary">Ok</button>
+        <button id="cset-ok" class="btn btn--primary">OK</button>
       </div>
     </div>
   </div>
@@ -382,34 +382,36 @@
     <button role="menuitem" data-act="alert-create">Create alert</button>
     <button role="menuitem" data-act="alert-list">Alerts</button>
     <hr data-sec="alerts">
-    <button class="buy" role="menuitem" data-side="BUY" data-type="MARKET">Buy Market</button>
-    <button class="sell" role="menuitem" data-side="SELL" data-type="MARKET">Sell Market</button>
+    <button class="buy" role="menuitem" data-side="BUY" data-type="MARKET">Buy market</button>
+    <button class="sell" role="menuitem" data-side="SELL" data-type="MARKET">Sell market</button>
     <hr data-sec="order">
-    <button class="buy" role="menuitem" data-side="BUY" data-type="LIMIT">Buy Limit</button>
-    <button class="sell" role="menuitem" data-side="SELL" data-type="LIMIT">Sell Limit</button>
+    <button class="buy" role="menuitem" data-side="BUY" data-type="LIMIT">Buy limit</button>
+    <button class="sell" role="menuitem" data-side="SELL" data-type="LIMIT">Sell limit</button>
     <hr data-sec="order">
-    <button class="buy" role="menuitem" data-side="BUY" data-type="SL">Buy Stop (SL)</button>
-    <button class="sell" role="menuitem" data-side="SELL" data-type="SL">Sell Stop (SL)</button>
+    <button class="buy" role="menuitem" data-side="BUY" data-type="SL">Buy stop (SL)</button>
+    <button class="sell" role="menuitem" data-side="SELL" data-type="SL">Sell stop (SL)</button>
     <hr data-sec="order">
-    <button role="menuitem" data-act="cancelall">Cancel All Orders</button>
+    <button role="menuitem" data-act="cancelall">Cancel orders and close position</button>
     <hr>
-    <button role="menuitem" data-act="delsel">Delete Drawing</button>
-    <button role="menuitem" data-act="delall">Remove All Drawings</button>
+    <button role="menuitem" data-act="delsel">Delete drawing</button>
+    <button role="menuitem" data-act="delall">Remove all drawings</button>
     <!-- Session marks (src/session-marks.js): host-owned lines the user can
          select and copy but not move or delete, left out of saved layouts
          and the Objects dock. -->
-    <button role="menuitem" data-act="mark">Mark Price for This Session</button>
-    <button role="menuitem" data-act="unmark">Clear Session Marks</button>
+    <button role="menuitem" data-act="mark">Mark price for this session</button>
+    <button role="menuitem" data-act="unmark">Clear session marks</button>
     <!-- A study the host protects (src/host-study.js): no user control removes
          it, changes its settings or moves it; this row adds it and, with
          force, takes it away. -->
-    <button role="menuitem" data-act="hoststudy">Add Protected VWAP</button>
+    <button role="menuitem" data-act="hoststudy">Add protected VWAP</button>
     <!-- Clipboard. The chord is shown beside the label because the engine binds
-         no keys: nothing else on screen would say what Ctrl+C does here. -->
+         no keys: nothing else on screen would say what Ctrl+C does here. It is
+         kept out of the name (aria-keyshortcuts carries it), and menus.js
+         writes Cmd for it on a Mac. -->
     <hr data-sec="clip">
-    <button role="menuitem" data-act="copy">Copy Drawing<em>Ctrl+C</em></button>
-    <button role="menuitem" data-act="cut">Cut Drawing<em>Ctrl+X</em></button>
-    <button role="menuitem" data-act="paste">Paste Drawing<em>Ctrl+V</em></button>
+    <button role="menuitem" data-act="copy" aria-keyshortcuts="Control+C">Copy drawing<em aria-hidden="true">Ctrl+C</em></button>
+    <button role="menuitem" data-act="cut" aria-keyshortcuts="Control+X">Cut drawing<em aria-hidden="true">Ctrl+X</em></button>
+    <button role="menuitem" data-act="paste" aria-keyshortcuts="Control+V">Paste drawing<em aria-hidden="true">Ctrl+V</em></button>
     <!-- Only drawn when the chart says the pointer was over an indicator. -->
     <hr data-sec="ind">
     <button role="menuitem" data-act="indset">Indicator settings...</button>
@@ -425,9 +427,9 @@
          one that sits over the bars; this is the one a reader finds by
          right-clicking the chart and reading down the list. -->
     <hr data-sec="vol">
-    <button role="menuitem" data-act="volshow">Volume<em></em></button>
+    <button role="menuitemcheckbox" data-act="volshow" aria-checked="false">Volume</button>
     <hr>
-    <button role="menuitem" data-act="chartset">Settings...</button>
+    <button role="menuitem" data-act="chartset">Chart settings...</button>
   </div>
 
   <!-- Toasts stack here, newest at the bottom; the region is polite so a

@@ -34,7 +34,10 @@ describe('interval registry', () => {
   it('labels and names the codes for the pills', () => {
     expect(intervalLabel('5m')).toBe('5M');
     expect(intervalLabel('1mo')).toBe('1MO');
-    expect(intervalName('1d')).toBe('1D bars');
+    // In words: "5M bars" read as five months beside the bottom bar's 1M.
+    expect(intervalName('1d')).toBe('Daily bars');
+    expect(intervalName('5m')).toBe('5 minute bars');
+    expect(intervalName('1wk')).toBe('Weekly bars');
     expect(intervalName('1q')).toBe('Calendar quarter (folded from 1D bars)');
   });
 });

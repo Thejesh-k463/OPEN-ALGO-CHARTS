@@ -356,7 +356,7 @@ test('failed workspace storage and source changes leave the current charts intac
     app.chart.setDataContext({ ...app.chart.getDataContext(), symbol: 'CHANGED' });
     const cancelled = await pending;
     return { failure, cancelled, sameChart: app.chart === original, request: app.req.symbol, pending: app.workspaceLoading };
-  })).toMatchObject({ failure: 'Storage refused', cancelled: 'Workspace preparation was cancelled', sameChart: true, request: 'AAPL', pending: false });
+  })).toMatchObject({ failure: 'Storage refused', cancelled: 'Layout preparation was cancelled', sameChart: true, request: 'AAPL', pending: false });
 });
 
 test('workspace installation failure restores transformed charts from their original raw histories', async ({ page }) => {
@@ -641,8 +641,8 @@ test('fullscreen follows the selected chart and retains shared controls and dial
   await expect(page.locator('#chartset')).toBeVisible();
   await page.screenshot({ path: info.outputPath('reference-fullscreen-settings.png') });
   await page.locator('#cset-x').click();
-  await page.getByRole('button', { name: 'Selected chart', exact: true }).click();
-  await page.getByRole('button', { name: 'Chart 1', exact: true }).click();
+  await page.getByRole('button', { name: /^Selected chart, / }).click();
+  await page.getByRole('menuitemradio', { name: 'Chart 1', exact: true }).click();
   await expect(page.locator('body')).toHaveAttribute('data-fullscreen-pane', '1');
   await expect(page.locator('#chart')).toBeVisible();
   await expect(page.locator('#chart2')).toBeHidden();
@@ -651,7 +651,7 @@ test('fullscreen follows the selected chart and retains shared controls and dial
   await expect(page.locator('#chart2')).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#shellbar').evaluate(node => { node.scrollLeft = node.scrollWidth; });
-  const selector = await page.getByRole('button', { name: 'Selected chart', exact: true }).boundingBox();
+  const selector = await page.getByRole('button', { name: /^Selected chart, / }).boundingBox();
   expect(selector?.x).toBeGreaterThanOrEqual(0);
   expect((selector?.x || 0) + (selector?.width || 0)).toBeLessThanOrEqual(390);
   await page.screenshot({ path: info.outputPath('reference-sticky-chart-selector.png') });
@@ -752,8 +752,8 @@ test('pointer replay selection locks both charts and closing its owner cancels p
     return { pane: app.replayTarget.pane, loading: app.replayLoading, orders: app.orders.length, fired: app.replayDeliveries.length };
   })).toEqual({ pane: 2, loading: true, orders: 0, fired: 0 });
   await page.locator('#chart').focus();
-  await page.getByRole('button', { name: 'Chart type', exact: true }).click();
-  await page.getByRole('button', { name: 'Line', exact: true }).click();
+  await page.getByRole('button', { name: /^Chart type, / }).click();
+  await page.getByRole('menuitemradio', { name: 'Line', exact: true }).click();
   expect(await page.evaluate(() => (window as any).__oac.app.replayLoading)).toBe(true);
   await page.getByRole('button', { name: 'Close the second chart', exact: true }).click();
   release();
@@ -845,7 +845,7 @@ test('comparison charts use independent scales with a common start and honest mi
     const app = (window as any).__oac.app;
     app.comparisons.forEach((spec: any, index: number) => spec.handle.setBars([spec.bars[index]]));
   });
-  await page.getByRole('button', { name: 'Comparing TSLA, NVDA', exact: true }).click();
+  await page.getByRole('button', { name: 'Comparing TSLA, NVDA, Compare', exact: true }).click();
   await expect(page.locator('#cmp-list')).toContainText('No common starting bar');
   expect(await page.evaluate(() => (window as any).__oac.app.comparisons.every((spec: any) =>
     spec.handle.series.getData().every((bar: any) => !Number.isFinite(bar.close))))).toBe(true);
@@ -862,7 +862,7 @@ test('comparison controls retain chart ownership and saved visibility through re
   await page.waitForFunction(() => (window as any).__oac?.app.chart2?.primaryBars().length > 0 && !(window as any).__oac.app.loading2);
   await page.locator('#chart2').focus();
   await page.getByRole('button', { name: 'Compare a second symbol', exact: true }).click();
-  await expect(page.locator('#cmp-title')).toHaveText('Compare symbols: chart 2');
+  await expect(page.locator('#cmp-title')).toHaveText('Compare symbols: Chart 2');
   await page.locator('#cmp-sym').fill('TSLA');
   await page.locator('#cmp-add').click();
   await expect(page.locator('#cmp-list')).toContainText('TSLA');
@@ -896,10 +896,10 @@ test('comparison controls retain chart ownership and saved visibility through re
       visible: app.chart2.panes()[0].series().find((series: any) => series.style.color === app.comparisons2[0].color)?.style.visible, mode: app.cmpMode2 };
   })).toEqual({ first: 0, symbol: 'TSLA', hidden: true, visible: false, mode: 'indexed-to-100' });
   await page.locator('#chart2').focus();
-  await page.getByRole('button', { name: 'Chart type', exact: true }).click();
-  await page.getByRole('button', { name: 'Line', exact: true }).click();
+  await page.getByRole('button', { name: /^Chart type, / }).click();
+  await page.getByRole('menuitemradio', { name: 'Line', exact: true }).click();
   expect(faults).toEqual([]);
-  await page.getByRole('button', { name: 'Comparing TSLA', exact: true }).click();
+  await page.getByRole('button', { name: 'Comparing TSLA, Compare', exact: true }).click();
   await page.getByRole('button', { name: 'Remove TSLA', exact: true }).click();
   expect(await page.evaluate(() => (window as any).__oac.app.comparisons2.length)).toBe(0);
   expect(await page.evaluate(() => (window as any).__oac.app.chart2.panes()[0].priceScale.options.mode)).toBe('linear');
@@ -928,7 +928,7 @@ test('comparison history failures remain visible and retry uses its own chart in
     const app = (window as any).__oac.app;
     return app.p2.interval === '15m' && !app.loading2 && app.comparisons2[0].error;
   });
-  await page.getByRole('button', { name: 'Comparing TSLA', exact: true }).click();
+  await page.getByRole('button', { name: 'Comparing TSLA, Compare', exact: true }).click();
   await expect(page.locator('#cmp-list')).toContainText('Comparison source unavailable');
   await expect(page.locator('#cmp-list').getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
   expect(await page.evaluate(() => {
@@ -1001,7 +1001,7 @@ test('shared request and type controls preserve independent charts through reloa
   await page.getByRole('button', { name: /Open a second, linked chart/ }).click();
   await page.waitForFunction(() => (window as any).__oac?.app.chart2?.primaryBars().length > 0);
   await page.locator('#chart2').focus();
-  await expect(page.getByRole('button', { name: 'Change symbol', exact: true })).toContainText('MSFT');
+  await expect(page.getByRole('button', { name: /^Change symbol, / })).toContainText('MSFT');
   await page.locator('#shellbar .pills').getByRole('button', { name: '15M', exact: true }).click();
   await page.waitForFunction(() => {
     const app = (window as any).__oac.app;
@@ -1010,7 +1010,7 @@ test('shared request and type controls preserve independent charts through reloa
   expect(await page.evaluate(() => (window as any).__oac.app.req.interval)).toBe('1d');
   await expect(page.getByRole('button', { name: 'Place a Buy OCO bracket: entry, target and stop', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Place a Sell OCO bracket: entry, target and stop', exact: true })).toBeDisabled();
-  await page.getByRole('button', { name: 'Change symbol', exact: true }).click();
+  await page.getByRole('button', { name: /^Change symbol, / }).click();
   await page.getByPlaceholder('Symbol or expression').fill('TSLA');
   await expect(page.getByRole('option', { name: /TSLA/ })).toBeVisible();
   await page.getByPlaceholder('Symbol or expression').press('Enter');
@@ -1018,7 +1018,7 @@ test('shared request and type controls preserve independent charts through reloa
     const app = (window as any).__oac.app;
     return app.chart2.getDataContext().symbol === 'TSLA' && !app.loading2;
   });
-  await page.getByRole('button', { name: 'Add an indicator', exact: true }).click();
+  await page.getByRole('button', { name: /^Add an indicator, / }).click();
   await page.locator('.oac-pick__row[data-id="ema"]').click();
   const study = await page.evaluate(() => (window as any).__oac.app.chart2.indicators()[0]?.id);
   expect(study).toBeTruthy();
@@ -1031,22 +1031,22 @@ test('shared request and type controls preserve independent charts through reloa
   await page.locator('#set-ok').click();
   expect(await page.evaluate(() => (window as any).__oac.app.chart2.indicators()[0].settings().length)).toBe(9);
   await page.getByRole('button', { name: 'Grid', exact: true }).click();
-  await page.getByRole('button', { name: 'None', exact: true }).click();
+  await page.getByRole('menuitemradio', { name: 'None', exact: true }).click();
   expect(await page.evaluate(() => {
     const app = (window as any).__oac.app;
     return [app.chart.gridOptions().vertLines, app.chart2.gridOptions().vertLines];
   })).toEqual([true, false]);
-  await page.getByRole('button', { name: 'Chart type', exact: true }).click();
+  await page.getByRole('button', { name: /^Chart type, / }).click();
   await page.locator('#chart').focus();
   await expect(page.getByRole('button', { name: 'Place a Buy OCO bracket: entry, target and stop', exact: true })).toBeEnabled();
-  await page.getByRole('button', { name: 'Line', exact: true }).click();
+  await page.getByRole('menuitemradio', { name: 'Line', exact: true }).click();
   expect(await page.evaluate(() => {
     const app = (window as any).__oac.app;
     return { primary: app.chart.getState().series[0].type, secondary: app.chart2.getState().series[0].type,
       symbol: app.req.symbol, study: app.chart2.indicators()[0].id };
   })).toEqual({ primary: 'candlestick', secondary: 'line', symbol: 'AAPL', study });
   await page.locator('#chart2').focus();
-  await expect(page.getByRole('button', { name: 'Chart type', exact: true })).toContainText('Line');
+  await expect(page.getByRole('button', { name: /^Chart type, / })).toContainText('Line');
   await expect(page.locator('#p2bar .pills')).toHaveCount(0);
   const primaryView = await page.evaluate(() => (window as any).__oac.app.chart.getVisibleLogicalRange());
   await page.getByRole('button', { name: 'Save layout', exact: true }).click();
@@ -1105,8 +1105,8 @@ test('chart settings retain their selected owner through cancel, rebuild and rel
   expect(await page.evaluate(() => (window as any).__oac.app.chart.timezone())).toBe('Asia/Kolkata');
   expect(await page.evaluate(() => (window as any).__oac.app.chart2.timezone())).toBe('UTC');
   expect(await page.evaluate(() => (window as any).__oac.app.chart2.exportSVG())).toContain('Microsoft Corporation');
-  await page.getByRole('button', { name: 'Chart type', exact: true }).click();
-  await page.getByRole('button', { name: 'Line', exact: true }).click();
+  await page.getByRole('button', { name: /^Chart type, / }).click();
+  await page.getByRole('menuitemradio', { name: 'Line', exact: true }).click();
   expect(await page.evaluate(() => (window as any).__oac.app.chart2.statusLineOptions().barChange)).toBe(false);
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const secondaryView = await page.evaluate(() => (window as any).__oac.app.chart2.timeScale.getVisibleLogicalRange());
@@ -1237,17 +1237,17 @@ test('reference volume settings follow each chart and update their own average',
     expect(pixels[1], theme + ' down-volume pixels').toBeGreaterThan(20);
     if (theme === 'light') await page.screenshot({ path: info.outputPath('reference-volume-average-light.png') });
   }
-  await page.getByRole('button', { name: 'Chart type', exact: true }).click();
-  await page.getByRole('button', { name: 'Renko', exact: true }).click();
+  await page.getByRole('button', { name: /^Chart type, / }).click();
+  await page.getByRole('menuitemradio', { name: 'Renko', exact: true }).click();
   await page.getByRole('button', { name: 'Chart settings (or right-click the chart)', exact: true }).click();
   await page.locator('#cset-tabs').getByRole('button', { name: 'Volume', exact: true }).click();
   await expect(page.locator('[data-key="volume.showMA"]')).toBeDisabled();
   await page.locator('#cset-ok').click();
-  await page.getByRole('button', { name: 'Chart type', exact: true }).click();
-  await page.getByRole('button', { name: 'Candles', exact: true }).click();
+  await page.getByRole('button', { name: /^Chart type, / }).click();
+  await page.getByRole('menuitemradio', { name: 'Candles', exact: true }).click();
   expect(await page.evaluate(() => (window as any).__oac.app.volumeMA2.getData().length)).toBeGreaterThan(3);
-  await page.getByRole('button', { name: 'Chart type', exact: true }).click();
-  await page.getByRole('button', { name: 'Heikin Ashi', exact: true }).click();
+  await page.getByRole('button', { name: /^Chart type, / }).click();
+  await page.getByRole('menuitemradio', { name: 'Heikin Ashi', exact: true }).click();
   expect(await page.evaluate(() => Boolean((window as any).__oac.app.volume2))).toBe(true);
   const transformed = await page.evaluate(() => {
     const app = (window as any).__oac.app, chart = app.chart2;
@@ -1262,8 +1262,8 @@ test('reference volume settings follow each chart and update their own average',
 
 test('transformed price readout uses displayed candles', async ({ page }) => {
   await openDemo(page);
-  await page.getByRole('button', { name: 'Chart type', exact: true }).click();
-  await page.getByRole('button', { name: 'Heikin Ashi', exact: true }).click();
+  await page.getByRole('button', { name: /^Chart type, / }).click();
+  await page.getByRole('menuitemradio', { name: 'Heikin Ashi', exact: true }).click();
   const reading = await page.evaluate(async () => {
     const app = (window as any).__oac.app;
     const path = '/examples/yfinance/src/ui.js';
@@ -1370,7 +1370,7 @@ test('secondary requests cancel stale history and retain the last saved source d
     await route.fulfill({ response });
   });
   const symbol = async (value: string) => {
-    await page.getByRole('button', { name: 'Change symbol', exact: true }).click();
+    await page.getByRole('button', { name: /^Change symbol, / }).click();
     const input = page.getByPlaceholder('Symbol or expression');
     await input.fill(value);
     if (value === 'TSLA') await expect(page.getByRole('option', { name: /TSLA/ })).toBeVisible();
@@ -1384,7 +1384,7 @@ test('secondary requests cancel stale history and retain the last saved source d
       const app = (window as any).__oac.app;
       return { loading: app.loading2, bars: app.chart2.primaryBars().length };
     })).toEqual({ loading: true, bars: 0 });
-    await expect(page.getByRole('button', { name: 'Chart type', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: /^Chart type, / })).toBeDisabled();
     await page.evaluate(async () => {
       const source = '/examples/yfinance/src/persist.js';
       (await import(source)).flushAutosave();
@@ -1422,7 +1422,7 @@ test('reference interval sync is optional and follows the selected chart', async
   expect(await page.evaluate(() => (window as any).__oac.app.linkGroup.options().interval)).toBe(false);
   await page.locator('#chart2').focus();
   await page.getByRole('button', { name: /^Chart linking \(/ }).click();
-  await page.getByRole('button', { name: /^Interval/ }).click();
+  await page.getByRole('menuitemcheckbox', { name: /^Interval/ }).click();
   await page.waitForFunction(() => {
     const app = (window as any).__oac.app;
     return app.req.interval === app.p2.interval && !app.loading && !app.loading2;
@@ -1444,7 +1444,7 @@ test('reference interval sync is optional and follows the selected chart', async
     return [app.req.interval, app.p2.interval];
   })).toEqual(['30m', '30m']);
   await page.getByRole('button', { name: /^Chart linking \(/ }).click();
-  await page.getByRole('button', { name: /^Interval/ }).click();
+  await page.getByRole('menuitemcheckbox', { name: /^Interval/ }).click();
   await page.locator('#chart').focus();
   await page.locator('#shellbar .pills').getByRole('button', { name: '1D', exact: true }).click();
   await page.waitForFunction(() => !(window as any).__oac.app.loading);
@@ -1476,7 +1476,7 @@ for (const pane of [1, 2]) {
     }, pane);
     await page.mouse.click(point.x, point.y, { button: 'right' });
     await page.evaluate(pane => { (window as any).__oac.app.focusPane = pane === 1 ? 2 : 1; }, pane);
-    await page.getByRole('menuitem', { name: 'Create drawing alert', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Create drawing alert...', exact: true }).click();
     const editor = page.getByRole('dialog', { name: 'Create alert', exact: true });
     await expect(editor.getByLabel('Source', { exact: true })).toHaveValue('drawing');
     await expect(editor.getByLabel('Drawing', { exact: true })).toHaveValue('clicked-context');
@@ -1511,7 +1511,7 @@ test('reference oscillator context offers its study alert without price order ac
   });
   await page.mouse.click(point.x, point.y, { button: 'right' });
   await expect(page.getByRole('menuitem', { name: /Buy|Sell/ })).toHaveCount(0);
-  await page.getByRole('menuitem', { name: 'Create study alert', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Create study alert...', exact: true }).click();
   await expect(page.getByLabel('Study', { exact: true })).toHaveValue(point.id);
   await expect(page.getByLabel('Plot', { exact: true })).toHaveValue('rsi');
 });
@@ -1545,8 +1545,8 @@ test('reference alerts retain drawing anchors through rebuild and reload', async
   await editor.locator('[data-key="value"] input').fill('1');
   await editor.getByRole('button', { name: 'Save', exact: true }).click();
   await page.evaluate(() => (window as any).__oac.app.alertUi.close());
-  await page.getByRole('button', { name: 'Chart type', exact: true }).click();
-  await page.getByRole('button', { name: 'Line', exact: true }).click();
+  await page.getByRole('button', { name: /^Chart type, / }).click();
+  await page.getByRole('menuitemradio', { name: 'Line', exact: true }).click();
   expect(await page.evaluate(() => (window as any).__oac.app.alerts.list().length)).toBe(3);
   expect(await page.evaluate(id => (window as any).__oac.chart.indicators().some((study: any) => study.id === id), studyId)).toBe(true);
   expect(await page.evaluate(id => Boolean((window as any).__oac.draw.get(id)), drawingId)).toBe(true);
@@ -1837,23 +1837,23 @@ test('watermark and host branding survive chart-type and profile-mode rebuilds',
     chart.setWatermarkOptions({ visible: true, text: 'Research', opacity: 0.2, fontSize: 54 });
     chart.setBranding({ label: 'Research charts', href: 'https://example.com/charts' });
   });
-  for (const type of ['Line', 'Point & Figure']) {
-    await page.getByRole('button', { name: 'Chart type', exact: true }).click();
-    await page.getByRole('button', { name: type, exact: true }).click();
+  for (const type of ['Line', 'Point and figure']) {
+    await page.getByRole('button', { name: /^Chart type, / }).click();
+    await page.getByRole('menuitemradio', { name: type, exact: true }).click();
     await expect.poll(() => page.evaluate(() => (window as any).__oac.chart.watermarkOptions().text)).toBe('Research');
     expect(await page.evaluate(() => (window as any).__oac.chart.exportSVG())).toContain('Research');
     await expect(page.getByRole('link', { name: 'Research charts', exact: true })).toBeVisible();
   }
-  await page.getByRole('button', { name: 'P&F box sizing', exact: true }).click();
-  await page.getByRole('button', { name: 'P&F: 1% box', exact: true }).click();
+  await page.getByRole('button', { name: /^P&F box sizing, / }).click();
+  await page.getByRole('menuitemradio', { name: 'P&F: 1% box', exact: true }).click();
   expect(await page.evaluate(() => (window as any).__oac.chart.watermarkOptions())).toMatchObject({ visible: true, text: 'Research', opacity: 0.2, fontSize: 54 });
   await page.evaluate(() => {
     const { chart } = (window as any).__oac;
     chart.setWatermarkOptions(false);
     chart.setBranding(false);
   });
-  await page.getByRole('button', { name: 'Chart type', exact: true }).click();
-  await page.getByRole('button', { name: 'Candles', exact: true }).click();
+  await page.getByRole('button', { name: /^Chart type, / }).click();
+  await page.getByRole('menuitemradio', { name: 'Candles', exact: true }).click();
   await page.setViewportSize({ width: 390, height: 740 });
   expect(await page.evaluate(() => (window as any).__oac.chart.watermarkOptions().visible)).toBe(false);
   expect(await page.evaluate(() => (window as any).__oac.chart.brandingOptions())).toBe(false);

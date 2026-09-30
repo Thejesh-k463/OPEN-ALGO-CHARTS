@@ -65,7 +65,7 @@ test('right-click entry and a dragged order line follow the band each price is i
   await page.mouse.click(upper.x, upper.y, { button: 'right' });
   const buy = page.locator('#ctxmenu button[data-side="BUY"][data-type="LIMIT"]');
   await expect(buy).toBeVisible();
-  const menuPrice = Number((await buy.innerText()).replace(/^Buy Limit @ /, '').replace(/,/g, ''));
+  const menuPrice = Number((await buy.innerText()).replace(/^Buy limit @ /, '').replace(/,/g, ''));
   expect(menuPrice).toBe(await round(page, upper.price));
   expect(Math.round(menuPrice * 100) % 5).toBe(0);
   await buy.click();

@@ -44,8 +44,9 @@ describe('the bracket', () => {
     expect(app.chart.lines.map((l) => l.id)).toEqual(['bk-entry', 'bk-tp', 'bk-sl']);
     expect(dom.get('bracket').hidden).toBe(false);
     expect(dom.get('bk-tp').querySelector('.pts').textContent).toBe('1.20');
-    expect(dom.get('bk-tp').querySelector('.pnl').textContent).toBe('+₹120');
-    expect(dom.get('bk-sl').querySelector('.pnl').textContent).toBe('-₹100');
+    // No currency sign: the demo charts instruments in several currencies.
+    expect(dom.get('bk-tp').querySelector('.pnl').textContent).toBe('+120');
+    expect(dom.get('bk-sl').querySelector('.pnl').textContent).toBe('-100');
     expect(dom.get('bk-entry').querySelector('.rr').textContent).toBe('1.20');
     expect(dom.get('bk-entry').querySelector('[data-act="place"]').textContent).toBe('1-Click Buy');
   });

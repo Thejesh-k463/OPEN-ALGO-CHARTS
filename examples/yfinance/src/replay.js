@@ -84,8 +84,8 @@ function syncScopeControls() {
     const button = el(id);
     if (!button) continue;
     button.textContent = label;
+    // Named for the scope in force, so no pressed state says it a second time.
     button.setAttribute('aria-label', 'Replay scope: ' + label);
-    button.setAttribute('aria-pressed', String(app.replayScope === 'all'));
     button.disabled = Boolean(app.replayLoading);
   }
 }

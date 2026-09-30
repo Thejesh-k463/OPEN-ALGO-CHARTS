@@ -27,7 +27,9 @@ export const UP = '#26a69a', DOWN = '#ef5350';
 export const MOD = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || '') ? 'Cmd' : 'Ctrl';
 /** A count and its noun, in the singular for one. */
 export const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
-export const rupee = (n) => (n < 0 ? '-' : '+') + '₹' + Math.round(Math.abs(n)).toLocaleString('en-IN');
+// A signed amount with no currency sign: the demo charts instruments in
+// several currencies, as the sandbox broker panel prints its P&L.
+export const pnlText = (n) => (n < 0 ? '-' : '+') + Math.round(Math.abs(n)).toLocaleString('en-US');
 
 /** Run `fn` on Escape. Listens on `window` unless a narrower target is given. */
 export function onEscape(fn, target = window) {

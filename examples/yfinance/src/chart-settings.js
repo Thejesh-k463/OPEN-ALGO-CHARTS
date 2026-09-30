@@ -149,32 +149,32 @@ export function chartSettingUnavailable(key, option, target = chartSetTarget || 
   }
   const symbol = target.request.symbol || '';
   if (key === 'statusLine.openInterest' && target.chart.hasOpenInterest === false) {
-    return 'Open interest is unavailable for this instrument.';
+    return 'Open interest is unavailable for this instrument';
   }
   if (key === 'statusLine.titleMode' && option === 'description') {
     return descriptionOf(symbol) ? null
-      : 'no long name for ' + (symbol || 'this symbol').toUpperCase() + ' in this demo';
+      : 'No long name for ' + (symbol || 'this symbol').toUpperCase() + ' in this demo';
   }
   if (key === 'statusLine.marketStatus' && marketStatusReading(symbol) === undefined) {
-    return 'no session hours for ' + exchangeOf(symbol);
+    return 'No session hours for ' + exchangeOf(symbol);
   }
   if (key === 'statusLine.lastDayChange' && previousSessionClose(target.chart.primaryBars(), target.chart.timezone()) == null) {
-    return 'no previous session in the loaded range';
+    return 'No previous session in the loaded range';
   }
-  if (target.pane === 2 && key.startsWith('trading.')) return 'Trading simulation is available on chart 1';
+  if (target.pane === 2 && key.startsWith('trading.')) return 'Trading is available on chart 1';
   const longPos = app.position && app.position.netQty > 0;
   const shortPos = app.position && app.position.netQty < 0;
   switch (key) {
-    case 'trading.longColor': return longPos ? null : 'no long position on the chart';
-    case 'trading.shortColor': return shortPos ? null : 'no short position on the chart';
+    case 'trading.longColor': return longPos ? null : 'No long position on the chart';
+    case 'trading.shortColor': return shortPos ? null : 'No short position on the chart';
     case 'trading.orderColor':
-      return app.orders.length || app.bracket ? null : 'no resting order or bracket on the chart';
+      return app.orders.length || app.bracket ? null : 'No resting order or bracket on the chart';
     case 'trading.tpColor': case 'trading.slColor':
-      return app.bracket ? null : 'no bracket on the chart';
+      return app.bracket ? null : 'No bracket on the chart';
     case 'trading.buyColor':
-      return app.fills.some((f) => f.shape === 'arrowUp') ? null : 'no buy execution on the chart';
+      return app.fills.some((f) => f.shape === 'arrowUp') ? null : 'No buy execution on the chart';
     case 'trading.sellColor':
-      return app.fills.some((f) => f.shape === 'arrowDown') ? null : 'no sell execution on the chart';
+      return app.fills.some((f) => f.shape === 'arrowDown') ? null : 'No sell execution on the chart';
     default: return null;
   }
 }

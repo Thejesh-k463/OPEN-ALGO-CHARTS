@@ -1,5 +1,5 @@
 import * as engine from '/dist/openalgo-charts.mjs';
-import { el, fmt, esc, inTextField } from './ui.js';
+import { el, fmt, esc, inTextField, MOD } from './ui.js';
 import { snapPrice } from './ticks.js';
 import { ticon } from './toolbar.js';
 import { openSettings, rememberIndicators, renderIndicatorChips } from './indicators.js';
@@ -112,7 +112,7 @@ export function openContextMenu(e, pane = 1) {
     const rect = el('chart2').getBoundingClientRect();
     const rows = alertContextEntries(app, e, 2);
     rows.push({ label: 'Chart settings...', onSelect: () => openChartSettings(undefined, owner) });
-    if (app.volume2) rows.push({ label: 'Volume', on: volumeShown(2),
+    if (app.volume2) rows.push({ label: 'Volume', on: volumeShown(2), check: true,
       onSelect: () => { if (owner.current()) setVolumeShown(!volumeShown(2), 2); } });
     if (e.target?.kind === 'indicator') {
       // A study its host protects keeps the row, greyed with the reason.
@@ -147,9 +147,9 @@ export function openContextMenu(e, pane = 1) {
     b.hidden = !tradable;
     const verb = b.getAttribute('data-side') === 'BUY' ? 'Buy' : 'Sell';
     const type = b.getAttribute('data-type');
-    b.textContent = type === 'MARKET' ? `${verb} Market`
-      : type === 'LIMIT' ? `${verb} Limit @ ${fmt(ctxPrice)}`
-      : `${verb} Stop (SL) @ ${fmt(ctxPrice)}`;
+    b.textContent = type === 'MARKET' ? `${verb} market`
+      : type === 'LIMIT' ? `${verb} limit @ ${fmt(ctxPrice)}`
+      : `${verb} stop (SL) @ ${fmt(ctxPrice)}`;
   }
   for (const hr of ctxMenu.querySelectorAll('hr[data-sec="order"]')) hr.hidden = !tradable;
 
@@ -178,9 +178,9 @@ export function openContextMenu(e, pane = 1) {
   rowUnmark.hidden = drawState.marks === 0;
   // The separator above the group.
   rowSel.previousElementSibling.hidden = rowAll.hidden && rowSel.hidden && rowMark.hidden && rowUnmark.hidden;
-  if (drawState.removable > 0) rowAll.textContent = `Remove All Drawings (${drawState.removable})`;
-  if (!rowMark.hidden) rowMark.textContent = `Mark ${fmt(ctxPrice)} for This Session`;
-  if (drawState.marks > 0) rowUnmark.textContent = `Clear Session Marks (${drawState.marks})`;
+  if (drawState.removable > 0) rowAll.textContent = `Remove all drawings (${drawState.removable})`;
+  if (!rowMark.hidden) rowMark.textContent = `Mark ${fmt(ctxPrice)} for this session`;
+  if (drawState.marks > 0) rowUnmark.textContent = `Clear session marks (${drawState.marks})`;
 
   // Clipboard rows. Copy and cut need a selection; paste does not, because
   // whether there is anything of ours to paste can only be known by asking
@@ -191,6 +191,13 @@ export function openContextMenu(e, pane = 1) {
   ctxMenu.querySelector('[data-act="cut"]').hidden = !clipOk || !drawState.deletable;
   ctxMenu.querySelector('[data-act="paste"]').hidden = !clipOk;
   ctxMenu.querySelector('hr[data-sec="clip"]').hidden = !clipOk;
+  // The handlers take Cmd on a Mac, where Control-click is a right click.
+  for (const [act, key] of [['copy', 'C'], ['cut', 'X'], ['paste', 'V']]) {
+    const row = ctxMenu.querySelector(`[data-act="${act}"]`);
+    const em = row?.querySelector('em');
+    if (em) em.textContent = `${MOD}+${key}`;
+    row?.setAttribute('aria-keyshortcuts', `${MOD === 'Cmd' ? 'Meta' : 'Control'}+${key}`);
+  }
 
   // The indicator row appears only where there is an indicator to settle.
   ctxIndicator = target.kind === 'indicator' ? target.instanceId : null;
@@ -208,7 +215,7 @@ export function openContextMenu(e, pane = 1) {
   const rowHost = ctxMenu.querySelector('[data-act="hoststudy"]');
   if (rowHost) {
     rowHost.hidden = !app.chart || !app.currentBars?.length;
-    rowHost.textContent = hostStudy(app.chart) ? 'Remove Protected VWAP' : 'Add Protected VWAP';
+    rowHost.textContent = hostStudy(app.chart) ? 'Remove protected VWAP' : 'Add protected VWAP';
   }
 
   ctxPane = target.kind === 'time-scale' ? null : paneCollapseRow(app.chart, e.paneIndex);
@@ -233,7 +240,7 @@ export function openContextMenu(e, pane = 1) {
   rowVol.hidden = !app.volume;
   ctxMenu.querySelector('hr[data-sec="vol"]').hidden = !app.volume;
   rowVol.classList.toggle('is-on', volumeShown(1));
-  rowVol.querySelector('em').textContent = volumeShown(1) ? 'Shown' : 'Hidden';
+  rowVol.setAttribute('aria-checked', String(volumeShown(1)));
 
   // Unhide first, then measure: the menu's height depends on which rows
   // above survived, so a fixed clamp would be wrong for most of them.
@@ -255,6 +262,8 @@ const axPane = () => axTarget.paneIndex ?? pricePane(app.chart);
 let axSubHalf = null;   // 'line' | 'label' while a level flyout is open
 
 const AX_TICK = '<svg viewBox="0 0 20 20"><path d="M4 10.5l4 4 8-9"/></svg>';
+const AX_ARROW = '<svg viewBox="0 0 20 20"><path d="M8 5l5 5-5 5"/></svg>';
+const POPUP_TICK = '<svg viewBox="0 0 20 20" width="12" height="12"><path d="M4 10.5l4 4 8-9"/></svg>';
 /**
  * The four modes as one choice. A radio group and not four switches: the
  * scale holds exactly one mode, and four checkboxes would let a user ask for
@@ -300,6 +309,10 @@ function axRow(o) {
   const b = document.createElement('button');
   b.className = 'axrow' + (o.on ? ' is-on' : '');
   b.disabled = o.disabled === true;
+  // What the marker column shows, said to a reader: a scale mode is one of a
+  // set, a switch is checked or not, and anything else is a plain action.
+  b.setAttribute('role', o.mark === 'radio' ? 'menuitemradio' : typeof o.on === 'boolean' ? 'menuitemcheckbox' : 'menuitem');
+  if (o.mark === 'radio' || typeof o.on === 'boolean') b.setAttribute('aria-checked', String(o.on === true));
   const mark = document.createElement('span');
   mark.className = 'axmark';
   if (o.mark === 'radio') {
@@ -324,13 +337,17 @@ function axRow(o) {
     const chord = document.createElement('span');
     chord.className = 'chord';
     chord.textContent = o.chord;
+    chord.setAttribute('aria-hidden', 'true');
     b.appendChild(chord);
+    b.setAttribute('aria-keyshortcuts', o.chord);
   }
   if (o.submenu) {
     const arrow = document.createElement('span');
     arrow.className = 'axarrow';
-    arrow.textContent = '>';
+    arrow.setAttribute('aria-hidden', 'true');
+    arrow.innerHTML = AX_ARROW;
     b.appendChild(arrow);
+    b.setAttribute('aria-haspopup', 'menu');
     b.dataset.submenu = o.submenu;   // so a repaint can find the open row again
     b.addEventListener('pointerenter', () => openAxisSub(o.submenu, b));
     b.addEventListener('click', () => openAxisSub(o.submenu, b));
@@ -682,11 +699,18 @@ export function popupMenu(anchor, rows, opts) {
         pending = null;
       }
       const b = document.createElement('button');
-      if (opts?.role === 'menu') b.setAttribute('role', 'menuitem');
+      // A row with an `on` is one of a set of choices (or, with `check`, a
+      // switch) and says whether it is on; the tick is a picture of that, not
+      // a word to read out.
+      if (r.check || typeof r.on === 'boolean') {
+        b.setAttribute('role', r.check ? 'menuitemcheckbox' : 'menuitemradio');
+        b.setAttribute('aria-checked', String(r.on === true));
+      }
+      else if (opts?.role === 'menu') b.setAttribute('role', 'menuitem');
       b.disabled = r.disabled === true;
       b.title = r.reason || '';
       b.innerHTML = (r.icon ? ticon(r.icon) : '<span style="width:20px"></span>') +
-        '<span>' + esc(r.label) + '</span>' + (r.on ? '<em>&#10003;</em>' : '');
+        '<span>' + esc(r.label) + '</span>' + (r.on ? '<em aria-hidden="true">' + POPUP_TICK + '</em>' : '');
       b.addEventListener('click', () => { if (!b.disabled) { closeMenu(); r.onSelect(); } });
       body.appendChild(b);
       shown += 1;
@@ -742,7 +766,7 @@ export function initMenus(a) {
     if (act === 'alert-create') { ctxAlerts[0]?.onSelect(); return; }
     if (act === 'alert-list') { ctxAlerts.at(-1)?.onSelect(); return; }
     if (act === 'cancelall') {
-      removeAllOrders(); removeBracket(); clearPosition(); saveState(); el('status').textContent = 'all orders cancelled / flat'; return;
+      removeAllOrders(); removeBracket(); clearPosition(); saveState(); el('status').textContent = 'orders cancelled, position closed'; return;
     }
     if (act === 'delall') {
       if (!app.draw) return;
