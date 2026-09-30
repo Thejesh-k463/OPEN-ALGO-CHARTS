@@ -67,12 +67,11 @@ export interface LinkedCell {
 }
 
 /** The boolean channels, in the order a menu lists them and a document writes them. */
-export const LINK_CHANNELS = ['crosshair', 'viewport', 'symbol', 'interval', 'chartType', 'appearance', 'drawings'] as const;
-export type LinkChannel = typeof LINK_CHANNELS[number];
+export type LinkChannel = 'crosshair' | 'viewport' | 'symbol' | 'interval' | 'chartType' | 'appearance' | 'drawings';
 
 const LETTERS = 'ABCDEFGHIJKLMNOP';
 /** A document takes at most sixteen groups; a grid of sixteen charts never needs more. */
-export const MAX_LINK_GROUPS = LETTERS.length;
+const MAX_LINK_GROUPS = LETTERS.length;
 /**
  * The drawings link matches charts by symbol and exchange and refuses a blank
  * exchange. A host that names no exchange (a feed with one venue) still
@@ -91,7 +90,7 @@ export const ALL_OFF: ResolvedLinkOptions = {
 export const instrument = (symbol: string, exchange: string): string => JSON.stringify([symbol, exchange]);
 
 /** The channels a group writes: the four the schema requires, then only what differs from off. */
-export function savedChannels(o: ResolvedLinkOptions): WorkspaceLinkChannels {
+function savedChannels(o: ResolvedLinkOptions): WorkspaceLinkChannels {
   return {
     crosshair: o.crosshair, viewport: o.viewport, symbol: o.symbol, interval: o.interval, appearance: o.appearance,
     ...(o.chartType ? { chartType: true } : {}), ...(o.drawings ? { drawings: true } : {}),

@@ -411,3 +411,14 @@ export function injectWidgetStyles(doc: Document, extra = '', nonce?: string): H
   if (existing === null) (doc.head ?? doc.body ?? doc.documentElement).appendChild(style);
   return style;
 }
+
+/**
+ * Add the rules of a part that loads on first use (lazy.ts) to the sheet,
+ * once per document. Appended to the widget's own sheet they keep its CSP
+ * nonce, and they come after every rule they refine, as they did when the
+ * part was bundled in. A page with no sheet gets none here, as before.
+ */
+export function addWidgetStyles(doc: Document, css: string): void {
+  const style = doc.getElementById(WIDGET_STYLE_ID);
+  if (style !== null && !(style.textContent ?? '').includes(css)) style.appendChild(doc.createTextNode(css));
+}

@@ -51,17 +51,22 @@ import { widgetText } from './localization';
 import { applyTokens, widgetTokens, TOKEN_PREFIX, WIDGET_FONT, type WidgetThemeName } from './tokens';
 import { captureName, type MenuRow } from './topbar';
 import { GRID_BAR_CHARTS, createWidget, resolveTheme, SAVE_DEBOUNCE_MS, type Widget, type WidgetOptions } from './widget';
-import { attachGridSaved, type GridSaved } from './grid-saved';
+import type { GridSaved } from './grid-saved';
 import { cellDrawingStore, checkWorkspace, readChartDrawings, type ChartDrawings } from './grid-payload';
 import { CHART_GRID_LAYOUTS, focusSlot, isChartGridLayout, type ChartGridLayoutId } from './grid-layouts';
 import {
   ALL_OFF, GridLinks, channelsOf, describeGroups, instrument,
   type ChartGridLinkGroup, type GridGroup, type LinkChannel,
 } from './grid-links';
-import { mountGridBar, openLinkMenu, groupMark, type GridBarHandle, type GridBarHost } from './grid-bar';
+import type { GridBarHandle, GridBarHost } from './grid-bar';
 import { captureRatio, composeGridCapture, type CaptureBox, type GridCapturePiece } from './grid-capture';
-import { installGridKeys, installHeaderDrag, neighbour } from './grid-cells';
+import { groupMark, installGridKeys, installHeaderDrag, neighbour } from './grid-cells';
 import { KEYMAP_KEY } from './keymap';
+import { lazyPart, partFailed, usePart, type PartSlot } from './lazy';
+
+/** The grid bar, fetched when a grid shows it, and its menus, fetched when one first opens (lazy.ts). Internal. */
+export const gridBarPart = lazyPart(() => import('./grid-bar'));
+export const gridMenusPart = lazyPart(() => import('./grid-menus'));
 
 export { CHART_GRID_PRESETS, type ChartGridPreset } from './grid-layouts';
 
@@ -396,7 +401,8 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   const tabs = h(doc, 'div', 'oac-grid__tabs', { role: 'tablist', 'aria-label': widgetText(text, 'Charts') });
   const body = h(doc, 'div', 'oac-grid__cells');
   tabs.hidden = true;
-  const barEl = options.toolbar === true ? h(doc, 'div') : null;
+  // The strip is laid out at the bar's height now, so the charts keep their size when the bar arrives.
+  const barEl = options.toolbar === true ? h(doc, 'div', 'oac-widget oac-grid__bar', { role: 'toolbar', 'aria-label': widgetText(text, 'Chart grid') }) : null;
   // The bottom bar's rules are scoped under `.oac-widget`, like every piece of the widget's chrome.
   const footEl = options.bottombar === true ? h(doc, 'div', 'oac-widget oac-grid__foot') : null;
   root.append(...(barEl === null ? [] : [barEl]), tabs, body, ...(footEl === null ? [] : [footEl]));
@@ -673,7 +679,7 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
       if (plain) { c.mark?.remove(); c.mark = null; return; }
       if (c.mark === null) {
         const mark = c.mark = h(doc, 'button', 'oac-grid__mark', { type: 'button', 'aria-haspopup': 'menu' });
-        mark.addEventListener('click', () => { grid.setActive(c.id); openLinkMenu(barHost, mark); });
+        mark.addEventListener('click', () => { grid.setActive(c.id); barHost.openMenu('link', mark); });
         const head = c.widget.root.querySelector('.oac-topbar');
         if (head !== null) head.prepend(mark);
         else { mark.classList.add('oac-grid__mark--float'); c.element.appendChild(mark); }
@@ -961,6 +967,8 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   }
 
   // ── the bar ────────────────────────────────────────────────────────────
+  /** A menu on its way: of the bar's menus pressed meanwhile, the last one opens, once, as one press after another would leave it. */
+  const menuSlot: PartSlot = { waiting: null };
   const barHost: GridBarHost = {
     doc, text,
     get overlays() { return chrome().overlays; },
@@ -990,6 +998,12 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
     },
     capture: { blocked: captureBlocked, download: downloadAll, copy: copyAll, canCopy },
     get saved() { return saved ?? undefined; },
+    openMenu: (which, anchor) => usePart(gridMenusPart, module => {
+      if (which === 'layouts') module.openLayoutPicker(barHost, anchor);
+      else if (which === 'link') module.openLinkMenu(barHost, anchor);
+      else module.openCaptureMenu(barHost, anchor);
+    }, error => report(partFailed(text, widgetText(text, which === 'layouts' ? 'Layouts' : which === 'link' ? 'Linking' : 'Capture every chart'), error), 'error'),
+    () => !destroyed && anchor.isConnected, { slot: menuSlot, doc, from: anchor }),
   };
   let bar: GridBarHandle | null = null;
   let foot: BottombarHandle | null = null;
@@ -1436,14 +1450,16 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
     }, strip, { target: () => active?.widget ?? null, ranges: options.ranges, now: options.now, onGoTo: () => active?.widget.openDateNavigation() });
     offs.push(bus.on('active', () => foot?.refresh()));
   }
-  // The desk's saved layouts come with the bar that shows them.
-  if (options.toolbar === true) {
-    saved = attachGridSaved({
-      grid, ready, workspaces: options.workspaces, layouts: options.layouts,
-      context: () => overGrid((active as Cell).widget.context), opened: () => given,
-    });
+  // The desk's saved layouts come with the bar that shows them, and load with it.
+  if (barEl !== null) {
+    usePart(gridBarPart, module => {
+      saved = module.attachGridSaved({
+        grid, ready, workspaces: options.workspaces, layouts: options.layouts,
+        context: () => overGrid((active as Cell).widget.context), opened: () => given,
+      });
+      bar = module.mountGridBar(barHost, barEl);
+    }, error => report(partFailed(text, widgetText(text, 'Chart grid'), error), 'error'), () => !destroyed);
   }
-  if (barEl !== null) bar = mountGridBar(barHost, barEl);
   measure();
   return grid;
 }

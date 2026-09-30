@@ -41,7 +41,7 @@ export { CHART_GRID_CSS } from './grid-styles';
 export { createLayoutsController } from './layouts';
 export type { LayoutsController, LayoutsControllerOptions, LayoutsState, LayoutTarget, LayoutApplyReport, LayoutAutosaveStatus } from './layouts';
 // Layouts: the menu, the one-widget target and indicator templates.
-export { openLayoutsMenu, LAYOUTS_MENU_CSS } from './layouts-menu';
+export { openLayoutsMenu } from './layouts-widget';
 export { widgetLayoutTarget } from './layouts-target';
 export { applyIndicatorTemplate, saveIndicatorTemplate } from './layouts-templates';
 export type { IndicatorTemplateApplyMode } from './layouts-templates';
@@ -89,14 +89,11 @@ export type { AsyncStorageLike, WidgetStorageOptions, WidgetStorageError } from 
 export { createIndexedDbWidgetStorage } from './storage';
 export type { IndexedDbWidgetStorage, IndexedDbWidgetStorageOptions } from './storage';
 
-export { Keymap, parseKeyCombo, eventKeyCombo, formatKeyCombo, fromChartCombo, KEYMAP_KEY } from './keymap';
+export { Keymap, openShortcutsPanel, parseKeyCombo, eventKeyCombo, formatKeyCombo, fromChartCombo, KEYMAP_KEY } from './keymap';
 export type {
   KeyScope, KeyEventLike, KeyAction, KeyBinding, KeyBindingOptions, KeyConflict, KeymapOptions, KeymapGroup, KeymapRow, ChartShortcutSource,
-  KeyChordUse, KeyRebindResult, KeymapOverrides, KeymapChange,
+  KeyChordUse, KeyRebindResult, KeymapOverrides, KeymapChange, ShortcutsPanelOptions,
 } from './keymap';
-// The shortcuts panel moved beside its editing controls in 2.5.10; the export is the same function.
-export { openShortcutsPanel, KEYMAP_EDITOR_CSS } from './keymap-editor';
-export type { ShortcutsPanelOptions } from './keymap-editor';
 
 export { mountRail, toolGlyph, toolName, sanitizeRailPrefs, RAIL_GROUPS, MAGNET_MODES, RAIL_PREFS_KEY } from './rail';
 export type { RailOptions, RailHandle, RailPrefs, RailGroup, RailGroupItem } from './rail';

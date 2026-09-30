@@ -26,11 +26,10 @@
 import { isReplaying } from 'openalgo-charts';
 import type { WorkspacePayload, WorkspaceStore } from 'openalgo-charts/workspace';
 import type { WidgetContext } from './context';
-import type { PanelHandle } from './form';
 import type { ChartGrid } from './grid';
 import { createLayoutsController, type LayoutsController, type LayoutTarget } from './layouts';
-import { layoutStatusText, openLayoutsMenu } from './layouts-menu';
 import { layoutChartState, widgetLayoutTarget } from './layouts-target';
+import { layoutStatusText, showLayoutsMenu, type LayoutsMenuSlot } from './layouts-widget';
 import { widgetText } from './localization';
 import type { WidgetChartState } from './widget';
 
@@ -102,7 +101,7 @@ export function attachGridSaved(host: GridSavedHost): GridSaved | null {
   // A controller handed over belongs to its maker: used, never reopened, flushed or destroyed here.
   const own = given === null ? createLayoutsController(host.workspaces as WorkspaceStore, target) : null;
   const controller = (given ?? own) as LayoutsController;
-  let menu: PanelHandle | null = null;
+  const menu: LayoutsMenuSlot = { handle: null, waiting: null };
   let destroyed = false;
   // An autosave that stops is said once on the active chart's status line, as
   // one widget says it: the menu may be closed, and a screen reader hears no
@@ -127,9 +126,7 @@ export function attachGridSaved(host: GridSavedHost): GridSaved | null {
   return {
     controller,
     open(anchor) {
-      if (destroyed) return;
-      if (menu?.isOpen()) { menu.el.focus(); return; }
-      menu = openLayoutsMenu(host.context(), controller, anchor);
+      if (!destroyed) showLayoutsMenu(host.context(), controller, anchor, menu, () => !destroyed && !grid.isDestroyed);
     },
     status: () => layoutStatusText(host.context(), controller.state()),
     flush() { if (!destroyed) void own?.flush(); },

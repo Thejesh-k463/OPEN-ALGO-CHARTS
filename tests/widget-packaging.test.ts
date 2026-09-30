@@ -39,10 +39,14 @@ const WIDGET_TYPES = './dist/widget/index.d.ts';
 interface RollupEntry {
   input: string;
   external?: (id: string) => boolean;
-  output: { file: string; format: string; paths?: Record<string, string> };
+  preserveEntrySignatures?: string;
+  output: { file: string; format: string; paths?: Record<string, string>; dir?: string; entryFileNames?: string; chunkFileNames?: string };
 }
 
-const configs = rollupConfig as unknown as RollupEntry[];
+// The widget writes its parts that load on first use beside it, so its output
+// is a directory with a named entry file; that file is the tier bundle.
+const configs = (rollupConfig as unknown as RollupEntry[]).map((c) => (c.output.dir === undefined ? c
+  : { ...c, output: { ...c.output, file: `${c.output.dir}/${c.output.entryFileNames}` } }));
 // The tier bundles: ESM, under dist/, and not the docs-only combined bundle.
 const esTiers = configs.filter(
   (c) => c.output.format === 'es' && c.output.file.endsWith('.mjs') && !c.output.file.includes('.all.'),
@@ -122,6 +126,13 @@ describe('the widget shares one engine with the page rather than inlining a seco
   it('leaves the same specifiers external in the .d.ts build', () => {
     expect(widgetDts.external?.(PKG)).toBe(true);
     expect(widgetDts.external?.(`${PKG}/draw`)).toBe(true);
+  });
+
+  it('writes its first-use parts beside it, and keeps the shell in the tier file', () => {
+    expect(widget.output.chunkFileNames).toBe('openalgo-charts.widget.[name].mjs');
+    // Without it rollup moves the shell into a chunk behind a re-exporting
+    // entry, and the tier's size row would measure only that entry.
+    expect(widget.preserveEntrySignatures).toBe('allow-extension');
   });
 
   it('the base entry stays a self-contained bundle', () => {

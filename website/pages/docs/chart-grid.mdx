@@ -105,7 +105,9 @@ and a saved workspace whose spans the catalogue does not name is drawn as saved.
 
 With `toolbar: true` (since 2.5.10; off by default, so a host with its own controls
 keeps its page as it was) a bar above the charts carries four controls, each in the
-widget's own buttons, menus, focus ring and themes:
+widget's own buttons, menus, focus ring and themes. The bar and its menus load from
+files beside the widget tier when a grid shows the bar and when a menu first opens; the
+grid lays the bar's strip out at its height from the start, so the charts keep their size:
 
 - **Layout** names the current layout and opens the picker: one row of tiles per chart
   count, the current layout checked. The arrow keys walk the tiles (Up and Down move

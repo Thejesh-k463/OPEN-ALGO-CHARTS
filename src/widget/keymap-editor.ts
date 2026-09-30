@@ -9,34 +9,17 @@
  * reason, while the panel keeps listening for another. Changes apply at once;
  * the shell saves them, so the panel has no Save.
  *
- * Its own module so the list-only keymap stays small for a host that brings
- * no editor, and so the capture, which has to see a key before the dialog's
- * own Escape does, lives next to the only control that needs it.
+ * It loads on first use (lazy.ts): a widget whose user never presses `?`
+ * never fetches it. `openShortcutsPanel` in keymap.ts is the door, and the
+ * capture, which has to see a key before the dialog's own Escape does, lives
+ * next to the only control that needs it.
  */
 import { eventToCombo } from 'openalgo-charts';
 import { chromeIconSvg } from 'openalgo-charts/draw';
 import { h, type WidgetContext } from './context';
 import { widgetText } from './localization';
 import { eventKeyCombo, type KeyChordUse, type KeyEventLike, type KeyRebindResult, type KeymapRow } from './keymap';
-
-export interface ShortcutsPanelOptions {
-  /**
-   * Rows a user may change carry Change and Reset, and the panel a Reset all.
-   * Default true, unless the widget was built with `shortcutsEditor: false`;
-   * false lists the chords only.
-   */
-  edit?: boolean;
-}
-
-/**
- * Keymaps whose widget turned the editor off. A host that opens the panel
- * from a control of its own gets the same panel `?` opens, never controls
- * whose changes that widget would neither keep nor let the user reset.
- */
-const LIST_ONLY = new WeakSet<object>();
-
-/** Mark a keymap as list-only for the panel's default. Internal: the tier entry does not export it. */
-export function markListOnly(keymap: object): void { LIST_ONLY.add(keymap); }
+import { addWidgetStyles } from './styles';
 
 /** What the panel waits on: a chord to be pressed, or a choice about one another binding holds. */
 type Pending =
@@ -55,13 +38,13 @@ function joinNames(names: readonly string[], locale: string | undefined): string
 
 /**
  * The shortcuts panel: every group from `keymap.describe()`, two columns,
- * closed by Escape or its button, with the editing controls unless `edit` is
- * false. Returns the closer.
+ * closed by Escape or its button, with the editing controls when `edit`.
+ * Returns the closer.
  */
-export function openShortcutsPanel(ctx: WidgetContext, opts: ShortcutsPanelOptions = {}): () => void {
+export function mountShortcutsPanel(ctx: WidgetContext, edit: boolean): () => void {
   const doc = ctx.document;
   const km = ctx.keymap;
-  const edit = opts.edit ?? !LIST_ONLY.has(km);
+  addWidgetStyles(doc, KEYMAP_EDITOR_CSS);
   const el = h(doc, 'div', 'oac-keys-dialog', { 'aria-label': widgetText(ctx, 'Keyboard shortcuts') });
   const head = h(doc, 'div', 'oac-dialog__head');
   const title = h(doc, 'div', 'oac-dialog__title');
@@ -342,8 +325,8 @@ export function openShortcutsPanel(ctx: WidgetContext, opts: ShortcutsPanelOptio
   return close;
 }
 
-/** The editor's rules, appended to the widget sheet with the other panels'. */
-export const KEYMAP_EDITOR_CSS: string = `
+/** The editor's rules, added to the widget sheet when the panel first opens. */
+const KEYMAP_EDITOR_CSS: string = `
 .oac-widget .oac-keys-dialog { width: 880px; }
 .oac-widget .oac-keys { columns: 2; column-gap: 28px; min-width: 0; }
 .oac-widget .oac-keys__group { margin-bottom: 0; padding-bottom: 8px; }

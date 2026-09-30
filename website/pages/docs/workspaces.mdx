@@ -73,7 +73,9 @@ layout, and each sees the other's saves as another window's.
 it. `widgetLayoutTarget(widget)` is the widget's own target, for a host that drives a
 controller from its own controls, and `openLayoutsMenu(widget.context, controller, anchor?)`
 opens the widget's menu over any controller, under a host's own button or centred without
-one. Its rules, `LAYOUTS_MENU_CSS`, are part of the widget's stylesheet.
+one. The menu loads on first use, so the call resolves with its handle once it is open,
+and rejects when it cannot load or the widget was destroyed by then; its rules join the
+widget's stylesheet when it opens.
 
 **Indicator templates.** With a store that has `planIndicatorTemplateState`
 (`WorkspaceRepository` has it), the indicator picker's Templates button, bottom left,

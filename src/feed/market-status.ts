@@ -78,7 +78,7 @@ export interface PhaseWindow {
  * does not relabel it, and any hours at all beat a holiday: an overnight
  * session opening the evening before still runs into the closed date.
  */
-export const PHASE_ORDER: readonly SessionPhase[] = ['regular', 'pre', 'post', 'extended', 'holiday'];
+const PHASE_ORDER: readonly SessionPhase[] = ['regular', 'pre', 'post', 'extended', 'holiday'];
 
 /**
  * Cut `[from, to)` into consecutive single-phase spans from windows of any

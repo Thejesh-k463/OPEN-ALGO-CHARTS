@@ -87,11 +87,28 @@ const aliasSelf = {
   },
 };
 
+/**
+ * The widget loads the UI a user has to open (the shortcuts editor, the
+ * Layouts menu, the templates list, the grid bar's menus) with `import()`
+ * on first use (src/widget/lazy.ts). Those chunks are written beside the tier
+ * as `openalgo-charts.widget.<part>.mjs`: a chunk resolves against the tier's
+ * own URL, so a CDN or script-tag page needs nothing more, and a bundler
+ * follows the import and splits it the same way. Every other tier is one file.
+ * The tier file itself keeps everything a widget loads before anyone opens a
+ * part: `allow-extension` lets the chunks import the shell's helpers from it,
+ * where rollup would otherwise move the whole shell into a second chunk behind
+ * a re-exporting facade, and the tier's size row would measure the facade.
+ */
+const outputOf = (key) => key === 'widget'
+  ? { dir: 'dist', entryFileNames: `${outFile[key]}.mjs`, chunkFileNames: `${outFile[key]}.[name].mjs` }
+  : { file: `dist/${outFile[key]}.mjs` };
+
 const js = Object.entries(entries).map(([key, input]) => ({
   input,
   external: key === 'index' ? undefined : tierExternal,
+  preserveEntrySignatures: key === 'widget' ? 'allow-extension' : 'exports-only',
   output: {
-    file: `dist/${outFile[key]}.mjs`,
+    ...outputOf(key),
     format: 'es',
     sourcemap: true,
     paths: tierPaths,

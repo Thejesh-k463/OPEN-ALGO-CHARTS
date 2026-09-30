@@ -15,9 +15,6 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
-/** Whether a drawing is pinned to the screen rather than to time and price. */
-export const isViewportDrawing = (d: Pick<Drawing, 'space'>): boolean => d.space === 'viewport';
-
 /** The anchors a drawing carries in its own space: what decides whether it is complete. */
 export const anchorCount = (d: Drawing): number =>
   d.space === 'viewport' ? d.viewportPoints?.length ?? 0 : d.points.length;

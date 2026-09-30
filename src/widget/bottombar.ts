@@ -195,7 +195,7 @@ function spanText(ctx: WidgetTranslationOptions, range: WidgetRange): string {
 }
 
 /** What a range did, for the status line, in the dialog's words where they fit. */
-export function describeRange(ctx: BottombarContext, chart: Chart, label: string, result: DateNavigationResult): string {
+function describeRange(ctx: BottombarContext, chart: Chart, label: string, result: DateNavigationResult): string {
   const zone = chart.timezone();
   const intraday = chart.primaryBars().length > 1 && chart.primaryBars()[1].time - chart.primaryBars()[0].time < 86400;
   let format: Intl.DateTimeFormat;
