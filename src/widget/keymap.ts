@@ -974,13 +974,6 @@ export class Keymap {
 }
 
 /**
- * The chord a command answers to as a user reads it, for a tip or a menu row,
- * so a chord the user moved is shown where it went. `fallback` stands in
- * when nothing registered the command (chrome mounted over a host's own
- * keymap); an unbound command shows none. Internal: the tier entry does not
- * export it.
- */
-/**
  * A chord as the keymap shows it, in the form aria-keyshortcuts takes
  * (Ctrl+Shift+Z is Control+Shift+Z, Cmd+D is Meta+D, Del is Delete): a menu
  * row shows the chord beside its name and carries it as its shortcut, so the
@@ -991,6 +984,13 @@ export function ariaKeys(chord: string): string {
   return chord.split('+').map(part => aria[part] ?? part).join('+');
 }
 
+/**
+ * The chord a command answers to as a user reads it, for a tip or a menu row,
+ * so a chord the user moved is shown where it went. `fallback` stands in
+ * when nothing registered the command (chrome mounted over a host's own
+ * keymap); an unbound command shows none. Internal: the tier entry does not
+ * export it.
+ */
 export function commandChord(km: Keymap, command: string, fallback?: string): string | undefined {
   // The dialogs also mount over a context a host built itself, whose keymap
   // may be a stand-in; they showed the default chord there before 2.5.10.
