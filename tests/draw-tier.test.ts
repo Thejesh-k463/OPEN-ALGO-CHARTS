@@ -1113,8 +1113,9 @@ describe('drawing shortcuts', () => {
   });
 
   it('reads the letter from the physical key under Alt, where macOS Option types a symbol', () => {
-    expect(matchDrawingShortcut({ key: '†', code: 'KeyT', altKey: true })).toBe('trend-line');
-    expect(matchDrawingShortcut({ key: '˙', code: 'KeyH', altKey: true })).toBe('horizontal-line');
+    // What e.key holds for Option+T and Option+H on a US Mac layout.
+    expect(matchDrawingShortcut({ key: String.fromCharCode(0x2020), code: 'KeyT', altKey: true })).toBe('trend-line');
+    expect(matchDrawingShortcut({ key: String.fromCharCode(0x2d9), code: 'KeyH', altKey: true })).toBe('horizontal-line');
     expect(matchDrawingShortcut({ key: 't', code: 'KeyT', altKey: true })).toBe('trend-line');
   });
 

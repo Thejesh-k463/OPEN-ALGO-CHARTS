@@ -275,11 +275,11 @@ Use the independent `tableRows` option when you want cards and a table together.
 | `bidVolume` | Executed volume at the bid |
 | `deltaPct` | Delta as a percentage of bar volume |
 | `cvd` | `cvdOffset` plus cumulative delta across the loaded bars |
-| `trades` | Actual execution count from `tradeCount`; unavailable legacy counts display `—` |
+| `trades` | Actual execution count from `tradeCount`; unavailable legacy counts display `-` |
 
 `footprint.stats()` exposes the same calculations. Its `trades` value is `null` when an older
 manually assembled bar has no count metadata; occupied price levels are not a trade count.
-`minDelta` and `maxDelta` also return `null` and display `—` when legacy bars lack intrabar
+`minDelta` and `maxDelta` also return `null` and display `-` when legacy bars lack intrabar
 extrema. They describe the running execution-by-execution delta path, not the largest or
 smallest price-row delta; aggregated cells alone cannot recover them. Replaying the same
 retained executions with a different price grouping preserves both extrema.

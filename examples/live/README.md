@@ -49,7 +49,7 @@ and its own ✕ to **exit** (square off to flat via `placesmartorder position_si
 Orders/positions are polled from `/orderbook` + `/positionbook` every 3s.
 
 Safety:
-- **Arm trading** is OFF by default; nothing places until you tick it.
+- **Live trading** is off by default; nothing places until you turn it on.
 - The **mode** pill reflects OpenAlgo's routing, read from the book response:
   `ANALYZE (sandbox)` or `LIVE - real orders`. In **LIVE** mode every order asks
   for an explicit confirm first.
