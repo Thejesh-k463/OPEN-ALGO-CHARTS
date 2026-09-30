@@ -26,6 +26,7 @@ import { attachReplay, exitReplay, syncReplayAlertPause } from './replay.js';
 import { attachTimeline } from './timeline.js';
 import { attachHistory, historyFor, withoutHistory } from './history.js';
 import { scopeDrawings } from './drawing-scope.js';
+import { attachCanvasTips } from './canvas-tips.js';
 
 // 1.3 surfaces: chart linking, the bar cache and the interval registry.
 // Same namespace read for the same reason: this page must still draw
@@ -199,6 +200,7 @@ export function closeSplit() {
     if (app.linkGroup) app.linkGroup.remove(app.chart2);
     if (app.instrumentDrawings2) { app.instrumentDrawings2.destroy(); app.instrumentDrawings2 = null; }
     if (app.draw2) { app.draw2.destroy(); app.draw2 = null; }
+    app.offCanvasTips2?.(); app.offCanvasTips2 = null;
     app.chart2.destroy();
     // A split opened again is a new second chart, with nothing to take back yet.
     historyFor(2)?.clear();
@@ -343,6 +345,7 @@ export function buildChart2({ keepView = true, typeChanged = false, state } = {}
     if (app.focusPane === 2) syncMobileControls(tool);
   });
   app.chart2.on('draw:add', () => { el('status').textContent = 'chart 2: ' + app.draw2.drawings().length + ' drawings'; });
+  app.offCanvasTips2 = attachCanvasTips(app.chart2, el('chart2'), 2);
   for (const event of ['draw:add', 'draw:remove', 'draw:update', 'indicatorAdded', 'indicatorRemoved', 'indicatorUpdated', 'paneCollapsed']) app.chart2.on(event, autosave);
   // No properties widget over here (it is glued to the main chart's box),
   // but the chords apply to the selected plot, so the

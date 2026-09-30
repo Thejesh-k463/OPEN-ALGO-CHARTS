@@ -261,6 +261,7 @@ export const WIDGET_CSS = `
 .oac-widget .oac-fly__star[aria-pressed="false"] > svg { fill: none; }
 
 /* Tooltip */
+.oac-widget .oac-tip-spot { position: absolute; width: 1px; height: 1px; pointer-events: none; }
 .oac-widget .oac-tip { position: absolute; z-index: 200; left: 0; top: 0; max-width: 260px; pointer-events: none;
   padding: 5px 9px; border-radius: 6px; background: ${v('elev-2')}; color: ${v('tx')}; border: 1px solid ${v('bd')};
   box-shadow: ${v('shadow')}; font-size: 12px; line-height: 1.4; opacity: 0; transition: opacity .09s ease; }

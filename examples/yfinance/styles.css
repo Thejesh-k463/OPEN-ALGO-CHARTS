@@ -355,6 +355,7 @@ select.field { cursor: pointer; padding-right: 24px; }
   box-shadow: var(--shadow); font: 12px/1.4 system-ui, sans-serif;
   opacity: 0; transition: opacity .09s ease; }
 #tip.is-on { opacity: 1; }
+.tip-spot { position: fixed; width: 1px; height: 1px; pointer-events: none; }
 #tip .tip-chord { color: var(--mut); margin-left: 10px; font-variant-numeric: tabular-nums; }
 /* Second line: a gesture the control also answers to, dimmer than its name. */
 #tip .tip-sub { display: block; margin-top: 2px; color: var(--faint); font-size: 11px; }

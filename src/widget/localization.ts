@@ -504,6 +504,7 @@ export type WidgetBuiltinMessage =
   | "Remove level {level}"
   | "Search {label}"
   | "{name} (pinned)"
+  | "Cancel order"
   | "Keep tool active: {mode}"
   | "Delete {name}"
   | "Magnet weak: snaps when a bar or study value is within a few pixels"

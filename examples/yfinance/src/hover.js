@@ -34,6 +34,29 @@ export function attachTip(target, spec) {
   return target;
 }
 
+let canvasSpot = null;
+
+/**
+ * A label for a control painted on a canvas (canvas-tips.js), which has no
+ * element to hover: a one-pixel spot at the pointer stands in for it.
+ */
+export function showCanvasTip(title, point) {
+  if (!canvasSpot) {
+    canvasSpot = document.createElement('span');
+    canvasSpot.className = 'tip-spot';
+    canvasSpot.setAttribute('aria-hidden', 'true');
+  }
+  if (!canvasSpot.isConnected) document.body.appendChild(canvasSpot);
+  canvasSpot.style.left = point.x + 'px';
+  canvasSpot.style.top = point.y + 'px';
+  tipSpecs.set(canvasSpot, { title, side: 'bottom' });
+  showTip(canvasSpot);
+}
+
+export function hideCanvasTip() {
+  if (canvasSpot && tipFor === canvasSpot) hideTip();
+}
+
 export function hideTip() {
   if (!tipNode) return;
   tipNode.classList.remove('is-on');
@@ -104,7 +127,8 @@ export function initHover() {
   window.addEventListener('blur', hideTip);
   window.addEventListener('resize', hideTip);
   document.addEventListener('pointermove', (e) => {
-    if (!tipFor) return;
+    // A canvas control's label goes with the chart's hover id, not the pointer's target.
+    if (!tipFor || tipFor === canvasSpot) return;
     // `pointerleave` never fires for a button that was removed while hovered,
     // which is exactly what a toolbar rebuild does.
     if (!tipFor.isConnected || !(tipFor === e.target || tipFor.contains(e.target))) hideTip();

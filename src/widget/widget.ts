@@ -464,6 +464,44 @@ class WidgetContextImpl implements WidgetContext {
   public get chartTheme(): ChartTheme { return this._source.chartThemeInUse(); }
 }
 
+/**
+ * A study legend's eye, gear and cross and an order line's cross are painted
+ * on the canvas, with no element to carry a name, so the chart's hover id
+ * raises the widget's tip at the pointer saying what a press does. Returns
+ * the teardown.
+ */
+function canvasButtonTips(ctx: WidgetContext, chartEl: HTMLElement): () => void {
+  const spot = h(ctx.document, 'span', 'oac-tip-spot', { 'aria-hidden': 'true' });
+  ctx.root.appendChild(spot);
+  let said: string | null = null;
+  const words = (id: string): string | null => {
+    const sep = id.lastIndexOf('::');
+    if (sep < 0) return null;
+    const owner = id.slice(0, sep), action = id.slice(sep + 2);
+    if (owner.startsWith('order:')) return action === 'close' ? widgetText(ctx, 'Cancel order') : null;
+    const study = owner.startsWith('indicator:') ? ctx.chart.indicators().find(item => item.id === owner.slice('indicator:'.length)) : undefined;
+    if (study === undefined) return null;
+    const name = study.name;
+    return action === 'hide' ? widgetText(ctx, study.visible() ? 'Hide {name}' : 'Show {name}', { name })
+      : action === 'settings' ? widgetText(ctx, 'Settings for {name}', { name })
+        : action === 'close' ? widgetText(ctx, 'Remove {name}', { name }) : null;
+  };
+  ctx.tips.attach(spot, () => (said === null ? null : { title: said, side: 'bottom' }));
+  const move = (e: PointerEvent): void => {
+    const root = ctx.root.getBoundingClientRect();
+    spot.style.left = `${e.clientX - root.left}px`;
+    spot.style.top = `${e.clientY - root.top}px`;
+  };
+  chartEl.addEventListener('pointermove', move);
+  const off = ctx.chart.on('hover', payload => {
+    const id = (payload as { id: string | null }).id;
+    said = id === null ? null : words(id);
+    if (said !== null) ctx.tips.show(spot);
+    else if (ctx.tips.target() === spot) ctx.tips.hide();
+  });
+  return () => { off(); chartEl.removeEventListener('pointermove', move); spot.remove(); };
+}
+
 class WidgetImpl implements Widget {
   public readonly dataController: DataLoadingController | null;
   public readonly chart: Chart;
@@ -707,6 +745,7 @@ class WidgetImpl implements Widget {
       interval: () => this._interval,
     });
     this._cleanups.push(() => { tips.destroy(); overlays.destroy(); });
+    this._cleanups.push(canvasButtonTips(this.context, chartEl));
     if (options.eventDetails !== false) {
       const eventDetails = new EventDetailsPopup(chartEl, {
         styleNonce: options.styleNonce, overlays: this.context.overlays,

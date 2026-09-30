@@ -57,6 +57,7 @@ import { scopeDrawings } from './drawing-scope.js';
 import { capturePaneTarget, selectedPane } from './pane-target.js';
 import { attachTimeline } from './timeline.js';
 import { initGoTo, openGoTo } from './goto.js';
+import { attachCanvasTips } from './canvas-tips.js';
 
 // Price-level family (previous close, session extremes, extended hours,
 // bid/ask). Read off the namespace rather than named above on purpose: a
@@ -355,6 +356,9 @@ function render({ keepView = true, state } = {}) {
     if (id.endsWith('::close')) cancelOrder(id.slice(0, -'::close'.length));
   });
   attachOrderLines();
+  // The canvas's own controls say what they do under the pointer.
+  app.offCanvasTips?.();
+  app.offCanvasTips = attachCanvasTips(app.chart, el('chart'), 1);
   updatePositionLine(); // redraw the position line on the rebuilt chart
   if (app.bracket) {
     el('bracket').hidden = false;

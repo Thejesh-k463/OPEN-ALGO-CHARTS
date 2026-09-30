@@ -127,7 +127,7 @@ test('the settings dialog opens from the top bar and closes from its own button'
   await dialog.getByRole('tab', { name: 'Axes' }).click();
   const scale = dialog.getByRole('combobox', { name: 'Scale', exact: true });
   await expect(scale).toBeVisible();
-  await expect(scale).toHaveAccessibleDescription(/Logarithmic/);
+  await expect(scale).toHaveAttribute('aria-description', /Logarithmic/);
 
   await dialog.locator('.oac-dialog__head button[aria-label="Close"]').click();
   await expect(page.locator(DIALOG)).toHaveCount(0);
@@ -153,6 +153,38 @@ test('Escape closes the top overlay first and only then reaches the chart', asyn
   await page.mouse.move(600, 350);
   await page.keyboard.press('Escape');
   expect(await page.evaluate(() => (window as any).__widget.draw.activeTool())).toBeNull();
+  expect(errors).toEqual([]);
+});
+
+test('the legend buttons painted on the canvas say what they do under the pointer', async ({ page }) => {
+  const errors = await mount(page);
+  const id = await page.evaluate(() => (window as any).__widget.chart.addIndicator('rsi').id as string);
+  const name = await page.evaluate(studyId => (window as any).__widget.chart.indicators().find((s: any) => s.id === studyId).name as string, id);
+  const where = (action: string) => page.evaluate(([studyId, action]) => {
+    const { chart } = (window as any).__widget;
+    const study = chart.indicators().find((s: any) => s.id === studyId);
+    const pane = chart.panes()[study.paneIndex].element.getBoundingClientRect();
+    const button = (study.legend()._buttons as { id: string; x: number; y: number }[]).find(b => b.id.endsWith(`::${action}`));
+    return { row: { x: pane.left + 40, y: pane.top + 15 }, at: button ? { x: pane.left + button.x + 8, y: pane.top + button.y + 8 } : null };
+  }, [id, action] as const);
+  const tip = page.locator('.oac-tip.is-on');
+  for (const [action, said] of [['hide', `Hide ${name}`], ['settings', `Settings for ${name}`], ['close', `Remove ${name}`]] as const) {
+    await page.mouse.move((await where(action)).row.x, (await where(action)).row.y);
+    let at = (await where(action)).at;
+    expect(at, action).not.toBeNull();
+    // The controls reveal on hover and can shift as they do; follow them until they hold still.
+    for (let tries = 0; tries < 4; tries++) {
+      await page.mouse.move(at!.x, at!.y);
+      const next = (await where(action)).at!;
+      const settled = Math.abs(next.x - at!.x) < 0.5 && Math.abs(next.y - at!.y) < 0.5;
+      at = next;
+      if (settled) break;
+    }
+    await expect(tip).toHaveText(said);
+  }
+  // Off the buttons, the label goes.
+  await page.mouse.move(10, 690);
+  await expect(tip).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

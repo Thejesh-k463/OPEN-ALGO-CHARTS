@@ -761,3 +761,30 @@ test('one action keeps one name across the page', async ({ page }) => {
   await page.getByRole('button', { name: /Compare/ }).first().click();
   await expect(page.locator('#cmp-title')).toHaveText('Compare symbols: Chart 1');
 });
+
+test('the canvas legend controls say what they do under the pointer', async ({ page }) => {
+  const errors = watchErrors(page);
+  await openDemo(page);
+  const where = (action: string) => page.evaluate(action => {
+    const { chart } = (window as any).__oac;
+    const study = chart.indicators().find((s: any) => s.name === 'RSI');
+    const pane = chart.panes()[study.paneIndex].element.getBoundingClientRect();
+    const button = (study.legend()._buttons as { id: string; x: number; y: number }[]).find(b => b.id.endsWith(`::${action}`));
+    return { row: { x: pane.left + 40, y: pane.top + 15 }, at: button ? { x: pane.left + button.x + 8, y: pane.top + button.y + 8 } : null };
+  }, action);
+  for (const [action, said] of [['hide', 'Hide RSI'], ['close', 'Remove RSI']] as const) {
+    await page.mouse.move((await where(action)).row.x, (await where(action)).row.y);
+    let at = (await where(action)).at;
+    expect(at, action).not.toBeNull();
+    // The controls reveal on hover and can shift as they do; follow them until they hold still.
+    for (let tries = 0; tries < 4; tries++) {
+      await page.mouse.move(at!.x, at!.y);
+      const next = (await where(action)).at!;
+      const settled = Math.abs(next.x - at!.x) < 0.5 && Math.abs(next.y - at!.y) < 0.5;
+      at = next;
+      if (settled) break;
+    }
+    await expect(page.locator('#tip.is-on')).toHaveText(said);
+  }
+  expect(errors).toEqual([]);
+});
