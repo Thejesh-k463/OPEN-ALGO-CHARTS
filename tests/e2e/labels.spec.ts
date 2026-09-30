@@ -17,8 +17,9 @@ const DEMO_PAGE = `${DEMO}/examples/yfinance/index.html?test=1`;
 /** Runs in the page: what is wrong with the labels under `scope`, one line per problem. */
 function audit(scope: string | null): string[] {
   const LEAK = /\[object|\bundefined\b|\bnull\b|\bNaN\b|\{[a-zA-Z_]+\}/;
-  // A toggle named for the other state: "Unlock" pressed, "Remove X from selection" pressed.
-  const OPPOSITE = /^(Unlock|Unpin|Unhide|Deselect|Restore)\b|\bfrom selection$/i;
+  // A toggle named for the other state: "Unlock" pressed, "Show" checked on a hidden drawing,
+  // "Remove X from selection" pressed.
+  const OPPOSITE = /^(Unlock|Unpin|Unhide|Show|Deselect|Restore)\b|\bfrom selection$/i;
   const CONTROL = 'button, a[href], input:not([type=hidden]), select, textarea, [role=button], [role=link], [role=menuitem], '
     + '[role=menuitemcheckbox], [role=menuitemradio], [role=tab], [role=switch], [role=checkbox], [role=radio], [role=slider], [role=option]';
   const shown = (n: Element): boolean => {
@@ -131,6 +132,18 @@ test.describe('the widget chrome', () => {
     await page.mouse.click(at.x, at.y, { button: 'right' });
     await check(page, found, 'the right-click menu on a drawing');
     await page.keyboard.press('Escape');
+    // The same menu on a hidden drawing, which the pointer cannot reach: its Hide row is checked.
+    await page.evaluate(async () => {
+      const { widget, ids } = (window as any).__drawUi;
+      const { mountContextMenu } = await import('/dist/openalgo-charts.widget.mjs' as string);
+      widget.draw.update(ids.trend, { visible: false });
+      mountContextMenu(widget.context, undefined, { event: { paneIndex: widget.chart.primaryPaneIndex(), point: { x: 200, y: 200 },
+        price: null, time: null, index: null, target: { kind: 'drawing', id: 'draw:' + ids.trend }, preventDefault: () => {} } });
+    });
+    await expect(page.locator('.oac-ctx [aria-checked="true"]').first()).toBeVisible();
+    await check(page, found, 'the right-click menu on a hidden drawing');
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => { const { widget, ids } = (window as any).__drawUi; widget.draw.update(ids.trend, { visible: true }); });
 
     await page.locator('.oac-rail__group').first().dispatchEvent('contextmenu');
     await check(page, found, 'a rail flyout');
