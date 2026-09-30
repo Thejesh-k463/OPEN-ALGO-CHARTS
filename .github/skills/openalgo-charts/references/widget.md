@@ -2,7 +2,7 @@
 
 *When to read this: the user wants a chart with a toolbar, a drawing rail, dialogs or shortcuts without writing that chrome; or asks whether the library "has a UI"; or is embedding one of the widget's dialogs in a host of their own.*
 
-Source of truth: `src/widget/index.ts` (the export list), `src/widget/widget.ts` (options, handle, state), `src/widget/mobile.ts` (responsive chrome), `src/widget/context.ts` (the context, the bus, storage, the overlay stack, the dialog registry), `src/widget/keymap.ts`, `src/widget/rail.ts`, `src/widget/topbar.ts`, `src/widget/statusline.ts`, `src/widget/toast.ts`, `src/widget/tokens.ts`, `src/widget/styles.ts`, `src/widget/form.ts`, the dialog modules under `src/widget/dialogs/`, and `dist/widget/index.d.ts` once built. Packaging: `rollup.config.js`, `package.json` (`exports['./widget']`), `.size-limit.json`, `scripts/check-dts.mjs`, `scripts/check-shake.mjs`.
+Source of truth: `src/widget/index.ts` (the export list), `src/widget/widget.ts` (options, handle, state), `src/widget/widget-persist.ts` (the saved layout, per-instrument drawings, `restoreState`, the debounced save and the pagehide flush), `src/widget/widget-keys.ts` (the shell's key scopes and bindings), `src/widget/storage.ts` and `src/widget/storage-idb.ts` (the IndexedDB store, its change announcements, the one-time copy from `localStorage` and the default store; the store's code loads when the first store is created), `src/widget/mobile.ts` (responsive chrome), `src/widget/context.ts` (the context, the bus, storage, the overlay stack, the dialog registry), `src/widget/keymap.ts`, `src/widget/keymap-editor.ts`, `src/widget/rail.ts`, `src/widget/topbar.ts`, `src/widget/statusline.ts`, `src/widget/toast.ts`, `src/widget/tokens.ts`, `src/widget/styles.ts`, `src/widget/form.ts`, the dialog modules under `src/widget/dialogs/`, and `dist/widget/index.d.ts` once built. Packaging: `rollup.config.js`, `package.json` (`exports['./widget']`), `.size-limit.json`, `scripts/check-dts.mjs`, `scripts/check-shake.mjs`.
 
 ## What it is
 
@@ -62,8 +62,9 @@ fallback rules and async persistence guidance.
 
 The existing `WorkspaceRepository`/`WorkspaceStorage` API supplies asynchronous
 account persistence. Keep each repository's namespace fixed, create another for
-an account change, and fence stale restores in the host. Widget `persist` remains
-synchronous preference storage. Do not put credentials in portable documents.
+an account change, and fence stale restores in the host. Widget `persist` is local
+preference storage for one browser (IndexedDB by default since 2.5.10, see the state
+paragraph below), not an account adapter. Do not put credentials in portable documents.
 
 `WidgetOptions` and `ContextMenuHooks` also accept `tradingCapabilities?:
 TradingCapabilitySource`, `tradingMode` and `tradingLocked`. Unsupported order
@@ -97,9 +98,10 @@ Everything `src/widget/index.ts` exports at runtime. The shell (`createWidget` a
 | Export | Kind | Purpose |
 |---|---|---|
 | `WidgetBus` | class | Typed `on` / `off` / `emit` / `clear`; the widget's own events ride it. |
-| `WidgetStorage` | class | Namespaced `get` / `set` / `remove` over a `StorageLike`; `enabled` is false when `persist` is off, and a throwing store reads as "nothing saved". |
+| `WidgetStorage` | class | Namespaced `get` / `set` / `remove` over a `StorageLike`, straight through, or (since 2.5.10) over an `AsyncStorageLike` through a copy of the namespace in memory. `load()` reads it once. Changes are written behind, coalesced per key and in order. `flush()` sends them now and journals them. `loaded` says whether reads answer from the store. Over a store with `subscribe`, the copy follows the writes other tabs land until `close()`, which the widget calls on destroy. `new WidgetStorage(namespace, store, { onError })` reports each `WidgetStorageError`. `enabled` is false when `persist` is off, and a throwing store reads as "nothing saved". |
 | `STORAGE_PREFIX` | const `'oac-widget:'` | Every key the widget writes sits under it. |
 | `defaultStorage()` | function | The page's `localStorage` when it exists and works, else null. |
+| `createIndexedDbWidgetStorage(factory, name?, options?)` | function | (since 2.5.10) The widget's key-value store over IndexedDB (`name` default `'openalgo-charts-widget'`): one object store of JSON texts, one transaction per call, `close()`. The first read of a namespace the database has never held copies the `oac-widget:<namespace>:` keys from `localStorage` (`options.migrateFrom`; null copies nothing) and leaves them there. Each write that lands is announced to `subscribe` listeners, and to other tabs over a broadcast channel. `options.journal` (default `localStorage`, null for none) keeps the writes still pending when a page goes away. |
 | `registerWidgetDialog(name, mount)` | function | Make a dialog's mount known to every shell. Returns a disposer. |
 | `registerWidgetDialogs(mounts)` | function | Several at once, from a module's exports. |
 | `unregisterWidgetDialog(name)` | function | Remove one; false when nothing was registered. |
@@ -116,19 +118,20 @@ Everything `src/widget/index.ts` exports at runtime. The shell (`createWidget` a
 | `placeBeside(anchor, size, bounds, gap?, pad?)`, `placeBelow(...)`, `placeTip(...)` | functions | Pure placement maths in root coordinates, flipping when there is no room. |
 | `boxIn(root, el)` | function | An element's box in the widget root's coordinate space. |
 | `historyPress(ctx, 'undo' \| 'redo')`, `historyReady(ctx, 'undo' \| 'redo')` | functions | One undo or redo press through `ctx.history`, and whether it would do anything; a custom context without a history falls back to `ctx.draw`. Every widget undo control calls these. (2.5.6) |
-| `WidgetContext`, `WidgetBusEvents`, `BusHandler`, `StorageLike`, `DialogMount`, `DialogHandle`, `WidgetDialogName`, `OverlayOptions`, `OverlayStack`, `TipSpec`, `TipSource`, `TipSide`, `TipController`, `Box`, `Size` | types | |
+| `WidgetContext`, `WidgetBusEvents`, `BusHandler`, `StorageLike`, `AsyncStorageLike`, `WidgetStorageOptions`, `WidgetStorageError`, `IndexedDbWidgetStorage`, `IndexedDbWidgetStorageOptions`, `DialogMount`, `DialogHandle`, `WidgetDialogName`, `OverlayOptions`, `OverlayStack`, `TipSpec`, `TipSource`, `TipSide`, `TipController`, `Box`, `Size` | types | |
 
 ### The keymap (`keymap.ts`)
 
 | Export | Kind | Purpose |
 |---|---|---|
-| `Keymap` | class | One capture-phase keydown listener on the document; `register(combo, action, scope, opts)` returns a disposer; `handle`, `attach`, `list`, `conflicts`, `onConflict`, `format`, `activeScopes`, `destroy`. |
-| `openShortcutsPanel(ctx)` | function | The `?` panel: every binding by group, a shadowed one struck through. Returns the closer. |
+| `Keymap` | class | One capture-phase keydown listener on the document; `register(combo, action, scope, opts)` returns a disposer (`opts.command` names a binding a user may move, `opts.rebindable: false` fixes it); `handle`, `attach`, `list`, `conflicts`, `onConflict`, `format`, `activeScopes`, `destroy`. Since 2.5.10: `rebind(command, combo, { replace? })` and `reset(command, { replace? })` return a `KeyRebindResult` (`ok`, a `reason` of unknown, fixed, invalid, reserved or taken, and the `conflicts`); `resetAll()`, `chord(command)`, `conflictsFor(combo, scope?)`, `overrides()` and `applyOverrides(record)` (replaces rather than merges, drops what it cannot use, keeps a command not registered yet), `onChange(fn)`, and `capture(fn)` with `capturing` for a control that records a chord (while it records, every other keymap attached to the same document claims nothing). Engine commands are `chart:<command>` in the engine's code grammar. |
+| `openShortcutsPanel(ctx, opts?)` | function | The `?` panel: every binding by group, a shadowed one struck through, and Change, Reset and Reset all unless `opts.edit` is false or the widget was built with `shortcutsEditor: false`. The editor refuses a browser-reserved chord, a bare letter or digit, and Space alone. Returns the closer. Since 2.5.10 the panel loads on first use (see Packaging facts): the first call opens it once it has arrived, the closer cancels one still on its way, and a panel that cannot load says so in a toast. |
+| `KEYMAP_KEY` | const | `'keymap'`, the widget-storage key the user's chords are saved under when `persist` is on. |
 | `parseKeyCombo(spec)` | function | A human spec (`'Ctrl+Shift+Z'`, `'Mod+Z'`) to the canonical chord. |
 | `eventKeyCombo(e)` | function | The canonical chord an event stands for, or `''` for a bare modifier press. |
 | `formatKeyCombo(combo, isMac?)` | function | A chord as a user reads it (`Cmd` on a Mac). |
 | `fromChartCombo(combo)` | function | The engine's `ShortcutManager` spelling to the widget's. |
-| `KeyScope`, `KeyEventLike`, `KeyAction`, `KeyBinding`, `KeyBindingOptions`, `KeyConflict`, `KeymapOptions`, `KeymapGroup`, `ChartShortcutSource` | types | |
+| `KeyScope`, `KeyEventLike`, `KeyAction`, `KeyBinding`, `KeyBindingOptions`, `KeyConflict`, `KeymapOptions`, `KeymapGroup`, `KeymapRow`, `KeyChordUse`, `KeyRebindResult`, `KeymapOverrides`, `KeymapChange`, `ShortcutsPanelOptions`, `ChartShortcutSource` | types | |
 
 Scopes resolve narrowest first: `['overlay']` alone while any overlay is open (nothing else fires; the stack's own listener handles Escape and Tab), otherwise `rail` (focus in the rail), `chart` (pointer or focus on the chart), `widget` (pointer or focus in the root), `global`. A binding's action may return `false` to decline the key, in which case the next scope is tried and finally the engine sees it. A claimed chord is prevented and stopped, so the engine's `ShortcutManager` never sees it. Conflicts with the engine's own table are reported through `conflicts()` and the `keymap:conflict` bus event; the nudge arrows are registered layered and excluded from the report, while `Alt+H` and `Alt+V` (draw-tier tool chords) genuinely shadow the chart's grid toggles and are listed.
 
@@ -152,7 +155,7 @@ The sprite is injected once per document on the body (`id="oac-rail-sprite"`), s
 | Export | Kind | Purpose |
 |---|---|---|
 | `mountTopbar(ctx, host, opts)` | function | Symbol box with search, interval pills, chart type menu, Indicators, Go to (with `onGoTo`), Objects, capture, settings, theme. Returns a `TopbarHandle` (`refresh`, `destroy`). |
-| `openMenu(ctx, anchor, rows, opts?)` | function | A popover menu under `anchor`, with an optional filter box; the chart type menu and the symbol results share it. Returns the closer. |
+| `openMenu(ctx, anchor, rows, opts?)` | function | A popover menu under `anchor`, with an optional filter box; the chart type menu and the symbol results share it. A row's optional `icon` (a chrome icon id, since 2.5.10) draws that glyph before its label; once one row has one, every row keeps the column, and an id the registry does not carry leaves the slot empty. Returns the closer. |
 | `chartTypeChoices()` | function | The registered chart types a user can pick for the instrument (the registry minus histogram-family internals). |
 | `chartTypeLabel(id)` | function | A label from `CHART_TYPE_LABELS`, else the id. |
 | `CHART_TYPE_LABELS` | const | Labels for the built-in chart types. |
@@ -169,11 +172,23 @@ changed, empty or loading source. The widget supplies source readiness; custom
 boundary. Active replay exports only installed rows. File failures surface in
 the status line and download resources are released after handoff or failure.
 
+### The bottom bar (`bottombar.ts`, `ranges.ts`) (since 2.5.10)
+
+| Export | Kind | What |
+|---|---|---|
+| `mountBottombar(ctx, host, opts?)` | function | The strip under the chart: preset ranges and Go to on the left; on the right the market status (from `marketStatusAt` on the chart's calendar, in a `role="status"` region so a change of phase is announced; hidden without a calendar, or with the "Session state" switch off), a clock in the chart's zone that opens a searchable timezone menu, and the Auto, Log and Percent price scale toggles, which follow the scale (an axis drag, an undo, a reset). `opts.target` is read at every use, so one bar can serve whichever chart has the focus; `ranges`, `onGoTo`, `now`, `timezones` and `onTimezone` are optional. `ctx` is a `BottombarContext`: a `WidgetContext` is one, and a custom host builds one from `createOverlayStack` and `createTipController` over an `.oac-widget` root. One timer a second, stopped while the page is hidden. Returns a `BottombarHandle` (`el`, `controls`, `refresh`, `destroy`); `controls` are the same actions without the markup, which the phone layout's More sheet lists. |
+| `BOTTOMBAR_HEIGHT` | const `28` | The strip's height in CSS px. |
+| `BOTTOMBAR_CSS` | const | Its rules, part of `WIDGET_COMPONENT_CSS`. A widget root carrying the bar (`.has-bottombar`) takes a fourth grid row for it, between the stage and the status line; `.is-mobile` hides it, except a bar marked `is-kept` (a widget with `topbar: false`, which has no More sheet), which stays above the phone footer. On a narrow bar the ranges scroll; the status, the clock and the toggles keep their size. |
+| `DEFAULT_RANGES` | const | `1D` (`1m`, one session), `5D` (`5m`, five sessions), `1M` (`30m`), `3M` (`1h`), `6M` (`1d`), `YTD` (`1d`), `1Y` (`1d`), `5Y` (`1w`), `All` (`1w`). |
+| `rangeWindow(range, { end, zone?, calendar?, bars? })` | function | The `{ from, to }` a range covers, ending at `end`. A `session` range walks back through the calendar's sessions (a weekend or a closed date is skipped, a date with a midday break counts once, its pre-open belongs to it), so one NSE day at `1m` is the 375 bars from 09:15, not 1,440 minutes; without a calendar it counts the dates the `bars` fall on, or weekdays. Months and years run from midnight on the same date that far back in `zone`, `ytd` from 1 January, `all` from the first bar (or 30 years back without `bars`). |
+| `rangeInterval(range, offered)` | function | The range's own interval when offered, else the nearest time-based one by ratio, the longer on a tie. |
+| `WidgetRange`, `WidgetRangeUnit`, `WidgetRangeWindow`, `RangeWindowOptions`, `BottombarContext`, `BottombarTarget`, `BottombarOptions`, `BottombarControls`, `BottombarHandle`, `BottombarScaleToggle`, `BottombarScaleState`, `MarketStatusReading`, `WidgetBottombarOptions`, `WidgetSessionCalendar` | types | |
+
 ### Status line, toasts, tokens, styles
 
 | Export | Kind | Purpose |
 |---|---|---|
-| `mountStatusline(ctx, host, opts?)` | function | Symbol, interval, O H L C, change, volume, the hovered bar's time, bar count, timezone; a transient message slot. Returns a `StatuslineHandle` (`setSymbol`, `setMessage`, `destroy`). |
+| `mountStatusline(ctx, host, opts?)` | function | Symbol, interval, O H L C, change, volume and time of the hovered bar, or of the latest bar while the pointer is away (reread on every data update); timezone; a transient message slot (the widget puts the bar count there after a load). Returns a `StatuslineHandle` (`setSymbol`: the first title names the bars already there, a later different title clears the readings until the next full data replace; `setBar`: hold a bar, null follows the latest again; `setMessage`, `refresh`, `destroy`). |
 | `priceDigits(chart)` | function | Decimals for the readout: the pane's own precision floored at `MIN_PRICE_DIGITS`. |
 | `mountAccountSummary(ctx, host, { source, locale? })` | function | Account summary: the selected account (a menu switches it), an Analyzer tag for the sandbox ledger, equity, margin used and available, and a Stale or error state. `source` is an `AccountStateSource`, usually the trade tier's `AccountManager`. Read-only apart from switching; it has no order controls. An `unsupported` source renders disabled (`aria-disabled`, class `is-disabled`) with the provider's reason visible. Mounted before `.oac-statusline__tz` when the host has one. In a narrow status line (a container query on the row) the hover time yields first, then margin used, equity and available drop out, and below 860 px the summary moves beside the title so the account and its tag are never the part that is clipped; the picker's tooltip keeps the figures. Returns an `AccountSummaryHandle` (`el`, `refresh`, `destroy`). |
 | `ACCOUNT_SUMMARY_CSS` | const | The summary's rules, part of `WIDGET_COMPONENT_CSS`. |
@@ -205,7 +220,7 @@ Every mount takes the context and an optional anchor element (so it satisfies `D
 | Export | Kind | Purpose |
 |---|---|---|
 | `mountSettingsDialog(ctx, anchor?, { tab?, unavailable?, onApply?, onClose? })` | function | Chart settings, generated from `chartSettingsSchema(chart)`; Cancel and Escape revert the dirty keys. |
-| `mountIndicatorPicker(ctx, anchor?, { onAdd?, closeOnAdd? })` | function | Searchable, grouped list of every registered indicator. |
+| `mountIndicatorPicker(ctx, anchor?, { onAdd?, closeOnAdd?, templates? })` | function | Searchable, grouped list of every registered indicator. (since 2.5.10) With a template store (`templates`, default the widget's `workspaces`; null for none) that has `planIndicatorTemplateState`, a Templates button bottom left lists the saved indicator templates: Replace, Append, delete (asks first), and Save studies as template. |
 | `mountIndicatorSettings(ctx, anchor?, { instanceId?, tab?, onChange?, onClose? })` | function | Inputs and styles for one indicator, from its descriptor. `instanceId` falls back to `anchor.dataset.instanceId`, then the chart's only indicator. |
 | `mountDrawingProperties(ctx, anchor?, { ids?, tab?, onClose? })` | function | The selected drawings' fields, from `drawingSettingsSchema`, on a Style tab, and (since 2.5.9) every anchor as a date, a time and a price on a Coordinates tab (`tab: 'coordinates'` opens on it). Bottom left: Restore defaults, and (since 2.5.9) Templates when the context carries `drawingTemplates`. |
 | `mountDrawingCoordinates(ctx, host, ids, why)` | function | (since 2.5.9) The Coordinates tab on its own, for a host's own dialog: `ids()` names the drawings and `why()` is the reason they are read-only, or null. Returns a `DrawingCoordinatesHandle` (`el`, `refresh()`, `destroy()`). |
@@ -306,14 +321,20 @@ Color swatches stay compact. Theme overrides should target these tokens.
 | `theme` | `'dark' \| 'light' \| ChartTheme` | `'dark'` | Drives the canvas and the chrome tokens. Note the engine's own default is light; the widget's is dark. |
 | `rail` | `boolean \| RailOptions` | on | `false` hides it. `RailOptions.tools` restricts which ids appear (order still follows `RAIL_GROUPS`); `favorites` seeds the pins when nothing is stored. |
 | `topbar` | `boolean` | on | |
-| `statusline` | `boolean` | on | |
-| `mobile` | `'auto'` \| `'always'` \| `'never'` | `'auto'` | Compact widget controls. Auto activates when the widget container is at most 640 CSS px wide or the primary pointer is coarse. |
+| `statusline` | `boolean` | on | With `bottombar: false` it also shows the market status from the chart's calendar (since 2.5.10). |
+| `bottombar` | `boolean` | on | (since 2.5.10) The strip under the chart (see The bottom bar). `false` leaves it out and puts Go to back in the top bar. |
+| `ranges` | `readonly WidgetRange[]` | `DEFAULT_RANGES` | (since 2.5.10) The bar's range buttons and the ids `setRange` takes; `[]` leaves the buttons out. |
+| `sessionCalendar` | `SessionCalendarSource \| ((instrument) => SessionCalendarSource \| null)` | none | (since 2.5.10) Trading hours, applied with `chart.setSessionCalendar` for the first symbol and on every symbol change. They size a range in sessions and give the market status and the shading their hours. Without it the chart's calendar is left to the host. |
+| `sessionShading` | `boolean` | on | (since 2.5.10) `attachSessionShading` on the chart: a faint wash behind pre-open, post-close and extended-hours bars. Nothing is shaded without such hours in the calendar. |
+| `mobile` | `'auto'` \| `'always'` \| `'never'` | `'auto'` | Compact widget controls. Auto activates when the widget container is at most 640 CSS px wide, or, with a coarse primary pointer, at most 960 px wide and under 600 px tall; tablets and touch laptops keep the desktop chrome. |
 | `indicators` | `boolean` | on | The Indicators button. |
 | `persist` | `boolean \| string` | off | `true` uses the `default` namespace; a string names one, so two widgets on a page keep separate layouts. |
-| `storage` | `StorageLike \| null` | the page's `localStorage` | The store behind `persist`. |
+| `storage` | `StorageLike \| AsyncStorageLike \| null` | IndexedDB (since 2.5.10), else the page's `localStorage` | The store behind `persist`. A synchronous one (`localStorage`) restores before `createWidget` returns, as before 2.5.10; an asynchronous one restores when `ready` settles. |
 | `drawingScope` | `'instrument' \| 'chart'` | `'instrument'` | (since 2.5.9) Whose drawings the chart shows. `'instrument'`: each symbol and exchange keeps its own, swapped by `setSymbol`, a restored layout or a watchlist pick. `'chart'`: one set that stays whatever symbol is loaded, as before; `widget.instrumentDrawings` is then null. See Drawings per instrument, below. |
 | `drawingTemplates` | `DrawingTemplateStore` | none | (since 2.5.9) Saved drawing looks: a tool's default and named templates, from `openalgo-charts/workspace` (`DrawingTemplateRepository`). Without one no template control is shown. See Drawing toolbar, style templates and coordinates, below. |
 | `drawingToolbar` | `boolean` | on with the rail | (since 2.5.9) The floating toolbar over the selected drawings on a desktop layout. |
+| `workspaces` | `WorkspaceStore` | none | (since 2.5.10) Saved layouts and indicator templates: a `WorkspaceRepository` from `openalgo-charts/workspace`, or a host's own store, taken as a type only. Adds the Layouts menu (a top bar button, and a More sheet row on a phone) and templates in the indicator picker, and reopens the layout that was active when the page last closed. See Layouts menu and indicator templates, below. |
+| `layouts` | `LayoutsController \| false` | a controller over this widget | (since 2.5.10) What the Layouts menu drives. A chart grid gives its charts `false` (no chart saves a layout of its own there) unless the host passes one controller for the whole grid, which every chart's menu then drives. `false` keeps `workspaces` for templates only. |
 | `drawingStore` | `DrawingDocumentStore` | beside the layout with `persist`, else in memory | (since 2.5.9) Where each instrument's drawings are kept in `'instrument'` scope. Not a `ChartGridOptions` field: the grid gives each cell its own. |
 | `locale` | `string` | the runtime's | BCP 47 tag for the numbers on the status line. |
 | `symbolSearch` | `(query) => SymbolMatch[] \| Promise<SymbolMatch[]>` | none | Called as the user types in the symbol box, after `SEARCH_DEBOUNCE_MS`. |
@@ -324,19 +345,28 @@ Color swatches stay compact. Theme overrides should target these tokens.
 | `account` | `AccountStateSource` | none | Account summary in the status line (see `mountAccountSummary`). Omitted shows nothing; a source whose provider declares no accounts shows disabled with the reason. Hidden with the status line (`statusline: false`, and the compact mobile controls, which hide the status line). It only reads and switches accounts. |
 | `styleNonce` | `string` | none | Response CSP nonce for the shared widget and dialog stylesheet. Style-attribute policy remains the host's responsibility. |
 | `keyboardRoute` | `() => boolean \| undefined` | none | For hosts with several widgets: false silences this widget's chords and chart shortcuts, true sends them here, undefined keeps the usual rule (pointer or focus, or always for a `shortcuts` scope of `global`). Applies to a `ShortcutManager` instance too, shared or not. The chart grid sets it per cell. |
+| `shortcutsEditor` | `boolean` | true | (since 2.5.10) The `?` panel lets the user change the widget's and the chart's chords, saved under `KEYMAP_KEY` when `persist` is on and applied at mount (over an asynchronous store, once it has answered). False lists them only and applies no saved chords. Leave the engine's `shortcuts.persist` off on a widget. |
+| `captureRows` | `() => ReadonlyArray<MenuRow \| string>` | none | (since 2.5.10) More rows at the end of the capture menu, read each time it opens; a string starts a group. The chart grid fills it with Every chart rows; not a `ChartGridOptions` field. |
 
 Confirm defaults against `WidgetOptions` in the typings rather than assuming.
 
 ## Mobile controls
 
 `createWidget` always mounts one mobile handle. Mode `'auto'` observes the widget
-container and the primary-pointer media query. It activates at 640 CSS px or less or
-when `(pointer: coarse)` matches, `'always'` stays active, and `'never'` keeps desktop
-chrome. Width is based on the container, not the viewport.
+container and the primary-pointer media query. It activates at 640 CSS px or less for
+any pointer, and when `(pointer: coarse)` matches, also up to 960 px wide while the
+container is under 600 px tall; a tablet in either orientation or a touch laptop keeps
+desktop chrome. A container that drops to 0 wide or 0 tall keeps its last layout, an
+unmeasured one starts on desktop, and a switch waits while a form field in the widget
+(dialogs included) has focus. `'always'` stays active, and `'never'` keeps desktop
+chrome. Size is read from the container, not the viewport.
 
 The compact header provides symbol entry and intervals. The bottom bar provides Draw,
 Studies, Objects and More according to the same `topbar`, `rail` and `indicators` options
-as desktop chrome. More contains theme, chart settings and chart type. A selected drawing
+as desktop chrome. More contains theme, chart settings and chart type (each type beside its
+`chart-<type>` glyph since 2.5.10), and (since
+2.5.10), while the widget's bottom bar is on, the market status and clock, the ranges, the
+scale toggles and the timezone the hidden bar would show. A selected drawing
 adds Properties, Lock or Unlock, and Delete. An active drawing tool adds Finish, Cancel,
 Undo, Magnet and Stay in the Drawing sheet.
 
@@ -374,6 +404,9 @@ widget.openObjects();                // false after destruction; focuses the exi
 widget.openAlerts();                 // desktop Alerts and mobile More use the same live list
 widget.openDateNavigation();         // the Go to panel; false after destruction
 await widget.goTo({ from, to? });    // DateNavigationResult; loads older history first
+await widget.setRange('1D');         // a preset range: interval, fetch sized in sessions, view (since 2.5.10);
+                                     // wider than the plot, it keeps its latest bars (clipped); All loads all history
+widget.range();                      // the range in force; null once the interval is changed by hand
 widget.getState();                   // WidgetState; rejects nonportable alert payloads
 widget.restoreState(state);          // WidgetRestoreReport
 await widget.reload();               // fetch again for the current symbol and interval
@@ -381,9 +414,10 @@ widget.on(event, cb);                // returns the unsubscriber
 widget.off(event, cb?);
 widget.destroy();                    // saves if persisting, removes the chrome, destroys the chart
 widget.isDestroyed;
+await widget.ready;                  // (since 2.5.10) the persisted layout applied and the first load started
 ```
 
-`getState()` returns `{ version: 1, symbol, exchange, interval, chartType, theme, variant?, chart: chart.getState(), rail: RailPrefs | null }`; `variant` is present only for a non-default series, so a state without one (including every record saved before variants) restores onto the feed's default series, whatever variant the widget shows at the time, while one this build cannot read is refused before anything is applied. A persisted record whose variant this build cannot read opens on the default series without its saved view. The variant is part of the dataset, so a saved viewport lands only on the same variant too, and a `variant` bus event announces a change. The status line names a non-default variant (`.oac-statusline__variant`: localized "Regular hours", "Extended hours", "Adjusted prices", "Raw prices", then the provider's currency and unit names). `restoreState` validates field by field and returns `{ applied, reason?, chart?: RestoreReport }`; a saved viewport is applied only when the state was captured on the same symbol and interval, otherwise `stripView` drops it and the indicators and panes still land, and the drawings land on the state's own symbol (see Drawings per instrument). With `persist`, the state is written under `oac-widget:<namespace>:state` (debounced by `SAVE_DEBOUNCE_MS`, flushed on `pagehide` and on `destroy`) and the rail's preferences under `oac-widget:<namespace>:rail`.
+`getState()` returns `{ version: 1, symbol, exchange, interval, chartType, theme, variant?, chart: chart.getState(), rail: RailPrefs | null }`; `variant` is present only for a non-default series, so a state without one (including every record saved before variants) restores onto the feed's default series, whatever variant the widget shows at the time, while one this build cannot read is refused before anything is applied. A persisted record whose variant this build cannot read opens on the default series without its saved view. The variant is part of the dataset, so a saved viewport lands only on the same variant too, and a `variant` bus event announces a change. The status line names a non-default variant (`.oac-statusline__variant`: localized "Regular hours", "Extended hours", "Adjusted prices", "Raw prices", then the provider's currency and unit names). `restoreState` validates field by field and returns `{ applied, reason?, chart?: RestoreReport }`; a saved viewport is applied only when the state was captured on the same symbol and interval, otherwise `stripView` drops it and the indicators and panes still land, and the drawings land on the state's own symbol (see Drawings per instrument). With `persist`, the state is written under `oac-widget:<namespace>:state` (debounced by `SAVE_DEBOUNCE_MS`, flushed on `pagehide` and on `destroy`) and the rail's preferences under `oac-widget:<namespace>:rail`. Since 2.5.10 those keys live in IndexedDB unless the host passes a synchronous `storage`. The widget is then built on its defaults, kept out of sight, and asks the feed for nothing until the store has answered. Then the saved symbol, interval, variant, chart type, theme, rail preferences, panels, layout and drawings are applied, and the first load goes out for the saved instrument only. `ready` settles at that point and never rejects. Options the host passed win, as before, and so does a symbol, interval or whole `restoreState` set before the store answered. A listener that throws on what the restore announces cannot stop it. Tabs on one namespace keep each other's saved drawings: the copy in memory follows the writes other tabs land, as `localStorage` reads did. A hidden page writes its layout only when a change is pending. A store that cannot be read within 4 s runs the session on memory and says so on the status line and in a toast. A refused write is reported on the status line and sent again with the next change. The writes pending when the page hides, on `pagehide` or on `destroy` are copied to a `localStorage` journal (`oac-widget-journal:<namespace>`) and replayed at the next load, because IndexedDB may not commit a transaction started while a page unloads. A page that offers IndexedDB but cannot open it stays on `localStorage`.
 
 ### Objects panel
 
@@ -414,7 +448,7 @@ indicator and drawing editors. Drawing actions use existing undo history.
 
 Each pane section lists its stack in draw order, back to front (`objects.stack(pane)`),
 a group at its first member's place and rows outside the stack after. A drawing row
-notes **Behind series** or **Above** and the row it sits on. Dragging a row onto the
+notes **Behind the series** or **Above** and the row it sits on. Dragging a row onto the
 upper half of another puts it under that row in paint order, the lower half over it;
 `dragover` accepts only a drop `objects.canPlace` allows, marking the row
 `is-drop-before` / `is-drop-after`, so an unpaintable drop is refused before release.
@@ -486,13 +520,13 @@ A dialog module of your own: build the panel with `createElement`, hand it to `c
 
 ## Tokens and styling
 
-One `<style>` element per document (`WIDGET_STYLE_ID`), every rule scoped under `.oac-widget`. Colours, spacing, radius and font are `--oac-` custom properties produced by `widgetTokens(theme)` and written inline on the widget root by `applyTokens`; the colours derive from the active `ChartTheme` (`background` stepped for panels, `axisLine` / `paneSeparator` for borders, `axisText` for text, `lineColor` for the accent, `upColor` / `downColor` for buy and sell), so the chrome and the canvas cannot disagree, and `setTheme` rewrites them. Names: `bg`, `panel`, `panel-2`, `elev`, `elev-2`, `elev-3`, `bd`, `bd-soft`, `bd-hover`, `tx`, `tx-strong`, `mut`, `faint`, `acc`, `acc-2`, `on-bg`, `on-bd`, `ring`, `ring-soft`, `buy`, `sell`, `amber`, `danger`, `scrim`, `shadow`, `sb-thumb`, `sb-thumb-hover`, `font`, `mono`, `fs`, `radius`, `rail-w`, `topbar-h`, `status-h`, `ctl-h`. Because the tokens are inline declarations, a host stylesheet override needs `!important` (`#terminal .oac-widget { --oac-font: ... !important; }`); override tokens, never internal class names. Icons come from the draw tier (`iconSprite`, `iconUse`, `chromeIconSvg`), so the rail, its flyouts and the armed cursor share one glyph source. The chrome meets the UI standard in [themes-and-styling](themes-and-styling.md#host-chrome-the-ui-standard) by construction.
+One `<style>` element per document (`WIDGET_STYLE_ID`), every rule scoped under `.oac-widget`. Colours, spacing, radius and font are `--oac-` custom properties produced by `widgetTokens(theme)` and written inline on the widget root by `applyTokens`; the colours derive from the active `ChartTheme` (`background` stepped for panels, `axisLine` / `paneSeparator` for borders, `axisText` for text, `lineColor` for the accent, `upColor` / `downColor` for buy and sell), so the chrome and the canvas cannot disagree, and `setTheme` rewrites them. Names: `bg`, `panel`, `panel-2`, `elev`, `elev-2`, `elev-3`, `bd`, `bd-soft`, `bd-hover`, `tx`, `tx-strong`, `mut`, `faint`, `acc`, `acc-2`, `on-bg`, `on-bd`, `ring`, `ring-soft`, `buy`, `sell`, `amber`, `danger`, `scrim`, `shadow`, `sb-thumb`, `sb-thumb-hover`, `font`, `mono`, `fs`, `radius`, `rail-w`, `topbar-h`, `status-h`, `ctl-h`. Because the tokens are inline declarations, a host stylesheet override needs `!important` (`#terminal .oac-widget { --oac-font: ... !important; }`); override tokens, never internal class names. Icons come from the draw tier (`iconSprite`, `iconUse`, `chromeIconSvg`, `chartTypeIcon`), so the rail, its flyouts, the active tool's cursor, the menus and the dialogs share one glyph source; since 2.5.10 no widget file draws a picture of its own. The chart type menu and button show each type's glyph, and the theme button is a sun (on the dark theme) or a moon, its tip and accessible name saying the theme a click switches to. The chrome meets the UI standard in [themes-and-styling](themes-and-styling.md#host-chrome-the-ui-standard) by construction.
 
 ### Content Security Policy
 
 Pass the host's fresh response nonce as `createWidget(container, { styleNonce: requestNonce })`. The widget and dialogs use one sheet per document, with the `.nonce` IDL property assigned before CSS is filled or the element is inserted. The helper is `injectWidgetStyles(doc, extra?, nonce?)`; existing two-argument calls still work.
 
-An illustrative style policy is `style-src-elem 'nonce-RESPONSE_NONCE'; style-src-attr 'unsafe-inline'`, where `RESPONSE_NONCE` is the same unpredictable value generated for this response. The nonce authorizes the stylesheet; inline theme/layout styles need a separately considered attribute policy. This is not a complete policy for scripts or other resources.
+An illustrative style policy is `style-src-elem 'nonce-RESPONSE_NONCE'; style-src-attr 'unsafe-inline'`, where `RESPONSE_NONCE` is the same unpredictable value generated for this response. The nonce authorizes the stylesheet; inline theme/layout styles need a separately considered attribute policy. This is not a complete policy for scripts or other resources. The first-use parts (Packaging facts) are module scripts beside the tier file: `script-src` allows them by origin or by a path ending in `/`, never by file name, since each name carries a content hash that changes from release to release.
 
 An empty or whitespace-only SSR `<style id="oac-widget-css" nonce="...">` is filled in place, retaining the existing nonce even if the option differs. Put its nonce in the original HTML to avoid a parser CSP violation before hydration. Populated host CSS and its nonce are preserved unchanged; if supplying that sheet yourself, include `WIDGET_CSS`, `DIALOG_CSS` and `OBJECTS_PANEL_CSS`. Read a connected element's `.nonce`, since the browser can hide its content attribute.
 
@@ -517,8 +551,9 @@ alert controllers already attached. Do not restore drawings again afterward.
 
 - `package.json` `exports['./widget']`: `types: ./dist/widget/index.d.ts`, `import: ./dist/openalgo-charts.widget.mjs`. Listed in `sideEffects` (importing registers the dialogs).
 - `rollup.config.js`: `openalgo-charts` and every `openalgo-charts/<tier>` are external for tier builds and emitted as sibling paths (`./openalgo-charts.mjs`, `./openalgo-charts.draw.mjs`), so `dist/` serves with no import map. The widget must never inline the base or the draw tier; `check-dts.mjs` fails a build whose `dist/widget/index.d.ts` declares `Chart` or `DrawingController`.
-- `.size-limit.json`: `Widget tier` row (the bundle alone) and `Widget terminal` row (base + draw + indicators + widget); `Everything` includes the widget. Read the budgets there and measure with `npm run size`; never quote either from memory.
+- `.size-limit.json`: `Widget tier` row (the bundle alone), `Widget first-use parts` row (every part, by the glob `dist/openalgo-charts.widget.*.mjs`, since a part's name changes with its content) and `Widget terminal` row (base + draw + indicators + widget); `Everything` includes the widget. Read the budgets there and measure with `npm run size`; never quote either from memory.
 - The standalone IIFE is base-only and cannot host the widget. Use native ESM from `dist/`.
+- Parts that load on first use (since 2.5.10, `src/widget/lazy.ts`): UI a plain widget never opens is not in `openalgo-charts.widget.mjs` but in files beside it, `openalgo-charts.widget.<part>-<hash>.mjs`, fetched with `import()` the first time it is needed. A part resolves against the tier's own URL, so `dist/` or a CDN path needs nothing more and a bundler splits it the same way; under CSP, `script-src` allows the tier's origin as it already must. Once a part has arrived it opens synchronously; a part that cannot load says so in a toast each time it is asked for (a browser keeps a failed module fetch until the page reloads). While a part loads, a control pressed again asks once, the last control pressed is the one answered, and a request the user has moved on from by the time it arrives (a press elsewhere, Escape, or typing into another field) opens nothing (`usePart` and `PartAsk` in lazy.ts). Its rules join the widget's one stylesheet (`addWidgetStyles`), keeping that sheet's nonce. The `Widget tier` size row measures the tier file, which keeps everything a widget loads before a user opens a part (`preserveEntrySignatures: 'allow-extension'`); the file then also exports, under minified names, the shell helpers the parts import. Those are no API: no declaration names them, and `npm run skills:coverage` counts declared exports only. Because those names change from build to build, a tier file works only with the parts built with it; the hash in a part's name is of its content (`chunkFileNames` in rollup.config.js), so a new tier file asks for its own parts and never meets one a cache kept. A host serving `dist/` itself serves the tier files (names unchanged across releases) with revalidation and may cache the hashed parts for a long time; a CDN URL pins the exact version, never a range. Never refer to a part by its full file name: a test route or a size row matches it by glob, and a CSP allows its directory. `npm run build` empties `dist/` first, so no part from an earlier build is packed or measured.
 
 ## Pitfalls
 
@@ -614,10 +649,10 @@ whether it comes from a gesture, a key, a linked chart or the host's own
 `setVisibleLogicalRange`: the view is wanted elsewhere, and the older bars still
 arrive without moving it. The widget's own move that keeps the bars in view still
 when a refresh lands does not count; nor does a move of the blank chart during a
-first load, which that load's arrival resets. The top bar's **Go to** button and
-the mobile **More** sheet open the panel (`openDateNavigation()`); on a tick or
-volume interval both are greyed with the reason and `openDateNavigation()` returns
-false. Daily and longer intervals show date fields only, since a time cannot change
+first load, which that load's arrival resets. The bottom bar's **Go to** button (the top
+bar's with `bottombar: false`, since 2.5.10) and the mobile **More** sheet open the
+panel (`openDateNavigation()`); on a tick or volume interval each is greyed with the
+reason and `openDateNavigation()` returns false. Daily and longer intervals show date fields only, since a time cannot change
 which bar a date names. The panel closes when the interval or the chart timezone
 changes under it, since its fields and hint were built for both, and it clears its
 loading line when its request is cancelled.
@@ -709,7 +744,9 @@ Rules the coordinator applies:
 `createChartGrid(container, options)` returns a `ChartGrid`: one widget per cell on a
 rows by columns grid, with splitters, one active cell, linking through the base
 `LinkGroup`, and the portable `WorkspacePayload` of `openalgo-charts/workspace`. It is
-part of the widget tier, not a new one. Source of truth: `src/widget/grid.ts`.
+part of the widget tier, not a new one. Source of truth: `src/widget/grid.ts`. Its cells
+carry no bottom bar of their own (since 2.5.10). `bottombar: true` puts one under the grid,
+acting on the active chart.
 
 ```ts
 import { createChartGrid } from 'openalgo-charts/widget';
@@ -722,36 +759,71 @@ const report = grid.applyWorkspace(parseWorkspacePayload(fileText)); // { applie
 ```
 
 - `ChartGridOptions` is `WidgetOptions` (every cell's options) minus `keyboardRoute`,
-  with its own `feed` (below), plus `preset` (`ChartGridPreset`, default `1x1`), `links` (`LinkOptions`), `compactWidth`
-  (default 640 CSS px, 0 off), and grid-level `persist`/`storage`. `symbol`, `exchange`,
-  `interval` and `chartType` seed the first cell. Cells default to `mobile: 'never'`,
-  because a cell in a split is often narrower than the phone threshold.
+  `drawingStore` and `captureRows`, with its own `feed` (below), plus `preset` (any
+  `ChartGridLayoutId`, default `1x1`), `links` (`LinkOptions`: the first group's channels
+  and every new group's), `compactWidth` (default 640 CSS px, 0 off), grid-level
+  `persist`/`storage`, and (since 2.5.10) `toolbar` (the grid bar, default false) and
+  `presets` (the layout ids its picker offers, in order; default every `CHART_GRID_LAYOUTS`
+  entry; an empty list leaves the Layout control out), `bottombar` (one bar under the grid
+  for the active chart, default false; the charts then leave Go to and the market status to
+  it) and `workspaces` and `layouts`: with the grid bar the grid keeps one layouts controller
+  over the whole desk, or drives the one `layouts` passes, from a Layouts control at the end
+  of the bar, and no chart has a Layouts button; without the bar it keeps none, `workspaces`
+  gives the charts templates only and a `layouts` controller drives each chart's own
+  button. No chart saves a layout of its own. Under the grid's bottom bar the charts also
+  leave Go to out of the phone More sheet. `symbol`, `exchange`, `interval` and `chartType` seed
+  the first cell. Cells default to `mobile: 'never'`, because a cell in a split is often
+  narrower than the phone threshold.
 - `feed` is one `DataFeed` for every chart, or a function
   `(chart: { id, historyPeriod? }) => DataFeed` called once per chart as it is built, for a
   source that answers by period: the grid keeps each pane's `historyPeriod` (from an
   applied payload, or copied from the active chart when a preset adds charts) and writes
   it back in `getWorkspace()`, but only such a function honours it. Return the same feed
   object for charts that should share one request pool.
-- `CHART_GRID_PRESETS`: `1x1`, `1x2`, `1x3`, `2x1`, `3x1`, `2x2` as `[rows, columns]`.
-  `setPreset` keeps surviving cells in reading order (same widget instances), builds new
-  ones on the active chart's instrument, destroys the rest and resets weights. No span
-  editing; spans from a saved payload are drawn and splitters stop where a span crosses.
+- Layouts (since 2.5.10): `CHART_GRID_LAYOUTS` maps each `ChartGridLayoutId` to a
+  `ChartGridLayoutSpec` (`rows`, `columns`, `slots` of `ChartGridLayoutSlot` in reading
+  order, `rowWeights`, `columnWeights`), 26 layouts from 1 to 16 charts: the uniform `1x1`
+  to `4x4` (also `CHART_GRID_PRESETS` as `[rows, columns]`, 16 entries, the 2.5.9 six
+  first) and the uneven `left-2`, `right-2`, `top-2`, `bottom-2`, `left-3`, `top-3`,
+  `left-4`, `top-4`, `corner-5`, `corner-7` (`ChartGridUnevenLayout`).
+  `CHART_GRID_LAYOUT_NAMES` gives each English name, which is also its message key.
+  `setPreset(id)` keeps surviving cells in reading order (same widget instances); in an
+  uneven layout the active chart takes the large slot, and stays even when it sat past
+  the charts that fit. It builds new cells on the active chart's instrument in its link
+  group, destroys the rest and resets weights to the layout's; an unknown id throws. Spans
+  from a saved payload are drawn and splitters stop where a span crosses.
 - `ChartGridCell` (`id`, `widget`, `element`, `row`, `column`, `rowSpan`, `columnSpan`,
-  `historyPeriod`);
-  `cells()`, `active()`, `setActive(id, { focus })`, `layout()` (`ChartGridLayout`),
-  `linkOptions()`, `setLinks(patch)` (switching symbol or interval on adopts the active
-  chart's), `theme()`, `setTheme()`, `compact()`, `restored()`, `destroy()`.
+  `historyPeriod`, `linkGroup`); `cells()`, `active()`, `setActive(id, { focus })`,
+  `layout()` (`ChartGridLayout`), `linkOptions()` (the active chart's group),
+  `setLinks(patch)` (the active chart's group, or every group when it is in none;
+  switching symbol, interval or chart type on adopts the active chart's), `maximize(id?)`,
+  `restore()`, `maximized()`, `swap(a, b)`, `linkGroups()`, `setLinkGroup(cell, group |
+  null)`, `addLinkGroup(cell, { name?, links? })`, `setGroupLinks(group, patch)`,
+  `renameLinkGroup(group, name)`, `shareDrawings(cell)`, `takeScreenshot()`,
+  `downloadScreenshot(filename?)`, `theme()`, `setTheme()`, `compact()`, `restored()`,
+  `ready` (since 2.5.10), `destroy()`.
 - Events (`ChartGridEvents`, `ChartGridEventName`): `active` (from `setActive`, and when
   a preset or an applied workspace moves the active chart), `layout` (`preset`,
-  `weights`, `workspace`, `compact`), `links`, `theme`.
-- Persistence (`persist`): preset, link, theme, active chart, instrument, keyboard
-  splitter and drawing add or remove changes are written before the task ends. Pans,
+  `weights`, `workspace`, `compact`, `maximize`, `swap`), `links` (the active chart's
+  channels after a link, group or active chart change), `theme`.
+- Persistence (`persist`): preset, link, group, theme, active chart, instrument, swap,
+  keyboard splitter and drawing add or remove changes are written before the task ends.
+  (since 2.5.10) The user's chords are the desk's: a change in one chart's shortcuts
+  editor is applied to every chart and kept under `KEYMAP_KEY` in the grid's storage. Pans,
   zooms and drags are debounced (`SAVE_DEBOUNCE_MS`) and flushed when the page hides
   (`visibilitychange`), on `pagehide` and on `destroy`. A stored desk that fails to
   restore (a study or chart type registered later, say) is not overwritten: the grid
   falls back to `preset`, toasts the reason on the active chart, and `restored()`
   returns `{ applied: false, reason }` (null when nothing was stored). The stored desk
-  stays until the user changes the grid; data loads and focus do not count.
+  stays until the user changes the grid; data loads and focus do not count. Since 2.5.10
+  the default store is IndexedDB, as for one widget, and `storage` takes an
+  `AsyncStorageLike`. The grid is built from `preset` out of sight and loads nothing until
+  the store answers, then applies the desk (or loads the preset's charts on `symbol`) with
+  the desk's chords. `ready` settles then and never rejects, and `restored()` is null until
+  it has. A workspace applied before `ready` wins over the stored one. A desk 2.5.9 left in
+  `localStorage` is copied in once and left there. `storage: localStorage` keeps it
+  synchronous. A hidden page writes the desk only when a change is pending; `pagehide` and
+  `destroy()` always write it.
 - Keyboard: only the active cell answers. Pointer down or focus inside a cell makes it
   active. A key pressed with the focus on the page body, while the pointer is over the
   grid, goes to the active chart; a focused splitter or tab keeps its arrow keys.
@@ -767,7 +839,8 @@ const report = grid.applyWorkspace(parseWorkspacePayload(fileText)); // { applie
   rail magnet/stay and `historyPeriod` when the chart has one. `volume` is written false
   and `comparisons` empty: a widget draws neither. `applyWorkspace` checks the whole
   payload first (size, slots, overlap, weights, intervals, chart types, studies, text
-  history periods, no comparisons, linked symbols or intervals that agree),
+  history periods, no comparisons, within each link group, linked symbols, intervals and
+  chart types that agree),
   builds and restores every new cell off screen, and on the first failure destroys them,
   aborting their history requests, and returns `{ applied: false, reason }` with the old
   cells untouched. Pass untrusted input through `parseWorkspacePayload` first.
@@ -784,6 +857,154 @@ const report = grid.applyWorkspace(parseWorkspacePayload(fileText)); // { applie
   and BSE) reaches the followers.
 - Below `compactWidth` only the active cell shows, with a tab strip to switch; splitters
   hide. `CHART_GRID_CSS` is part of `WIDGET_COMPONENT_CSS`.
+- Grid bar (since 2.5.10, `toolbar: true`; it loads into a strip laid out at its height,
+  and its menus load when one first opens, see Packaging facts): Layout picker (tiles
+  from `layoutIconPath` over each layout's slots, one row per chart count, arrows, Home, End, a caption naming
+  the focused tile), Maximize, Link menu (groups, Not linked, New group, Rename group,
+  channel toggles including Nearest bar, Share this chart's drawings) and Capture
+  (download, copy), and with `workspaces` a Layouts control at its end: the widget's
+  Layouts menu over the whole desk, naming the held layout, with a dot and a spoken status
+  while it is unsaved or failing. Menus live in an overlay layer over the whole grid with
+  the widget's own controls.
+- Maximize is a view, not saved: other cells stay alive, the maximized chart keeps its
+  window through the resize, and a preset or applied workspace restores. `swap` trades
+  places and spans and keeps the page order equal to the reading order. Drag a cell's bar
+  background onto another cell to swap; double click it to maximize. Chords on each
+  cell's keymap (group Chart grid): Alt+Enter maximize or restore, Escape restore
+  (layered), Alt+Shift+Arrow activate the neighbour, Mod+Shift+Arrow swap with it.
+- Link groups: up to 16, each a `LinkGroup` plus a `DrawingLinkGroup`; a chart is in one
+  or none. Letters A to P are kept for life and across save and restore. Each cell's bar
+  shows a mark with the letter on a hue once more than the starting group exists. Saved
+  as `sync.groups` and `pane.linkGroup` only when groups say more than the flat flags; the
+  flat flags are then those of a group holding every chart, else all off. A group nobody
+  named is saved under the name it shows and reads back unnamed. Drawings made before the
+  switch stay private until `shareDrawings`.
+- Capture: `takeScreenshot()` composes each chart's own screenshot at its place at the
+  device ratio and returns null while one chart is shown; `downloadScreenshot()` returns
+  false on no image or a tainted canvas.
+- Dense cells: below 560 by 340 CSS px, in any layout, a cell hides its rail and keeps a
+  one-row top bar; maximize brings the full chrome back.
+- Saved desks (since 2.5.10): a desk layout is `getWorkspace()` with each chart as
+  `widgetLayoutTarget` writes one (no view, no alert bookkeeping) and without the focus,
+  so an opened desk makes its first chart active. Changes are heard per chart and again
+  after `preset` or `workspace` layout events; a change in the quiet period is written on
+  hide and `pagehide`; the layout that was active reopens once `ready` settles, unless
+  `applyWorkspace` was called first (a hand-off, a file), whose desk stays; a stopped
+  autosave or a conflict is said once on the active chart's status line; the grid
+  destroys only its own controller.
+- Bottom bar (since 2.5.10, `bottombar: true`): `mountBottombar` in a strip under the
+  charts, its menus in the grid's overlay layer, targeting `active().widget`, read again on
+  `active`. Go to opens the go-to panel over the whole grid, above the bar.
+
+## Layouts controller (since 2.5.10)
+
+`createLayoutsController(store, target, options?)` holds one saved layout for one widget or
+one chart grid. It is DOM-free: a menu drives it and renders its state. Source of truth:
+`src/widget/layouts.ts`. `store` is a `WorkspaceStore` (`WorkspaceRepository` from
+`openalgo-charts/workspace`, or a host's own); the widget tier imports that tier as types
+only, so the workspace bundle loads only in a host that passes a store.
+
+```ts
+const layouts = createLayoutsController(repository, {
+  capture: () => grid.getWorkspace(),
+  apply: payload => grid.applyWorkspace(payload),
+}, { autosaveDelay: 1000 });
+const catalog = await layouts.reload();
+if (catalog.activeWorkspaceId) await layouts.open(catalog.activeWorkspaceId);
+```
+
+- `LayoutTarget`: `capture(): WorkspacePayload`, `apply(payload): LayoutApplyReport`
+  (`{ applied, reason? }`; a refused apply must change nothing), an optional
+  `subscribe(listener)` for the user's changes (without it the host calls `changed()`), and
+  (since 2.5.10) an optional `suspended()`: while it is true (a replay) autosave waits, `open`
+  rejects and `state().suspended` is true; the listener announces when it turns false. A
+  save the user asks for still goes through. For one widget, `widgetLayoutTarget(widget)`
+  (since 2.5.10) captures its state in the one-chart form without the viewport, bar spacing,
+  pinned price ranges or the alerts' bookkeeping (last bar judged, last touch and trigger;
+  an alert's `state` stays), applies a one-chart layout through `restoreState` (the rail's
+  `magnet` and `stay` too; it clears the undo history as loading any layout does), refuses
+  up front a layout of several charts, with comparisons, or naming an interval, chart type
+  or study the page cannot show, and is suspended while a replay runs.
+- `LayoutsController`: `store`, `state()`, `subscribe(listener)`, `reload()`, `open(id)`,
+  `save()`, `saveAs(name)`, `overwrite()`, `rename(id, name)`, `duplicate(id, name)`,
+  `remove(id)`, `setAutosave(enabled)`, `changed()`, `flush()`, `destroy()`. Operations run
+  one at a time, in call order. `reload()` resolves with a copy of the catalog.
+- `LayoutsState`: `catalog` (the controller's own, to read and not change), `layoutId`,
+  `revision` (what the next write into the held layout is checked against), `dirty`,
+  `busy`, `suspended` (since 2.5.10), `conflict`, `autosave` (`LayoutAutosaveStatus`: `off`, `pending`, `saving`,
+  `saved`, `failed`) and `error`. `LayoutsControllerOptions.autosaveDelay` (ms, default
+  1000; a value that is not a finite number takes the default) is the quiet period before
+  the target is compared with its layout and, with autosave on, written once.
+- `open` autosaves a change still waiting into the layout being left, applies the new one,
+  then records it as active and recent, writing nothing when it already is (as after a page
+  load). When that autosave fails, `open` rejects and changes nothing, so the change stays
+  on the target; opening again goes ahead without it. When the record is refused the
+  previous layout goes back on the target. Change events raised during an apply are not
+  edits.
+- A write refused because the catalog moved is tried again after a fresh read when what it
+  acts on is unchanged there: the held layout's charts for a save or autosave, the named
+  layout for `open`, `rename`, `duplicate` and `remove`. A change to the held layout
+  elsewhere sets `conflict` and `dirty`, and `save()` and autosave stay refused until
+  `overwrite()`, `saveAs()` or `open()`; `reload()` keeps it unless the layout is back as this
+  controller left it. A failed autosave pauses until a write goes through again or a
+  reload, then writes the unsaved change without waiting for another.
+
+## Layouts menu and indicator templates (since 2.5.10)
+
+`createWidget(el, { workspaces })` with a `WorkspaceStore` builds a layouts controller over
+the widget (`widget.layouts`) and the Layouts menu. Source of truth:
+`src/widget/layouts-menu.ts`, `layouts-widget.ts`, `layouts-target.ts` and
+`layouts-templates.ts`.
+
+```ts
+const workspaces = new WorkspaceRepository(createIndexedDbWorkspaceStorage(indexedDB), 'account-7');
+const widget = createWidget('#chart', { feed, symbol: 'INFY', workspaces });
+widget.openLayouts();            // false without a store or after destroy
+await widget.layouts?.flush();   // the controller behind the menu; flush before destroy
+```
+
+- The top bar's Layouts button names the held layout (its accessible name too, with what
+  the mark means when it shows, such as "Layouts: Morning, Unsaved changes") and carries
+  `data-attention="true"` with unsaved changes (autosave off), a failed autosave or a
+  conflict. The name gives way to the glyph as the bar narrows, before it would wrap. A
+  phone layout's More sheet has a Layouts row; the menu opens centred there.
+- The menu: Save (names the chart first when nothing is held, prefilled with symbol and
+  interval), Save as, Rename, Delete (asks), Recent (up to ten, `recentWorkspaceIds`), the
+  other layouts by name, and an Autosave switch (`role="switch"`) with its status: Saving,
+  Saved, Could not save, Waiting to save, or waiting for a replay to end. It reads the list
+  and flushes the controller as it opens, so Save is enabled exactly when there is
+  something to save. Its words are `schema.ui.layouts.*` message keys, the templates
+  list's `schema.ui.templates.*`, with English fallbacks.
+- Opening a layout flushes first, then asks when the held layout still has changes: Save
+  and open, Open without saving, or Cancel.
+- A conflict shows as an alert with Reload list, Save as a copy (prefilled "{name} copy")
+  and Overwrite; Save stays disabled until one is chosen. The status line says so once.
+- On creation the widget reopens `catalog.activeWorkspaceId`, writing nothing to do it; it
+  replaces the host's first chart and, with `persist` too, the state `persist` restored. A
+  change inside autosave's quiet period is written when the page is hidden, and tried
+  again on `pagehide`. Destroying the widget drops it unless the host flushed first.
+- Two widgets on one page take repositories of separate namespaces, or both hold the same
+  layout as two tabs would.
+- `openLayoutsMenu(ctx, controller, anchor?)` opens the same menu for any controller (a
+  grid host's own) and resolves with its `PanelHandle`. The menu loads on first use (see
+  Packaging facts), so the promise rejects when it could not load or the widget was destroyed by then; its rules join the
+  widget's stylesheet then. The top bar's Layouts button, which shows before anyone opens
+  the menu, is in `WIDGET_COMPONENT_CSS`. `widgetLayoutTarget` is above.
+- Indicator templates: the picker's Templates button (bottom left) appears when the store
+  has `planIndicatorTemplateState`. `applyIndicatorTemplate(ctx, store, template, mode,
+  label?)` (`IndicatorTemplateApplyMode`: `'replace'` or `'append'`; returns false when an
+  append adds nothing) and `saveIndicatorTemplate(ctx, store, name)` (captured with
+  `captureIndicatorTemplate` when the store has it, else the plain study list; never a study
+  the host keeps, and it rejects when the chart has none of the user's) are the same from
+  host code, `ctx` being `widget.context`. An apply keeps drawings, alerts and the price
+  source's place over a study it keeps, refuses during a replay, and on a failure part way
+  through its restore puts the chart back and rethrows.
+- Undo: the apply goes through `restoreState`, so it starts a new timeline (earlier steps
+  are dropped, since their studies were rebuilt) and is the one step on it: undo puts the
+  studies and panes back, keeping the drawings, alerts and view the chart has then; redo
+  applies it again. A template the chart refuses before restoring leaves the timeline alone.
+  `ChartHistory.clear()` now empties its stacks in place, so a pushed command whose undo or
+  redo restores the chart keeps its step.
 
 ## Drawings per instrument (since 2.5.9)
 

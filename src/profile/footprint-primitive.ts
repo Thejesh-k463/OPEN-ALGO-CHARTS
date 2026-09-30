@@ -95,7 +95,7 @@ export interface FootprintHover {
 
 /** Three significant figures, preserving fractional quantities and suffix rollover. */
 export function compactVol(v: number): string {
-  if (!Number.isFinite(v)) return '—';
+  if (!Number.isFinite(v)) return '-';
   const rounded = Number(v.toPrecision(3));
   const a = Math.abs(rounded);
   const [suffix, div] = a >= 1e9 ? ['B', 1e9] : a >= 1e6 ? ['M', 1e6] : a >= 1e3 ? ['K', 1e3] : ['', 1];
@@ -470,7 +470,7 @@ export class Footprint implements IPrimitive {
   }
   private _metric(s: FootprintBarStats, row: FootprintStatRow): number | null { return row === 'deltaPct' ? s.deltaPct : s[row]; }
   private _statText(value: number | null, row: FootprintStatRow): string {
-    if (value === null) return '—';
+    if (value === null) return '-';
     if (row === 'deltaPct') return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
     const displayed = row === 'trades' ? value : value / this._opts.volumeDivisor;
     return unsignedRow(row) ? compactVol(displayed) : signed(displayed);

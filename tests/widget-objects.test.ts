@@ -241,7 +241,7 @@ describe('mountObjectsPanel', () => {
     control(line, 'Unlock Trend line').click();
     control(line, 'Settings for Trend line').click();
     control(line, 'Focus Trend line').click();
-    control(line, 'Remove Trend line').click();
+    control(line, 'Delete Trend line').click();
     expect(r.model.calls).toEqual([
       ['visibility', drawing.id, false], ['visibility', drawing.id, true],
       ['lock', drawing.id, true], ['lock', drawing.id, false],

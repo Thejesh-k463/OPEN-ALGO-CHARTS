@@ -31,7 +31,7 @@ async function openDataDialog(page: Page, host: 'widget' | 'reference') {
       await page.locator('[data-mobile-action="more"]').click();
       await page.locator('[data-mobile-action="capture"]').click();
     }
-    await page.getByRole('menuitemradio', { name: /Download chart data \(CSV\)/ }).click();
+    await page.getByRole('menuitem', { name: /Download chart data \(CSV\)/ }).click();
   } else {
     await page.getByRole('button', { name: 'Chart snapshot', exact: true }).click();
     await page.locator('#snap-data').click();
@@ -75,11 +75,13 @@ for (const host of ['widget', 'reference'] as const) for (const width of [1100, 
       const view = chart.getVisibleLogicalRange();
       const visible = bars.filter(bar => { const i = chart.dataLayer.timeToIndex(bar.time); return i >= view.from && i <= view.to; });
       (window as any).__csvFixture = { chart, bars, first, second };
-      return { first: first.id, second: second.id, from: visible[0].time, to: visible[visible.length - 1].time };
+      return { first: first.id, second: second.id, names: [first.name, second.name], from: visible[0].time, to: visible[visible.length - 1].time };
     }, host);
     let controls = await openDataDialog(page, host);
     await expect(controls.studies).toHaveCount(2);
-    await expect(controls.dialog).toContainText(state.first); await expect(controls.dialog).toContainText(state.second);
+    // Repeated studies are told apart by their place among their name, never by an internal id.
+    await expect(controls.dialog).toContainText(`${state.names[0]} (1)`); await expect(controls.dialog).toContainText(`${state.names[1]} (2)`);
+    await expect(controls.dialog).not.toContainText(state.first);
     expect(await controls.dialog.evaluate(node => node.contains(document.activeElement))).toBe(true);
     await page.keyboard.press('Tab');
     expect(await controls.dialog.evaluate(node => node.contains(document.activeElement))).toBe(true);
@@ -222,13 +224,13 @@ test('widget capture downloads actual CSV and reports browser file failures', as
   });
   await page.getByRole('button', { name: 'Capture chart', exact: true }).click();
   await page.screenshot({ path: info.outputPath('widget-data-export.png') });
-  const result = await csv(page, page.getByRole('menuitemradio', { name: /Download chart data \(CSV\)/ }));
+  const result = await csv(page, page.getByRole('menuitem', { name: /Download chart data \(CSV\)/ }));
   expect(result.filename).toMatch(/^FIXTURE-5m-.*\.csv$/);
   expect(result.rows).toHaveLength(expected.count + 1); expect(Number(result.rows.at(-1)![0])).toBe(expected.last);
   expect(result.rows.at(-1)![6]).toBe('0');
   await page.evaluate(() => { URL.createObjectURL = () => { throw new Error('Download refused'); }; });
   await page.getByRole('button', { name: 'Capture chart', exact: true }).click();
-  await page.getByRole('menuitemradio', { name: /Download chart data \(CSV\)/ }).click();
+  await page.getByRole('menuitem', { name: /Download chart data \(CSV\)/ }).click();
   await page.getByRole('button', { name: 'Download CSV', exact: true }).click();
   await expect(page.locator('.oac-statusline__msg')).toContainText('Download refused');
 });
@@ -238,6 +240,6 @@ test('widget refuses CSV after its capture menu source changes', async ({ page }
   await page.waitForFunction(() => (window as any).__loaded > 0);
   await page.getByRole('button', { name: 'Capture chart', exact: true }).click();
   await page.evaluate(() => (window as any).__widget.setSymbol('CHANGED'));
-  await page.getByRole('menuitemradio', { name: /Download chart data \(CSV\)/ }).click();
+  await page.getByRole('menuitem', { name: /Download chart data \(CSV\)/ }).click();
   await expect(page.locator('.oac-statusline__msg')).toContainText('changed');
 });

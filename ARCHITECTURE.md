@@ -4,7 +4,9 @@
 > Historical pre-implementation target: **< 50 KB Brotli** for the full package (engine + trade overlay), no runtime dependencies. *(Brotli is the size metric we hold the budget against - see §11. Gzip runs ~10-15% larger.)*
 > Goal: professional-grade interactive financial-chart rendering + advanced on-chart trading & trade management.
 
-> **Current release: 2.5.9.** Drawing interaction and replay. Drawings belong to the instrument they were drawn on (`InstrumentDrawings`, the widget's default), and the drawing controller gains the magnet on every pane and in every drag, box select, drag to copy, an eraser, a temporary measure and visibility per interval (drawings document version 3 when a drawing carries a range). A drawing layer keeps a hit box per drawing, so a hover asks only the drawings near the pointer. Replay holds its forming bar inside the bar it closes on and can form a bar with no finer data over simulated steps. Line-family series draw the segment that crosses each edge of the view (`connectsBars`), and the price axis keeps edge labels whole and value tags over level tags. The 2.5.9 build measures **131.68 kB** base, **148.36 kB** base + trade and **381.78 kB** for all tiers (decimal Brotli sizes).
+> **Current release: 2.5.10.** Persistence, saved layouts and the chart grid. The widget keeps its saved state in IndexedDB through an asynchronous store (`AsyncStorageLike`, `widget.ready`), reopens named layouts and indicator templates over a `WorkspaceStore` with revision checks, and lets a user move any shortcut from the ? panel. A bottom bar carries preset ranges sized in trading sessions, Go to, the market status and a clock with a timezone menu. Calendars know pre-open, post-close and extended hours (`phaseAt`, `marketStatusAt`), and `attachSessionShading` washes those bars in the price pane. The chart grid lays out one to sixteen charts with maximize, swap and up to sixteen named link groups, whose channels now include the chart type and drawings. UI a plain widget never opens loads on first use from hashed part files beside the widget tier, and text markers take lanes so neighbouring labels no longer overlap. The 2.5.10 build measures **134.69 kB** base, **151.38 kB** base + trade and **409.13 kB** for all tiers (decimal Brotli sizes).
+
+> **2.5.9.** Drawing interaction and replay. Drawings belong to the instrument they were drawn on (`InstrumentDrawings`, the widget's default), and the drawing controller gains the magnet on every pane and in every drag, box select, drag to copy, an eraser, a temporary measure and visibility per interval (drawings document version 3 when a drawing carries a range). A drawing layer keeps a hit box per drawing, so a hover asks only the drawings near the pointer. Replay holds its forming bar inside the bar it closes on and can form a bar with no finer data over simulated steps. Line-family series draw the segment that crosses each edge of the view (`connectsBars`), and the price axis keeps edge labels whole and value tags over level tags. The 2.5.9 build measured **131.68 kB** base, **148.36 kB** base + trade and **381.78 kB** for all tiers (decimal Brotli sizes).
 >
 > **2.5.7.** An internal release: the chart's logic moved out of `chart.ts` into collaborator modules behind the unchanged `Chart` class (see Chart internals below), with the same public API and the same pixels as 2.5.6. The 2.5.7 build measured **126.91 kB** base, **143.60 kB** base + trade and **357.50 kB** for all tiers (decimal Brotli sizes).
 >
@@ -28,7 +30,7 @@ notifications. Pipeline arrows show data flow, not package dependencies.
 
 ## Current integration map
 
-For 2.5.9 integrations, start with these current guides and implementation
+For 2.5.10 integrations, start with these current guides and implementation
 boundaries. The numbered design sections below retain historical plans and
 explicitly labeled estimates; use the current API types for implementation.
 
@@ -39,10 +41,10 @@ explicitly labeled estimates; use the current API types for implementation.
 | Trader alerts | Base `AlertController`, committed evaluation thresholds, durable lifecycle and host-owned delivery | [Trader alerts](https://marketcalls.github.io/openalgo-charts/docs/alerts/) |
 | Replay and linking | Base `ReplayController`, `ReplayGroup` and `LinkGroup`; availability clock and host callbacks | [Replay](https://marketcalls.github.io/openalgo-charts/docs/market-replay/) |
 | Analysis drawings | Draw-tier Anchored VWAP and fixed-range Volume Profile use timestamp anchors, pane OHLCV and ordinary drawing properties | [Drawing tools](https://marketcalls.github.io/openalgo-charts/docs/drawing-tools/) |
-| Linked views | Base appearance adapters and draw-tier `DrawingLinkGroup`; matching symbol and exchange, separate local history and persisted lineage | [Chart linking](https://marketcalls.github.io/openalgo-charts/docs/chart-linking/) |
+| Linked views | Base appearance and drawings adapters, chart type channel and draw-tier `DrawingLinkGroup`; matching symbol and exchange, separate local history and persisted lineage; named link groups saved in workspaces | [Chart linking](https://marketcalls.github.io/openalgo-charts/docs/chart-linking/) |
 | Timeline events | Base grouping and clustering model, with host-supplied data and widget details | [Events](https://marketcalls.github.io/openalgo-charts/docs/events/) |
 | Workspaces | Optional portable documents, revisioned repository and async storage; host builds and activates charts | [Workspaces](docs/workspaces.md) |
-| Chart grids | Widget-tier `createChartGrid`: presets, splitters, one active chart, base `LinkGroup` links and workspace payloads | [Chart grid](https://marketcalls.github.io/openalgo-charts/docs/chart-grid/) |
+| Chart grids | Widget-tier `createChartGrid`: layouts from one to sixteen charts, a grid bar, splitters, maximize and swap, one active chart, named link groups over the base `LinkGroup`, a whole-grid capture and workspace payloads; a bar under the charts, saved desks, the desk kept in IndexedDB | [Chart grid](https://marketcalls.github.io/openalgo-charts/docs/chart-grid/) |
 | Date navigation | Widget-tier `DateNavigator` and panel; the host's loader reaches older history, the chart places the view | [Data loading](https://marketcalls.github.io/openalgo-charts/docs/data-loading/) |
 | Pane layout | Base pane weights, maximize and collapse to a strip, and an opt-in movable price pane, saved in pane state and workspaces | [Scales and panes](https://marketcalls.github.io/openalgo-charts/docs/scales-and-panes/) |
 | Drawing policies | Draw-tier `policy` on each drawing; forced host calls bypass it and record no undo step | [Drawing tools](https://marketcalls.github.io/openalgo-charts/docs/drawing-tools/) |
@@ -55,6 +57,7 @@ explicitly labeled estimates; use the current API types for implementation.
 | Chart-wide undo | Widget-tier `ChartHistory`: studies, settings, scales, panes, chart settings and drawings on one timeline, replayed through public calls and never past a policy | [Widget](docs/widget.md) |
 | Data variants | `BarsRequest.variant` and `DataFeed.dataVariants`; each variant its own cache key, request and alert scope; an undeclared variant is reported, never derived | [Data variants](https://marketcalls.github.io/openalgo-charts/docs/data-variants/) |
 | Session calendar | `SessionCalendar` or an `Instrument` set with `chart.setSessionCalendar`; times past the last bar follow the venue's hours | [Instruments](https://marketcalls.github.io/openalgo-charts/docs/instruments/) |
+| Session phases and shading | `phaseAt`, `phaseSpans` and `marketStatusAt` on `SessionCalendar` and `Instrument` from optional `preMarketMinutes`, `postMarketMinutes` and `extendedHours`, resolved in the calendar's IANA zone; `attachSessionShading` washes pre-open, post-close and extended-hours bars, off until a host attaches it | [Instruments](https://marketcalls.github.io/openalgo-charts/docs/instruments/#market-phases-and-status) |
 | Study inputs | `visibleWhen`, `activeWhen` and `inline` on `IndicatorInput`; paired `timeKey` point inputs with an optional on-pane anchor; presentation only, `calc` sees every setting | [Indicators](https://marketcalls.github.io/openalgo-charts/docs/indicators/) |
 | Chart export | Loaded or revealed bars, study values and comparison closes; host delivers the CSV | [Chart data](docs/chart-data-export.md) |
 | Custom studies | Descriptor registry in base; optional built-ins and external-data helpers | [Indicators](https://marketcalls.github.io/openalgo-charts/docs/indicators/) |
@@ -212,9 +215,20 @@ src/
 │   ├── openalgo-ws.ts       # live tick/quote/depth subscription
 │   └── candle-builder.ts    # ticks/quotes to interval OHLC (§10.2)
 └── widget/                  # the chrome as a tier (separate entry point, §8.5); the only DOM under src/
-    ├── widget.ts            # createWidget: the shell, symbol/interval/theme, persistence, the keymap wiring
+    ├── widget.ts            # createWidget: the shell, symbol/interval/theme, the chrome wiring
+    ├── widget-keys.ts       # the shell's key scopes, pointer tracking and key bindings
+    ├── widget-persist.ts    # the saved layout: read and applied, per-instrument drawings, restoreState, debounced save, pagehide flush, the late restore over an async store
     ├── context.ts           # WidgetContext, bus, storage, overlay stack, tips, the dialog registry
+    ├── storage.ts           # createIndexedDbWidgetStorage and the default store, over storage-idb.ts, which loads on first use
+    ├── storage-idb.ts       # the IndexedDB store, its change announcements, the one-time copy from localStorage, the fallback
     ├── keymap.ts            # one capture-phase keymap with scopes and conflict reporting
+    ├── keymap-editor.ts     # the ? panel: lists every chord, records a new one, names conflicts, resets (loads on first use)
+    ├── lazy.ts              # the parts that load on first use: one shared load, a failure reported and forgotten
+    ├── grid.ts              # createChartGrid: cells, focus, splitters, maximize, swap, workspace
+    ├── grid-layouts.ts / grid-links.ts / grid-cells.ts / grid-capture.ts / grid-text.ts / grid-styles.ts
+    ├── grid-bar.ts / grid-menus.ts # the grid bar and its menus (load on first use)
+    ├── grid-saved.ts        # the desk's saved layouts
+    ├── grid-payload.ts      # the workspace check, each chart's drawings
     ├── rail.ts / topbar.ts / statusline.ts / toast.ts
     ├── tokens.ts / styles.ts# --oac- tokens derived from the ChartTheme; one scoped stylesheet
     ├── form.ts              # one control renderer for every schema-generated form
@@ -727,7 +741,7 @@ const markers = createSeriesMarkers(series, [...])   // add/update/remove later
 Behavior:
 - A **BUY signal** = `{ shape:'arrowUp', position:'belowBar', color:'#26a69a', text:'BUY' }`; a **SELL** = `{ shape:'arrowDown', position:'aboveBar', color:'#ef5350', text:'SELL' }`.
 - Markers outside the visible range are skipped before drawing (a marker with styled text is still laid out). The skip is a test per marker, not a binary search, so the cost grows with the marker count. The bar under a drawn marker is found by binary search in its own series, and where that series has no point, in the host's fallback bars; those are indexed into a map, once per paint, only when that search misses. So the history length enters a paint only for a mark the fallback search cannot find.
-- Multiple markers on one bar **stack** (vertical offset accumulates) so they never overlap.
+- Multiple markers on one bar **stack** (vertical offset accumulates). Markers with text above or below the bar, or on a pane edge, also take **lanes**: each is pushed outward just past any earlier label on its side whose box it overlaps, on one bar or on neighbouring bars, by at most five of its own heights, and a label that overlaps nothing is not moved. Where labels outnumber the room (a wide zoom) the rest overlap on their bars. The layout reads at most two windows of 256 marks before the first one drawn, from a start that moves in whole windows, so lanes hold while the view pans and a paint does not grow with the history.
 - `aboveBar`/`belowBar` offset from the bar's high/low; `inBar` sits at the body; `atPrice` pins to an exact price-y.
 - Hit-test enabled: hover highlights, click fires `onMarkerClick(id)`.
 - **OpenAlgo tie-in**: auto-plot real executions from `get_trade_book` (buy fills as up arrows, sell fills as down arrows at fill price), and let strategies push live signal markers via the API.
@@ -1088,7 +1102,7 @@ reader of that version sees. Three rules fell out of getting this wrong:
 
 ## 13a. Deferred / not-yet-implemented (honest status)
 
-The current implementation keeps these boundaries in 2.5.9:
+The current implementation keeps these boundaries in 2.5.10:
 
 - **Separate price/time axis-widget canvases** - axes draw within the pane
   canvas by design (small-engine simplification).

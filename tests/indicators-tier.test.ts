@@ -651,11 +651,12 @@ describe('per-bar plot colour', () => {
   });
 });
 
-describe('William VIX FIX', () => {
+describe('Williams VIX Fix', () => {
   const d = () => getIndicator('williams-vix-fix');
 
   it('is registered under the expected id and name', () => {
-    expect(d().name).toBe('William VIX FIX');
+    // Named like Williams Alligator and Williams Fractals.
+    expect(d().name).toBe('Williams VIX Fix');
     expect(d().placement).toBe('pane');
   });
 

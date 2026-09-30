@@ -93,6 +93,14 @@ Rechecked on 2.5.9: base 131.68 kB, indicators 40.38 kB, draw 55.61 kB, profile
 widget 99.64 kB; all tiers 381.78 kB. Registry counts are unchanged. Drawings per instrument,
 the drawing gestures and the widget's drawing UI live in their tiers and add no box to the diagram.
 
+Rechecked on 2.5.10: base 134.69 kB, indicators 40.43 kB, draw 57.98 kB, profile
+14.97 kB, transform 4.55 kB, trade 16.69 kB, workspace 11.53 kB, webgl 6.93 kB and
+widget 121.36 kB; all tiers 409.13 kB. The widget's seven first-use parts (18.19 kB) are
+files beside the widget tier, not a tier, so they get no chip. Registry counts are unchanged.
+Session phases, session shading and the link channels live inside the base engine's existing
+boxes, and the chart grid, bottom bar and saved layouts inside the widget tier, whose `<desc>`
+names them; the release adds no box or arrow.
+
 Source references: `src/index.ts`, `src/feed/data-controller.ts`,
 `src/feed/instrument.ts`, `src/model/bar.ts`, `src/core/pane.ts`,
 `src/alerts/controller.ts`, `src/replay/group.ts`, `src/link/group.ts`,

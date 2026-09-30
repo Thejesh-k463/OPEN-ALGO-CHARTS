@@ -246,7 +246,6 @@ export const INDICATOR_SOURCES: readonly { label: string; value: IndicatorSource
 
 export type IndicatorSettings = Record<string, unknown>;
 
-/** One plotted line/band/histogram. `type` is any registered chart type. */
 /** A shaded band between two of an indicator's output columns. */
 export interface IndicatorFillSpec {
   /** Plot keys or unplotted calculated columns; unplotted columns use the band's local scale. */
@@ -310,6 +309,7 @@ export interface IndicatorTableSpec {
  */
 export type PlotBarColor = { body?: string; wick?: string; border?: string };
 
+/** One plotted line/band/histogram. `type` is any registered chart type. */
 export interface IndicatorPlot {
   /** Key into the `calc` result. */
   key: string;
@@ -1103,7 +1103,7 @@ export function getIndicator(id: string): IndicatorDescriptor {
   const d = registry.get(id);
   if (d === undefined) {
     throw new Error(
-      `openalgo-charts: unknown indicator "${id}" — did you import 'openalgo-charts/indicators'?`,
+      `openalgo-charts: unknown indicator "${id}", did you import 'openalgo-charts/indicators'?`,
     );
   }
   return d;

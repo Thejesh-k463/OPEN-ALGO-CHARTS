@@ -117,8 +117,8 @@ On by default. `chart.shortcuts` is the `ShortcutManager`, or `null` when disabl
 | `panDown` | Pan down | `ArrowDown` | `panes[0].priceScale.panByPixels(-20)` |
 | `zoomIn` | Zoom in | `Equal`, `Shift+Equal`, `NumpadAdd` | `zoomAtX(width/2, 1.1)` |
 | `zoomOut` | Zoom out | `Minus`, `NumpadSubtract` | `zoomAtX(width/2, 1/1.1)` |
-| `resetScale` | Reset scale | `Home`, `Digit0` | `resetScale()` |
-| `fitContent` | Fit content | `Alt+KeyF` | `timeScale.fitContent(length)` |
+| `resetScale` | Reset view | `Home`, `Digit0` | `resetScale()` |
+| `fitContent` | Fit all bars | `Alt+KeyF` | `timeScale.fitContent(length)` |
 | `screenshot` | Screenshot (PNG) | `Alt+Shift+KeyS` | `downloadScreenshot()` |
 | `toggleGridVert` | Toggle vertical grid | `Alt+KeyV` | flips `grid.vertLines` |
 | `toggleGridHorz` | Toggle horizontal grid | `Alt+KeyH` | flips `grid.horzLines` |
@@ -170,6 +170,7 @@ chart.shortcuts?.resetAll();
 chart.shortcuts?.list();   // [{ command, label, combos, isCustom, isDisabled }]
 chart.shortcuts?.state();  // { preset, overrides, disabled }, serializable
 chart.shortcuts?.on((e) => track(e.command)); // { command, combo, isCustom }; returns an unsubscribe
+chart.shortcuts?.onChange(() => redrawHints()); // (since 2.5.10) after every keymap change; returns an unsubscribe
 ```
 
 `shortcuts` also accepts a pre-built `ShortcutManager`, which is how two charts share one keymap.
@@ -178,7 +179,8 @@ chart.shortcuts?.on((e) => track(e.command)); // { command, combo, isCustom }; r
 
 **Reserved combos passed through `overrides` are dropped silently.** Only `setBinding` reports failure, by returning `false`.
 
-**Disabling shortcuts does not disable the TimeNavigator buttons.** They call `_runShortcut` directly; with `shortcuts: false` they still zoom, reset and step, they just lose their keyboard-hint tooltips.
+**Disabling shortcuts does not disable the TimeNavigator buttons.** They call `_runShortcut` directly; with `shortcuts: false` they still zoom, reset and step, they just lose their keyboard-hint tooltips. Since 2.5.10
+the hints follow a rebind (`onChange`) unless the host passed `timeNavigator.hints`.
 
 ## Touch and mobile
 

@@ -499,7 +499,7 @@ function readoutControls(chart: Chart): Control[] {
 // ── Axes ──────────────────────────────────────────────────────────────────
 
 const SCALE_MODES: readonly { label: string; value: string }[] = [
-  { label: 'Regular', value: 'linear' },
+  { label: 'Linear', value: 'linear' },
   { label: 'Logarithmic', value: 'logarithmic' },
   { label: 'Percent', value: 'percentage' },
   { label: 'Indexed to 100', value: 'indexed-to-100' },
@@ -582,12 +582,12 @@ function axesControls(chart: Chart): Control[] {
       'scales.mode', 'Scale', 'Price scale', 'linear', SCALE_MODES,
       (c) => c.priceScaleOptions().mode,
       (c, v) => c.setPriceScaleOptions({ mode: v as PriceScaleMode }),
-      'Regular plots the price. Logarithmic gives equal space to equal percentage moves. '
+      'Linear plots the price. Logarithmic gives equal space to equal percentage moves. '
         + 'Percent and Indexed to 100 both rebase to the left edge of the visible range, '
         + 'the first as a change from it, the second as a level starting at 100.',
     ),
     boolCtl(
-      'scales.autoScale', 'Auto (fits data to screen)', 'Price scale', true,
+      'scales.autoScale', 'Auto-fit to the data', 'Price scale', true,
       (c) => c.panes()[c.primaryPaneIndex()].priceScale.autoScale,
       (c, v) => c.setAutoScale(v),
     ),

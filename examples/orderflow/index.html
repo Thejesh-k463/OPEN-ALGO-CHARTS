@@ -58,10 +58,10 @@
   <header>
     <div><h1>NIFTY order flow <span class="subtitle">/ OpenAlgo</span></h1><div class="subtitle"><span id="instrument-note">NIFTY simulation · 1-minute bars · 2-point rows</span></div></div>
     <div class="readouts">
-      <div class="readout"><span>LAST PRICE</span><b id="s-last">—</b></div>
-      <div class="readout"><span id="volume-label">BAR VOLUME · QTY</span><b id="s-vol">—</b></div>
-      <div class="readout"><span id="delta-label">BAR DELTA · QTY</span><b id="s-delta">—</b></div>
-      <div class="readout"><span id="cvd-label">SESSION CVD · QTY</span><b id="s-cvd">—</b></div>
+      <div class="readout"><span>LAST PRICE</span><b id="s-last">-</b></div>
+      <div class="readout"><span id="volume-label">BAR VOLUME · QTY</span><b id="s-vol">-</b></div>
+      <div class="readout"><span id="delta-label">BAR DELTA · QTY</span><b id="s-delta">-</b></div>
+      <div class="readout"><span id="cvd-label">SESSION CVD · QTY</span><b id="s-cvd">-</b></div>
     </div>
   </header>
   <nav class="toolbar" aria-label="Footprint controls">
@@ -288,10 +288,10 @@
         + (hit.cell ? row('Price',hit.cell.price.toFixed(2)) + row('Bid × Ask',preciseQuantity(hit.cell.bidVol) + ' × ' + preciseQuantity(hit.cell.askVol)) : '')
         + row('Volume',preciseQuantity(hit.stats.volume)) + row('Ask volume',preciseQuantity(hit.stats.askVolume))
         + row('Bid volume',preciseQuantity(hit.stats.bidVolume)) + row('Delta',preciseSigned(hit.stats.delta))
-        + row('Min delta',hit.stats.minDelta === null ? '—' : preciseSigned(hit.stats.minDelta))
-        + row('Max delta',hit.stats.maxDelta === null ? '—' : preciseSigned(hit.stats.maxDelta))
+        + row('Min delta',hit.stats.minDelta === null ? '-' : preciseSigned(hit.stats.minDelta))
+        + row('Max delta',hit.stats.maxDelta === null ? '-' : preciseSigned(hit.stats.maxDelta))
         + row('Delta %',hit.stats.deltaPct.toFixed(1) + '%') + row('Session CVD',preciseSigned(hit.stats.cvd))
-        + row('Trades',hit.stats.trades ?? '—');
+        + row('Trades',hit.stats.trades ?? '-');
       tip.hidden = false;
       const rect = el('chart').getBoundingClientRect();
       tip.style.left = Math.max(4,Math.min(event.point.x + 16,rect.width - tip.offsetWidth - 8)) + 'px';

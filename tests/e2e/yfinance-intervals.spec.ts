@@ -7,7 +7,8 @@ import { test, expect, type Page } from '@playwright/test';
  * daily bars and down; switching the interval with the toolbar's pills then
  * shows and hides each one. What is checked is the pixels the chart paints,
  * not only the model: a drawing a range hides must leave nothing on screen,
- * and one it shows must be drawn.
+ * and one it shows must be drawn. First of all, the page opens on a history
+ * range its daily chart can serve.
  */
 
 const PAGE = '/examples/yfinance/index.html?test=1';
@@ -96,6 +97,14 @@ async function limit(page: Page, path: 'intervals.from' | 'intervals.to', value:
   if (await page.locator('.pb-pop').count() === 0) await page.locator('#propbar [data-pop="more"]').click();
   await page.locator(`.pb-pop select[data-path="${path}"]`).selectOption(value);
 }
+
+test('the page opens on the five years a daily chart loads, with no range it had to refuse', async ({ page }) => {
+  await page.waitForFunction(() => !(window as any).__oac.app.loading);
+  expect(await page.evaluate(() => (window as any).__oac.app.req)).toMatchObject({ interval: '1d', period: '5y' });
+  await expect(page.locator('#status')).toContainText('1d/5y');
+  await expect(page.locator('#status')).not.toContainText('unavailable');
+  await expect(page.getByRole('button', { name: 'History range' })).toHaveText('5y');
+});
 
 test('a range set from the properties bar shows and hides each drawing as the interval changes', async ({ page }, info) => {
   const errors: string[] = [];

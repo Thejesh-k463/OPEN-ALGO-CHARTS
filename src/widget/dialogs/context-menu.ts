@@ -26,8 +26,8 @@ import type { Chart, ContextMenuEvent, ContextMenuTarget, IndicatorApi, PriceSca
 import { drawingSettingsSchema } from 'openalgo-charts/draw';
 import type { Drawing } from 'openalgo-charts/draw';
 import { editableIds, type WidgetContext } from '../context';
-import { boxInRoot, chromeGlyph, el, glyphSvg, openPanel, placePanel, stopOwnKeys, type PanelHandle } from '../form';
-import { ABOVE_GLYPH, BEHIND_GLYPH, FIT_GLYPH } from '../glyphs';
+import { ariaKeys, commandChord } from '../keymap';
+import { boxInRoot, chromeGlyph, el, openPanel, placePanel, stopOwnKeys, type PanelHandle } from '../form';
 import { mountDrawingProperties } from './drawing-properties';
 import { mountIndicatorPicker } from './indicator-picker';
 import { mountIndicatorSettings } from './indicator-settings';
@@ -94,8 +94,6 @@ export interface ContextMenuOptions {
 const SEP: MenuEntry = { kind: 'separator' };
 const header = (label: string): MenuEntry => ({ kind: 'header', label });
 
-const TICK = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.5 3.5L13 4"/></svg>';
-
 /** Our words for the four scale modes, in the engine's order. */
 export const SCALE_MODE_LABELS: Readonly<Record<PriceScaleMode, string>> = {
   linear: 'Linear',
@@ -139,20 +137,21 @@ function drawingEntries(ctx: WidgetContext, primary: Drawing, ids: readonly stri
   out.push({ id: 'draw-props', label: many ? widgetText(ctx, 'Properties of the selection...') : widgetText(ctx, 'Properties...'), icon: 'settings',
     run: () => { mountDrawingProperties(ctx, undefined, { ids }); } });
   if (!many && isTextContent(primary)) {
-    out.push({ id: 'draw-text', label: widgetText(ctx, 'Edit text'), icon: 'text', chord: 'Enter', disabled: fixed, note: why, run: () => { mountTextEditor(ctx, undefined, { id: primary.id }); } });
+    out.push({ id: 'draw-text', label: widgetText(ctx, 'Edit text'), icon: 'text', disabled: fixed, note: why, run: () => { mountTextEditor(ctx, undefined, { id: primary.id }); } });
   }
   if (schema.fields.some((f) => f.kind === 'levels')) {
     out.push({ id: 'draw-levels', label: widgetText(ctx, 'Edit levels...'), disabled: fixed, note: why, run: () => { mountLevelEditor(ctx, undefined, { ids }); } });
   }
   out.push(SEP);
-  out.push({ id: 'draw-copy', label: many ? widgetText(ctx, 'Copy {count} drawings', { count: ids.length }) : widgetText(ctx, 'Copy drawing'), icon: 'copy', chord: 'Ctrl+C', run: () => { void draw.copy(ids); } });
-  out.push({ id: 'draw-cut', label: mine > 1 ? widgetText(ctx, 'Cut {count} drawings', { count: mine }) : widgetText(ctx, 'Cut drawing'), chord: 'Ctrl+X', disabled: locked || fixed, note: why ?? (locked ? widgetText(ctx, 'locked') : undefined),
+  out.push({ id: 'draw-copy', label: many ? widgetText(ctx, 'Copy {count} drawings', { count: ids.length }) : widgetText(ctx, 'Copy drawing'), icon: 'copy', chord: commandChord(ctx.keymap, 'copy', 'Mod+C'), run: () => { void draw.copy(ids); } });
+  out.push({ id: 'draw-cut', label: mine > 1 ? widgetText(ctx, 'Cut {count} drawings', { count: mine }) : widgetText(ctx, 'Cut drawing'), chord: commandChord(ctx.keymap, 'cut', 'Mod+X'), disabled: locked || fixed, note: why ?? (locked ? widgetText(ctx, 'locked') : undefined),
     run: () => { void draw.cut(ids); } });
-  out.push({ id: 'draw-duplicate', label: widgetText(ctx, 'Duplicate'), icon: 'duplicate', chord: 'Ctrl+D', run: () => { draw.duplicate(ids); } });
+  out.push({ id: 'draw-duplicate', label: widgetText(ctx, 'Duplicate'), icon: 'duplicate', chord: commandChord(ctx.keymap, 'duplicate', 'Mod+D'), run: () => { draw.duplicate(ids); } });
   out.push(SEP);
-  out.push({ id: 'draw-lock', label: locked ? widgetText(ctx, 'Unlock') : widgetText(ctx, 'Lock'), icon: locked ? 'lock' : 'unlock', mark: 'check', on: locked, disabled: fixed, note: why,
+  // Checkbox rows keep their names; the check says locked or hidden.
+  out.push({ id: 'draw-lock', label: widgetText(ctx, 'Lock'), icon: locked ? 'lock' : 'unlock', mark: 'check', on: locked, disabled: fixed, note: why,
     run: () => { draw.updateMany(ids.map((id) => ({ id, patch: { locked: !locked } }))); } });
-  out.push({ id: 'draw-hide', label: hidden ? widgetText(ctx, 'Show') : widgetText(ctx, 'Hide'), icon: hidden ? 'eye-off' : 'eye', mark: 'check', on: hidden, disabled: fixed, note: why,
+  out.push({ id: 'draw-hide', label: widgetText(ctx, 'Hide'), icon: hidden ? 'eye-off' : 'eye', mark: 'check', on: hidden, disabled: fixed, note: why,
     run: () => { draw.updateMany(ids.map((id) => ({ id, patch: { visible: hidden } }))); } });
   out.push(SEP);
   out.push(header(widgetText(ctx, 'Order')));
@@ -160,12 +159,12 @@ function drawingEntries(ctx: WidgetContext, primary: Drawing, ids: readonly stri
   // of the order), so a multi-selection is several calls.
   out.push({ id: 'draw-front', label: widgetText(ctx, 'Bring to front'), icon: 'front', run: () => { for (const id of ids) draw.bringToFront(id); } });
   out.push({ id: 'draw-back', label: widgetText(ctx, 'Send to back'), icon: 'back', run: () => { for (const id of ids) draw.sendToBack(id); } });
-  out.push({ id: 'draw-above', label: widgetText(ctx, 'In front of the series'), icon: glyphSvg(ABOVE_GLYPH), mark: 'radio', on: !behind && !between,
+  out.push({ id: 'draw-above', label: widgetText(ctx, 'In front of the series'), icon: 'above-series', mark: 'radio', on: !behind && !between,
     run: () => { for (const id of ids) draw.bringAboveSeries(id); } });
-  out.push({ id: 'draw-behind', label: widgetText(ctx, 'Behind the series'), icon: glyphSvg(BEHIND_GLYPH), mark: 'radio', on: behind,
+  out.push({ id: 'draw-behind', label: widgetText(ctx, 'Behind the series'), icon: 'behind-series', mark: 'radio', on: behind,
     run: () => { for (const id of ids) draw.sendBehindSeries(id); } });
   out.push(SEP);
-  out.push({ id: 'draw-delete', label: mine > 1 ? widgetText(ctx, 'Delete {count} drawings', { count: mine }) : widgetText(ctx, 'Delete'), icon: 'trash', chord: 'Del', danger: true,
+  out.push({ id: 'draw-delete', label: mine > 1 ? widgetText(ctx, 'Delete {count} drawings', { count: mine }) : widgetText(ctx, 'Delete'), icon: 'trash', chord: commandChord(ctx.keymap, 'delete', 'Delete'), danger: true,
     disabled: locked || fixed, note: why ?? (locked ? widgetText(ctx, 'locked') : undefined), run: () => { draw.removeMany(ids); } });
   return out;
 }
@@ -277,6 +276,7 @@ export function contextMenuEntries(ctx: WidgetContext, e: ContextMenuEvent, hook
     const lockReason = locked();
     const order = (side: OrderRequest['side'], type: OrderRequest['type']): MenuItem => ({
       id: `order-${side.toLowerCase()}-${type.toLowerCase()}`,
+      icon: side === 'BUY' ? 'buy' : 'sell',
       label: type === 'MARKET'
         ? widgetText(ctx, side === 'BUY' ? 'Buy market' : 'Sell market')
         : widgetText(ctx, side === 'BUY' ? (type === 'LIMIT' ? 'Buy limit at {price}' : 'Buy stop at {price}') : (type === 'LIMIT' ? 'Sell limit at {price}' : 'Sell stop at {price}'), { price: priceText(chart, e.paneIndex, price as number) }),
@@ -318,19 +318,19 @@ export function contextMenuEntries(ctx: WidgetContext, e: ContextMenuEvent, hook
     sep();
     if (hit) {
       const info = draw.alertInfo(hit.id);
-      out.push({ id: 'alert-drawing', label: widgetText(ctx, 'Create drawing alert...'), disabled: !info.available, note: info.reason,
+      out.push({ id: 'alert-drawing', label: widgetText(ctx, 'Create drawing alert...'), icon: 'bell', disabled: !info.available, note: info.reason,
         run: () => { mountAlertEditor(ctx, undefined, { source: { kind: 'drawing', drawingId: hit.id } }); } });
     } else if (target.kind === 'indicator' && target.instanceId) {
       const instance = chart.indicators().find(item => item.id === target.instanceId);
       const plot = instance && getIndicator(instance.indicatorId).plots.find(item =>
         (item.overlay ? pricePane : instance.paneIndex) === e.paneIndex && (target.plotKey === undefined || item.key === target.plotKey));
-      if (instance && plot) out.push({ id: 'alert-indicator', label: widgetText(ctx, 'Create study alert...'), run: () => {
+      if (instance && plot) out.push({ id: 'alert-indicator', label: widgetText(ctx, 'Create study alert...'), icon: 'bell', run: () => {
         const values = instance.values()[plot.key];
         const value = values?.[e.index ?? chart.primaryBars().length - 1];
         mountAlertEditor(ctx, undefined, { source: { kind: 'indicator', instanceId: instance.id, plotKey: plot.key, value: value ?? NaN } });
       } });
     } else if (e.paneIndex === pricePane && e.price !== null && Number.isFinite(e.price)) {
-      out.push({ id: 'alert-create', label: widgetText(ctx, 'Create alert at {price}...', { price: priceText(chart, pricePane, e.price) }),
+      out.push({ id: 'alert-create', label: widgetText(ctx, 'Create alert at {price}...', { price: priceText(chart, pricePane, e.price) }), icon: 'bell',
         run: () => { mountAlertEditor(ctx, undefined, { source: { kind: 'price', price: e.price! } }); } });
     }
     out.push({ id: 'chart-alerts', label: widgetText(ctx, 'Alerts...'), run: () => { mountAlertsPanel(ctx); } });
@@ -393,7 +393,7 @@ export function contextMenuEntries(ctx: WidgetContext, e: ContextMenuEvent, hook
 
   if (target.kind !== 'time-scale') {
     sep();
-    out.push({ id: 'draw-paste', label: widgetText(ctx, 'Paste'), icon: 'paste', chord: 'Ctrl+V',
+    out.push({ id: 'draw-paste', label: widgetText(ctx, 'Paste'), icon: 'paste', chord: commandChord(ctx.keymap, 'paste', 'Mod+V'),
       run: () => { void draw.paste().then((made) => { if (made.length === 0) ctx.toast(widgetText(ctx, 'Nothing to paste'), 'info'); }); } });
     // What `clear` would take: a read-only drawing stays, so it is not counted.
     const n = draw.drawings().filter((d) => d.policy?.editable !== false).length;
@@ -403,11 +403,11 @@ export function contextMenuEntries(ctx: WidgetContext, e: ContextMenuEvent, hook
   }
 
   sep();
-  out.push({ id: 'chart-fit', label: widgetText(ctx, 'Fit all bars'), icon: glyphSvg(FIT_GLYPH),
+  out.push({ id: 'chart-fit', label: widgetText(ctx, 'Fit all bars'), icon: 'fit', chord: commandChord(ctx.keymap, 'chart:fitContent'),
     disabled: chart.navigationOptions().zoomEnabled === false,
     run: () => { if (chart.navigationOptions().zoomEnabled !== false) chart.fitContent(); } });
   if (target.kind !== 'time-scale') {
-    out.push({ id: 'chart-indicators', label: widgetText(ctx, 'Indicators...'), run: () => { mountIndicatorPicker(ctx); } });
+    out.push({ id: 'chart-indicators', label: widgetText(ctx, 'Indicators...'), icon: 'indicators', run: () => { mountIndicatorPicker(ctx); } });
   }
   out.push({ id: 'chart-settings', label: widgetText(ctx, 'Settings...'), icon: 'settings', run: () => { mountSettingsDialog(ctx); } });
 
@@ -474,7 +474,7 @@ export function mountContextMenu(ctx: WidgetContext, anchor?: HTMLElement, opts:
       // edge whether anything is set or not.
       const mark = el(doc, 'span', 'oac-ctx__mark');
       if (item.mark === 'radio' && item.on === true) mark.appendChild(el(doc, 'span', 'oac-ctx__dot'));
-      else if (item.mark === 'check' && item.on === true) mark.innerHTML = TICK;
+      else if (item.mark === 'check' && item.on === true) mark.appendChild(chromeGlyph(doc, 'check'));
       else if (item.icon !== undefined) {
         if (item.icon.startsWith('<svg')) { const g = el(doc, 'span', 'oac-glyph oac-glyph--chrome'); g.innerHTML = item.icon; mark.appendChild(g); }
         else mark.appendChild(chromeGlyph(doc, item.icon));
@@ -482,7 +482,12 @@ export function mountContextMenu(ctx: WidgetContext, anchor?: HTMLElement, opts:
       row.appendChild(mark);
       row.appendChild(el(doc, 'span', 'oac-ctx__label', item.label));
       if (item.note !== undefined && item.note !== '') row.appendChild(el(doc, 'span', 'oac-ctx__note', item.note));
-      if (item.chord !== undefined) row.appendChild(el(doc, 'kbd', 'oac-ctx__key', item.chord));
+      if (item.chord !== undefined) {
+        // Shown beside the name, said as the row's shortcut rather than read into its name.
+        const key = row.appendChild(el(doc, 'kbd', 'oac-ctx__key', item.chord));
+        key.setAttribute('aria-hidden', 'true');
+        row.setAttribute('aria-keyshortcuts', ariaKeys(item.chord));
+      }
       if (item.disabled === true) {
         row.setAttribute('aria-disabled', 'true');
       } else {

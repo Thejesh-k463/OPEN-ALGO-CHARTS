@@ -16,7 +16,7 @@ import {
 } from 'openalgo-charts/draw';
 import type { Drawing, DrawingTool, FibLevel, SettingsSchema } from 'openalgo-charts/draw';
 import type { WidgetContext } from '../context';
-import { button, el, openPanel, placePanel, selectionPoint, stopOwnKeys, type PanelHandle } from '../form';
+import { button, chromeGlyph, el, openPanel, placePanel, selectionPoint, stopOwnKeys, type PanelHandle } from '../form';
 import { createColorPicker, type ColorPickerHandle } from '../color-picker';
 
 export interface LevelEditorOptions {
@@ -62,9 +62,6 @@ export function ladderDrawings(ctx: WidgetContext, ids: readonly string[]): { dr
 function toolOf(id: string): DrawingTool | null {
   try { return getDrawingTool(id); } catch { return null; }
 }
-
-const CLOSE = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"'
-  + ' stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M3 3l10 10M13 3 3 13"/></svg>';
 
 /**
  * Open the editor for the selected ladder drawings, below `anchor` when there
@@ -143,7 +140,6 @@ export function mountLevelEditor(ctx: WidgetContext, anchor?: HTMLElement, opts:
     const on = el(doc, 'input');
     on.type = 'checkbox';
     on.checked = lv.enabled !== false;
-    on.setAttribute('aria-label', widgetText(ctx, 'Enabled'));
     on.addEventListener('change', () => {
       // `true` is the default, so an enabled level carries no flag at all.
       if (on.checked) delete list[i].enabled; else list[i].enabled = false;
@@ -156,7 +152,6 @@ export function mountLevelEditor(ctx: WidgetContext, anchor?: HTMLElement, opts:
     ratio.type = 'number';
     ratio.step = '0.001';
     ratio.value = String(lv.ratio);
-    ratio.setAttribute('aria-label', widgetText(ctx, 'Ratio'));
     ratio.addEventListener('change', () => {
       const n = Number(ratio.value);
       // A blank or unparseable ratio would drop the level on coercion; keep
@@ -164,13 +159,14 @@ export function mountLevelEditor(ctx: WidgetContext, anchor?: HTMLElement, opts:
       if (ratio.value.trim() === '' || !Number.isFinite(n)) { ratio.value = String(list[i].ratio); return; }
       list[i].ratio = n;
       if (list[i].label === undefined) label.placeholder = fmt(n);
+      name();
       emit();
     });
     r.appendChild(ratio);
 
     const color = createColorPicker(doc, {
       id: `oac-level-${primary.id}-${i}`,
-      label: widgetText(ctx, 'Color'),
+      label: widgetText(ctx, 'Level {level} color', { level: fmt(lv.ratio) }),
       value: lv.color ?? primary.style.color ?? levelColor(lv.ratio) ?? LEVEL_NEUTRAL,
       translate: ctx.translate, openOverlay: ctx.openOverlay,
       onChange: value => { list[i].color = value; emit(); },
@@ -182,7 +178,6 @@ export function mountLevelEditor(ctx: WidgetContext, anchor?: HTMLElement, opts:
     label.type = 'text';
     label.value = lv.label ?? '';
     label.placeholder = fmt(lv.ratio);
-    label.setAttribute('aria-label', widgetText(ctx, 'Label'));
     label.setAttribute('spellcheck', 'false');
     label.addEventListener('change', () => {
       const v = label.value.trim();
@@ -193,10 +188,19 @@ export function mountLevelEditor(ctx: WidgetContext, anchor?: HTMLElement, opts:
 
     const x = el(doc, 'button', 'oac-levels__x');
     x.type = 'button';
-    x.innerHTML = CLOSE;
-    x.setAttribute('aria-label', widgetText(ctx, 'Remove level'));
+    x.appendChild(chromeGlyph(doc, 'close'));
     x.addEventListener('click', (e) => { e.stopPropagation(); list.splice(i, 1); paint(); emit(); });
     r.appendChild(x);
+    // Every control names its level, or seven rows would read the same.
+    function name(): void {
+      const level = fmt(list[i].ratio);
+      on.setAttribute('aria-label', widgetText(ctx, 'Level {level} enabled', { level }));
+      ratio.setAttribute('aria-label', widgetText(ctx, 'Level {level} ratio', { level }));
+      color.trigger.setAttribute('aria-label', widgetText(ctx, 'Level {level} color', { level }));
+      label.setAttribute('aria-label', widgetText(ctx, 'Level {level} label', { level }));
+      x.setAttribute('aria-label', widgetText(ctx, 'Remove level {level}', { level }));
+    }
+    name();
     return r;
   }
 

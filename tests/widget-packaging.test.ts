@@ -39,10 +39,14 @@ const WIDGET_TYPES = './dist/widget/index.d.ts';
 interface RollupEntry {
   input: string;
   external?: (id: string) => boolean;
-  output: { file: string; format: string; paths?: Record<string, string> };
+  preserveEntrySignatures?: string;
+  output: { file: string; format: string; paths?: Record<string, string>; dir?: string; entryFileNames?: string; chunkFileNames?: string };
 }
 
-const configs = rollupConfig as unknown as RollupEntry[];
+// The widget writes its parts that load on first use beside it, so its output
+// is a directory with a named entry file; that file is the tier bundle.
+const configs = (rollupConfig as unknown as RollupEntry[]).map((c) => (c.output.dir === undefined ? c
+  : { ...c, output: { ...c.output, file: `${c.output.dir}/${c.output.entryFileNames}` } }));
 // The tier bundles: ESM, under dist/, and not the docs-only combined bundle.
 const esTiers = configs.filter(
   (c) => c.output.format === 'es' && c.output.file.endsWith('.mjs') && !c.output.file.includes('.all.'),
@@ -124,6 +128,15 @@ describe('the widget shares one engine with the page rather than inlining a seco
     expect(widgetDts.external?.(`${PKG}/draw`)).toBe(true);
   });
 
+  it('writes its first-use parts beside it, and keeps the shell in the tier file', () => {
+    // The hash: a part imports the tier's helpers by minified names, so a
+    // tier file must never be handed a part a cache kept from another build.
+    expect(widget.output.chunkFileNames).toBe('openalgo-charts.widget.[name]-[hash].mjs');
+    // Without it rollup moves the shell into a chunk behind a re-exporting
+    // entry, and the tier's size row would measure only that entry.
+    expect(widget.preserveEntrySignatures).toBe('allow-extension');
+  });
+
   it('the base entry stays a self-contained bundle', () => {
     const base = esTiers.find((c) => c.output.file === 'dist/openalgo-charts.mjs')!;
     expect(base.external).toBeUndefined();
@@ -135,6 +148,10 @@ describe('the widget is budgeted', () => {
     const own = sizeRows.filter((r) => pathsOf(r).length === 1 && pathsOf(r)[0] === WIDGET_BUNDLE);
     expect(own).toHaveLength(1);
     expect(own[0].limit).toMatch(/^\d+(?:\.\d+)? kB$/);
+  });
+
+  it('its first-use parts have a row, by glob, since each name changes with its content', () => {
+    expect(sizeRows.filter((r) => r.path === 'dist/openalgo-charts.widget.*.mjs')).toHaveLength(1);
   });
 
   it('the Everything row measures every tier bundle, the widget included', () => {

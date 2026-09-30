@@ -73,6 +73,8 @@ export function registeredDrawingTools(): DrawingTool[] {
 /** Keyboard event fields a shortcut is matched against. */
 export interface ShortcutEvent {
   key: string;
+  /** The physical key (`KeyT`): under Alt it names the letter when `key` is not one, as macOS Option types a symbol. Since 2.5.10. */
+  code?: string;
   altKey?: boolean;
   ctrlKey?: boolean;
   metaKey?: boolean;
@@ -83,12 +85,7 @@ export interface ShortcutEvent {
 function parseShortcut(spec: string): { key: string; alt: boolean; ctrl: boolean; shift: boolean } {
   const parts = spec.split('+').map((p) => p.trim().toLowerCase());
   const key = parts[parts.length - 1] ?? '';
-  return {
-    key,
-    alt: parts.includes('alt'),
-    ctrl: parts.includes('ctrl') || parts.includes('control'),
-    shift: parts.includes('shift'),
-  };
+  return { key, alt: parts.includes('alt'), ctrl: parts.includes('ctrl') || parts.includes('control'), shift: parts.includes('shift') };
 }
 
 /**
@@ -103,7 +100,10 @@ function parseShortcut(spec: string): { key: string; alt: boolean; ctrl: boolean
  * treated as Ctrl, which is what a Mac user expects.
  */
 export function matchDrawingShortcut(e: ShortcutEvent): string | null {
-  const key = (e.key ?? '').toLowerCase();
+  // Option+T types a dagger on macOS, where the physical key still says T; a
+  // letter typed wins, so a non-QWERTY layout keeps its own letters.
+  const typed = e.key ?? '', letter = e.altKey === true && !/^[a-z]$/i.test(typed) ? /^Key([A-Z])$/.exec(e.code ?? '') : null;
+  const key = (letter !== null ? letter[1] : typed).toLowerCase();
   if (key === '') return null;
   const alt = e.altKey === true;
   const ctrl = e.ctrlKey === true || e.metaKey === true;
@@ -844,25 +844,6 @@ export const MEASURE: DrawingTool = {
   distance: (x, y, h) => distToRect(x, y, h.pts[0], h.pts[1], true),
 };
 
-/**
- * Long / short position calculator: entry, target, stop, anchored in that
- * order (the order 1.9.x saved, so an old layout loads unchanged).
- *
- * Placed in two clicks: the entry, then the target. The second click is also
- * the profit direction: release above the entry and the trade is a long,
- * below and it is a short, whichever tool was armed. The armed tool only
- * decides which way a bare click faces. The stop lands opposite the entry at
- * one part risk to {@link POSITION_RR} parts reward, and all three levels
- * stay handles; a level dragged through the entry flips the other side across
- * it rather than piling both on one side, so a long turns into a short in
- * place with its ratio intact.
- *
- * A bare click's box is sized on screen, not as a fraction of price. One
- * percent of a 2.87 stock and one percent of a 24,000 index are the same
- * fraction and very different boxes, and either turns into a hairline or a
- * pane-filler with the zoom; 64 px of risk and 150 px of width read the same
- * everywhere. A host with no pixel mapping falls back to chart units.
- */
 /** Reward per unit of risk for a default box and a derived stop. */
 const POSITION_RR = 2;
 /** A bare click's stop distance on screen, in media px. */
@@ -936,6 +917,25 @@ function sizeText(qty: number): string {
   return qty.toPrecision(3).replace(/\.?0+$/, '');
 }
 
+/**
+ * Long / short position calculator: entry, target, stop, anchored in that
+ * order (the order 1.9.x saved, so an old layout loads unchanged).
+ *
+ * Placed in two clicks: the entry, then the target. The second click is also
+ * the profit direction: release above the entry and the trade is a long,
+ * below and it is a short, whichever tool was armed. The armed tool only
+ * decides which way a bare click faces. The stop lands opposite the entry at
+ * one part risk to {@link POSITION_RR} parts reward, and all three levels
+ * stay handles; a level dragged through the entry flips the other side across
+ * it rather than piling both on one side, so a long turns into a short in
+ * place with its ratio intact.
+ *
+ * A bare click's box is sized on screen, not as a fraction of price. One
+ * percent of a 2.87 stock and one percent of a 24,000 index are the same
+ * fraction and very different boxes, and either turns into a hairline or a
+ * pane-filler with the zoom; 64 px of risk and 150 px of width read the same
+ * everywhere. A host with no pixel mapping falls back to chart units.
+ */
 function positionTool(id: string, name: string, long: boolean): DrawingTool {
   return {
     id, name, points: 2,

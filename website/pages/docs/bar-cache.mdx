@@ -47,7 +47,10 @@ chart, so a fast wrong price is a worse failure here than a slow right one.
 The trailing forming bar is **dropped on store**, and coverage ends at the last
 closed bar. `getCachedBars(req)` may supply only part of a requested window. Treat
 that snapshot as refreshing until authoritative history arrives; a live stream
-alone does not repair missing closed candles.
+alone does not repair missing closed candles. A host with no live subscription has
+nothing to supply the bar a hit leaves out: when a hit ends before a bar the page has
+already shown (the forming candle, or the day's candle after the close), ask again with
+`noCache: true`, as the reference host does, or the chart steps back to an older close.
 
 <Callout type="warning">
 Anything you build that computes off `bars[bars.length - 1]` inherits this rule. Keep the

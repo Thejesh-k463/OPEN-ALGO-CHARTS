@@ -109,6 +109,32 @@ describe('arming a tool', () => {
     expect(chartEl.style.getPropertyValue('--oac-tool-cursor')).toBe('');
   });
 
+  it('the chevron opens the list for a press that went down on it, and a touch landing there picks the tool', () => {
+    const { w, rail, root } = make();
+    const lines = groupBtn(rail, 'lines');
+    const chev = lines.querySelector('.oac-rail__chev') as FakeElement;
+    // A mouse press on the chevron opens the list and leaves the tool alone.
+    fire(chev, 'pointerdown', { pointerType: 'mouse' });
+    fire(chev, 'click');
+    expect(root.querySelector('.oac-fly')).not.toBeNull();
+    expect(w.draw.activeTool()).toBeNull();
+    fire(lines, 'pointerdown', { pointerType: 'mouse' });
+    fire(lines, 'click');
+    expect(root.querySelector('.oac-fly')).toBeNull();
+    // A browser that moves a tap on the face onto the chevron delivers the
+    // click there; the touch still means the face.
+    fire(chev, 'pointerdown', { pointerType: 'touch' });
+    fire(chev, 'click');
+    expect(w.draw.activeTool()).toBe('trend-line');
+    expect(root.querySelector('.oac-fly')).toBeNull();
+    // A keyboard click after a press dragged off the chevron is not the chevron.
+    (rail.querySelectorAll('.oac-rail__tool')[0]).click();
+    fire(chev, 'pointerdown', { pointerType: 'mouse' });
+    fire(chev, 'click', { detail: 0 });
+    expect(w.draw.activeTool()).toBe('trend-line');
+    expect(root.querySelector('.oac-fly')).toBeNull();
+  });
+
   it('a flyout pick arms the tool, becomes the group face, and is remembered', () => {
     const store = new MemoryStorage();
     const { w, rail, root } = make({ persist: true, storage: store });
@@ -132,11 +158,16 @@ describe('arming a tool', () => {
     fire(groupBtn(rail, 'shapes'), 'contextmenu');
     const star = root.querySelector('.oac-fly__row[data-tool="ellipse"] .oac-fly__star') as FakeElement;
     expect(star.getAttribute('aria-pressed')).toBe('false');
+    expect(star.getAttribute('aria-label')).toBe('Pin to rail');
     star.click();
     expect(star.getAttribute('aria-pressed')).toBe('true');
+    // One name, the pressed state saying it is pinned.
+    expect(star.getAttribute('aria-label')).toBe('Pin to rail');
     expect(root.querySelector('.oac-fly')).not.toBeNull();   // pinning keeps the list open
     const fav = rail.querySelector('.oac-rail__fav') as FakeElement;
     expect(fav.dataset.tools).toBe('ellipse');
+    // Not the name of the group button that may show the same tool.
+    expect(fav.getAttribute('aria-label')).toBe('Ellipse (pinned)');
     fire(root.ownerDocument.body, 'pointerdown');
     fire(fav, 'contextmenu');
     const unpin = root.querySelector('.oac-menu .oac-menu__row') as FakeElement;
@@ -180,7 +211,8 @@ describe('the controls block', () => {
     expect(w.draw.magnetMode()).toBe('weak');
     expect(magnet.dataset.mode).toBe('weak');
     expect(magnet.classList.contains('is-weak')).toBe(true);
-    expect(root.querySelector('.oac-statusline__msg')?.textContent).toContain('Magnet weak');
+    // It snaps to study values as well as to the bar, and says so.
+    expect(root.querySelector('.oac-statusline__msg')?.textContent).toBe('Magnet weak: snaps when a bar or study value is within a few pixels');
     magnet.click();
     expect(w.draw.magnetMode()).toBe('strong');
     expect(magnet.classList.contains('is-on')).toBe(true);
@@ -211,14 +243,33 @@ describe('the controls block', () => {
     for (const b of [lock, eye, trash]) expect(b.classList.contains('is-off')).toBe(false);
     lock.click();
     expect(w.draw.get(id)?.locked).toBe(true);
+    // The glyph shows the state, as the eye beside it does; the name stays and the pressed state says locked.
+    expect(lock.dataset.glyph).toBe('lock');
+    expect(lock.getAttribute('aria-label')).toBe('Lock drawing');
+    expect(lock.getAttribute('aria-pressed')).toBe('true');
+    lock.click();
+    expect(w.draw.get(id)?.locked).toBe(false);
     expect(lock.dataset.glyph).toBe('unlock');
-    expect(lock.getAttribute('aria-label')).toBe('Unlock drawing');
+    expect(lock.getAttribute('aria-pressed')).toBe('false');
     eye.click();
     expect(w.draw.get(id)?.visible).toBe(false);
     expect(eye.dataset.glyph).toBe('eye-off');
+    expect(eye.getAttribute('aria-label')).toBe('Hide drawing');
+    expect(eye.getAttribute('aria-pressed')).toBe('true');
     trash.click();
     expect(w.draw.drawings()).toHaveLength(0);
     expect(trash.classList.contains('is-off')).toBe(true);
+  });
+
+  it('keeps a locked selection from the trash, as the drawing toolbar and the menu do', () => {
+    const { w, rail } = make();
+    const [, , lock, , trash] = rail.querySelectorAll('.oac-rail__ctl .oac-rail__btn');
+    const id = addLine(w);
+    w.draw.select(id);
+    lock.click();
+    expect(trash.getAttribute('aria-disabled')).toBe('true');
+    trash.click();
+    expect(w.draw.get(id)).toBeDefined();
   });
 
   it('undo and redo follow the history', () => {

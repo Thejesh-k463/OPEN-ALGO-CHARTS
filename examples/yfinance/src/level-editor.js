@@ -107,7 +107,6 @@ export function buildLevelEditor({ levels, defaults, showLabels, fallbackColor, 
     const on = document.createElement('input');
     on.type = 'checkbox';
     on.checked = lv.enabled !== false;
-    on.setAttribute('aria-label', 'Enabled');
     on.addEventListener('change', () => {
       // `true` is the default, so an enabled level carries no flag at all.
       if (on.checked) delete list[i].enabled; else list[i].enabled = false;
@@ -120,7 +119,6 @@ export function buildLevelEditor({ levels, defaults, showLabels, fallbackColor, 
     ratio.type = 'number';
     ratio.step = '0.001';
     ratio.value = String(lv.ratio);
-    ratio.setAttribute('aria-label', 'Ratio');
     ratio.addEventListener('change', () => {
       const n = Number(ratio.value);
       // A blank or unparseable ratio would drop the level on coercion; keep
@@ -128,6 +126,7 @@ export function buildLevelEditor({ levels, defaults, showLabels, fallbackColor, 
       if (ratio.value.trim() === '' || !Number.isFinite(n)) { ratio.value = String(list[i].ratio); return; }
       list[i].ratio = n;
       if (!list[i].label) label.placeholder = fmt(n);
+      name();
       emit();
     });
     r.appendChild(ratio);
@@ -136,7 +135,6 @@ export function buildLevelEditor({ levels, defaults, showLabels, fallbackColor, 
     color.type = 'color';
     color.className = 'swatch';
     color.value = hexOf(lv.color) || hexOf(fallbackColor) || hexOf(levelColor(lv.ratio)) || LEVEL_NEUTRAL;
-    color.setAttribute('aria-label', 'Colour');
     color.addEventListener('change', () => { list[i].color = color.value; emit(); });
     r.appendChild(color);
 
@@ -144,7 +142,6 @@ export function buildLevelEditor({ levels, defaults, showLabels, fallbackColor, 
     label.type = 'text';
     label.value = lv.label || '';
     label.placeholder = fmt(lv.ratio);
-    label.setAttribute('aria-label', 'Label');
     label.addEventListener('change', () => {
       const v = label.value.trim();
       if (v === '') delete list[i].label; else list[i].label = v;
@@ -156,9 +153,18 @@ export function buildLevelEditor({ levels, defaults, showLabels, fallbackColor, 
     x.className = 'lved__x';
     x.type = 'button';
     x.innerHTML = CLOSE;
-    x.setAttribute('aria-label', 'Remove level');
     x.addEventListener('click', () => { list.splice(i, 1); paint(); emit(); });
     r.appendChild(x);
+    // Every control names its level, or seven rows would read the same.
+    function name() {
+      const level = fmt(list[i].ratio);
+      on.setAttribute('aria-label', `Level ${level} enabled`);
+      ratio.setAttribute('aria-label', `Level ${level} ratio`);
+      color.setAttribute('aria-label', `Level ${level} color`);
+      label.setAttribute('aria-label', `Level ${level} label`);
+      x.setAttribute('aria-label', `Remove level ${level}`);
+    }
+    name();
     return r;
   }
 

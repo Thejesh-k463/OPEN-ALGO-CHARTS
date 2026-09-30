@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>OpenAlgo Charts — Phase 7: Family-B transforms</title>
+  <title>OpenAlgo Charts: Phase 7, Family-B transforms</title>
   <style>
     html, body { margin: 0; height: 100%; background: #0d0e12; color: #c7ccd8;
       font: 13px/1.4 system-ui, sans-serif; }
@@ -35,8 +35,8 @@
       'Heikin Ashi':  () => ({ type: 'candlestick', data: runTransform(new HeikinAshiTransform(), bars) }),
       'Renko':        () => ({ type: 'candlestick', data: runTransform(new RenkoTransform({ boxSize: box }), bars) }),
       'Range bars':   () => ({ type: 'candlestick', data: runTransform(new RangeBarsTransform({ range: box * 3 }), bars) }),
-      'Line Break':   () => ({ type: 'candlestick', data: runTransform(new LineBreakTransform({ lines: 3 }), bars) }),
-      'Point & Figure': () => ({ type: 'point-figure', data: runTransform(new PointFigureTransform({ boxSize: box, reversal: 3 }), bars) }),
+      'Line break':   () => ({ type: 'candlestick', data: runTransform(new LineBreakTransform({ lines: 3 }), bars) }),
+      'Point and figure': () => ({ type: 'point-figure', data: runTransform(new PointFigureTransform({ boxSize: box, reversal: 3 }), bars) }),
       'Kagi':         () => ({ type: 'kagi', data: runTransform(new KagiTransform({ reversal: box * 2 }), bars) }),
     };
 

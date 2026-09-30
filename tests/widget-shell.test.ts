@@ -13,6 +13,7 @@ import {
   type Widget, type WidgetOptions, type WidgetContext, type StorageLike,
 } from '../src/widget/index';
 import { fakeWidgetDocument, fakeContainer, fireKey, fire, ensureWindowGlobal, type FakeDocument, type FakeElement } from './helpers/fake-dom-widget';
+import { chromeIconSvg } from 'openalgo-charts/draw';
 
 beforeAll(ensureWindowGlobal);
 
@@ -86,6 +87,15 @@ describe('default candle density', () => {
 });
 
 describe('the frame', () => {
+  it('names drawing rows the way the rail and the properties title do', () => {
+    const { w } = make();
+    const at = [{ time: 1, price: 2 }];
+    const line = w.draw.add({ tool: 'trend-line', paneIndex: 0, style: {}, points: at });
+    const xabcd = w.draw.add({ tool: 'xabcd-pattern', paneIndex: 0, style: {}, points: at });
+    expect(w.objects.get('drawing:' + line.id)?.name).toBe('Trend Line');
+    expect(w.objects.get('drawing:' + xabcd.id)?.name).toBe('XABCD Pattern');
+  });
+
   it('owns a live objects panel and routes edits to existing settings dialogs', () => {
     const { w, root, doc } = make();
     const drawing = w.draw.add({ tool: 'trend-line', paneIndex: 0, style: {}, points: [] });
@@ -263,6 +273,8 @@ describe('symbol, interval and chart type', () => {
     expect(a.root.querySelectorAll('.oac-pills > button').map((b) => b.dataset.interval)).toEqual(['1m', '5m', '15m', '1h', '1d', '1w', '2h']);
     const b = make({ intervals: ['5m', '1d'], interval: '1d' });
     expect(b.root.querySelectorAll('.oac-pills > button').map((x) => x.textContent)).toEqual(['5m', 'D']);
+    // Each name carries the text the pill shows.
+    expect(b.root.querySelectorAll('.oac-pills > button').map((x) => x.getAttribute('aria-label'))).toEqual(['Interval 5m', 'Interval D']);
     (b.root.querySelector('.oac-pills > button[data-interval="5m"]') as FakeElement).click();
     expect(b.w.interval()).toBe('5m');
   });
@@ -471,6 +483,30 @@ describe('state and persistence', () => {
     w.setInterval('1h');
     w.destroy();
     expect(JSON.parse(store.map.get(`${STORAGE_PREFIX}default:${STATE_KEY}`) as string).interval).toBe('1h');
+  });
+
+  it('writes a pending save when the page goes away, and stops listening once destroyed', () => {
+    // The fake document has no window, and the flush listens on the window.
+    const doc = fakeWidgetDocument();
+    const listeners = new Map<string, Set<() => void>>();
+    (doc as unknown as { defaultView: unknown }).defaultView = {
+      addEventListener: (type: string, fn: () => void) => { listeners.set(type, (listeners.get(type) ?? new Set()).add(fn)); },
+      removeEventListener: (type: string, fn: () => void) => { listeners.get(type)?.delete(fn); },
+    };
+    const pagehide = (): void => { for (const fn of [...(listeners.get('pagehide') ?? [])]) fn(); };
+    const store = new MemoryStorage();
+    const key = `${STORAGE_PREFIX}default:${STATE_KEY}`;
+    const { w } = make({ persist: true, storage: store }, doc);
+    w.setInterval('1h');
+    // Still inside the debounce: only the page going away writes it now.
+    expect(store.map.has(key)).toBe(false);
+    pagehide();
+    expect(JSON.parse(store.map.get(key) as string).interval).toBe('1h');
+    w.destroy();
+    store.map.delete(key);
+    pagehide();
+    expect(store.map.has(key)).toBe(false);
+    expect(listeners.get('pagehide')?.size ?? 0).toBe(0);
   });
 });
 
@@ -822,13 +858,15 @@ describe('toasts and the bus', () => {
     expect(JSON.parse(store.map.get(`${STORAGE_PREFIX}default:${STATE_KEY}`) as string).interval).toBe('1h');
   });
 
-  it('the theme button names the theme a click would switch to', () => {
+  it('the theme button shows the theme a click would switch to, as a sun or a moon', () => {
     const { w, root } = make();
     const btn = root.querySelector('.oac-topbar__theme') as FakeElement;
-    expect(btn.textContent).toBe('Light');
+    const glyph = (): string | undefined => btn.querySelector('.oac-glyph')?.innerHTML;
+    expect(glyph()).toBe(chromeIconSvg('sun'));
+    expect(btn.textContent).toBe('');
     btn.click();
     expect(w.theme()).toBe('light');
-    expect(btn.textContent).toBe('Dark');
+    expect(glyph()).toBe(chromeIconSvg('moon'));
     expect(btn.getAttribute('aria-label')).toBe('Switch to the dark theme');
   });
 });

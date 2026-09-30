@@ -72,16 +72,16 @@ export function alertContextEntries(app, event, pane = 1) {
   const pricePane = typeof chart.primaryPaneIndex === 'function' ? chart.primaryPaneIndex() : 0;
   if (target.kind === 'drawing') {
     const id = target.id?.startsWith('draw:') ? target.id.slice(5).split('#')[0] : null;
-    if (id && draw?.get(id)) add('Create drawing alert', { kind: 'drawing', drawingId: id }, draw.alertInfo(id));
+    if (id && draw?.get(id)) add('Create drawing alert...', { kind: 'drawing', drawingId: id }, draw.alertInfo(id));
   } else if (target.kind === 'indicator' && target.instanceId) {
     const instance = chart.indicators().find(item => item.id === target.instanceId);
     const plot = instance && getIndicator(instance.indicatorId).plots.find(item =>
       (item.overlay ? pricePane : instance.paneIndex) === event.paneIndex && (target.plotKey === undefined || item.key === target.plotKey));
-    if (instance && plot) add('Create study alert', { kind: 'indicator', instanceId: instance.id, plotKey: plot.key,
+    if (instance && plot) add('Create study alert...', { kind: 'indicator', instanceId: instance.id, plotKey: plot.key,
       value: instance.values()[plot.key]?.[event.index ?? chart.primaryBars().length - 1] ?? NaN });
   } else if (event.paneIndex === pricePane && event.price !== null && Number.isFinite(event.price)) {
-    add('Create price alert', { kind: 'price', price: event.price });
+    add('Create price alert...', { kind: 'price', price: event.price });
   }
-  rows.push({ label: 'Alerts', onSelect: () => current() && ui.openList() });
+  rows.push({ label: 'Alerts...', onSelect: () => current() && ui.openList() });
   return rows;
 }

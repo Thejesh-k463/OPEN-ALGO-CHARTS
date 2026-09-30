@@ -14,7 +14,13 @@
  * - **viewport**: panning or zooming one moves the others to the same window.
  * - **symbol**: changing the instrument on one changes it on the others.
  * - **interval**: changing a timeframe asks each following host to adopt it.
+ * - **chartType**: changing the chart style (candles, bars, a line) asks each
+ *   following host to adopt it, the same way. Colours, scales and the status
+ *   line are appearance, not chart type: a user linking candles to candles
+ *   may well want each chart's own colours.
  * - **appearance**: visual settings pass through a structural host adapter.
+ * - **drawings**: the group decides which charts share drawings, and the draw
+ *   tier moves them, only between charts on the same instrument. See `./drawings`.
  *
  * Four decisions carry the design.
  *
@@ -54,6 +60,7 @@ import type { LogicalRange } from '../scale/time-scale';
 import { LinkCrosshair } from './crosshair';
 import { followerIndex, followerRange, type LinkDataLayer, type LinkMissingPolicy } from './align';
 import { filterLinkAppearance, type LinkAppearanceAdapter } from './appearance';
+import type { LinkDrawingsAdapter } from './drawings';
 
 /**
  * The slice of the chart a link group drives. `Chart` satisfies it; declaring
@@ -90,8 +97,16 @@ export interface LinkOptions {
   symbol?: boolean;
   /** Mirror the timeframe, via each member's `onInterval`. Default false. */
   interval?: boolean;
+  /** Mirror the chart type (candles, bars, a line), via each member's `onChartType`. Default false. */
+  chartType?: boolean;
   /** Copy visual chart settings through each member's adapter. Default false. */
   appearance?: boolean;
+  /**
+   * Share drawings through each member's `drawings` adapter. Default false.
+   * Only charts on the same instrument share, and only what is drawn while it
+   * is on: see `LinkDrawingsAdapter` for the whole rule.
+   */
+  drawings?: boolean;
   /** What a follower does with an instant it has no bar for. Default 'nearest'. */
   whenMissing?: LinkMissingPolicy;
 }
@@ -111,6 +126,16 @@ export interface LinkMemberOptions {
   interval?: string;
   /** Apply the interval synchronously; return false to refuse an unsupported token. */
   onInterval?: (interval: string, chart: LinkChart) => boolean | void;
+  /** The chart type this chart is showing (a registered chart type id), if the host tracks one. */
+  chartType?: string;
+  /**
+   * Show `chartType` on this chart. Return false to refuse one it cannot draw,
+   * which leaves the member on its own type and asks again on the next change.
+   * Omit to keep this chart's type out of the group's reach.
+   */
+  onChartType?: (chartType: string, chart: LinkChart) => boolean | void;
+  /** This chart's side of drawing sharing. Without one it never shares drawings. */
+  drawings?: LinkDrawingsAdapter;
 }
 
 /** Every option resolved, as `options()` reports them. */
@@ -121,17 +146,34 @@ const DEFAULT_OPTIONS: ResolvedLinkOptions = {
   viewport: true,
   symbol: false,
   interval: false,
+  chartType: false,
   appearance: false,
+  drawings: false,
   whenMissing: 'nearest',
 };
+
+/**
+ * The channels that carry one host-owned token and follow through a member
+ * callback. Interval and chart type behave identically (reported, recorded
+ * even while off, converged when switched on, refusable by a follower), so
+ * they share one implementation rather than two copies that could drift.
+ */
+type TokenChannel = 'interval' | 'chartType';
+type TokenFollower = (value: string, chart: LinkChart) => boolean | void;
+const TOKEN_CHANNELS: readonly TokenChannel[] = ['interval', 'chartType'];
+const FOLLOWERS = { interval: 'onInterval', chartType: 'onChartType' } as const;
 
 interface Member {
   chart: LinkChart;
   appearance: LinkAppearanceAdapter | null;
   symbol: string | null;
   onSymbol: ((symbol: string, chart: LinkChart) => void) | null;
-  interval: string | null;
-  onInterval: NonNullable<LinkMemberOptions['onInterval']> | null;
+  /** What this chart shows on each token channel, as last reported or accepted. */
+  tokens: Record<TokenChannel, string | null>;
+  follow: Record<TokenChannel, TokenFollower | null>;
+  drawings: LinkDrawingsAdapter | null;
+  /** True between the adapter's `join` and its `leave`, so neither is ever called twice in a row. */
+  sharing: boolean;
   unsubscribe: (() => void)[];
   /** One linked crosshair per pane, mirroring the global crosshair's reach. */
   crosshairs: LinkCrosshair[];
@@ -150,7 +192,7 @@ function alive(chart: LinkChart): boolean {
   return chart.panes().length > 0;
 }
 
-function validInterval(value: unknown): value is string {
+function validToken(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
@@ -160,7 +202,8 @@ export class LinkGroup {
   /** True while the group is applying a change to followers. See decision 3. */
   private _broadcasting = false;
   private _symbol: string | null = null;
-  private _interval: string | null = null;
+  /** The latest selection on each token channel, kept even while that channel is off. */
+  private readonly _tokens: Record<TokenChannel, string | null> = { interval: null, chartType: null };
   private _destroyed = false;
 
   public constructor(options: LinkOptions = {}) {
@@ -178,6 +221,10 @@ export class LinkGroup {
    * knows, because a switch that only takes effect on the *next* change would
    * leave a linked grid visibly unlinked.
    *
+   * `interval` and `chartType` converge the same way, on the latest selection.
+   * Turning `drawings` on joins every member that has an adapter, and turning
+   * it off makes each leave.
+   *
    * `viewport` has no equivalent convergence: nothing in the group says which
    * member's window the others should have adopted, so it takes effect on the
    * next pan or zoom.
@@ -189,7 +236,11 @@ export class LinkGroup {
       for (const m of this._members) this._detachCrosshairs(m);
     }
     if (!before.symbol && this._options.symbol) this._convergeSymbol();
-    if (!before.interval && this._options.interval) this._convergeInterval();
+    for (const channel of TOKEN_CHANNELS) {
+      if (!before[channel] && this._options[channel]) this._convergeToken(channel);
+    }
+    const sharing = this._options.drawings === true;
+    if (before.drawings !== sharing) for (const m of [...this._members]) this._share(m, sharing);
   }
 
   public members(): readonly LinkChart[] {
@@ -208,7 +259,12 @@ export class LinkGroup {
 
   /** Latest interval selected by a member, even while interval linking is off. */
   public interval(): string | null {
-    return this._interval;
+    return this._tokens.interval;
+  }
+
+  /** Latest chart type selected by a member, even while chart type linking is off. */
+  public chartType(): string | null {
+    return this._tokens.chartType;
   }
 
   /**
@@ -230,7 +286,9 @@ export class LinkGroup {
    *
    * A member joining a group that already has a symbol adopts it (when symbol
    * sync is on and it can follow), because joining a linked workspace is
-   * exactly the moment a user expects the new chart to fall in line.
+   * exactly the moment a user expects the new chart to fall in line. The same
+   * holds for the interval and the chart type, and a member joining while
+   * drawings are shared joins the sharing.
    */
   public add(chart: LinkChart, member: LinkMemberOptions = {}): void {
     if (this._destroyed || !alive(chart)) return;
@@ -238,10 +296,20 @@ export class LinkGroup {
     if (existing !== null) {
       if (member.symbol !== undefined) existing.symbol = member.symbol;
       if (member.onSymbol !== undefined) existing.onSymbol = member.onSymbol;
-      if (validInterval(member.interval)) existing.interval = member.interval;
-      if (member.onInterval !== undefined) existing.onInterval = member.onInterval;
+      for (const channel of TOKEN_CHANNELS) {
+        const value = member[channel], follow = member[FOLLOWERS[channel]];
+        if (validToken(value)) existing.tokens[channel] = value;
+        if (follow !== undefined) existing.follow[channel] = follow;
+      }
       if (member.appearance !== undefined) existing.appearance = member.appearance;
-      if (this._options.interval) this._convergeInterval();
+      if (member.drawings !== undefined && member.drawings !== existing.drawings) {
+        // The old adapter leaves before the new one joins, so a host moving a
+        // chart's drawings to another sharer never has it in both at once.
+        this._share(existing, false);
+        existing.drawings = member.drawings;
+      }
+      for (const channel of TOKEN_CHANNELS) if (this._options[channel]) this._convergeToken(channel);
+      this._share(existing, this._options.drawings === true);
       return;
     }
     const entry: Member = {
@@ -249,8 +317,13 @@ export class LinkGroup {
       appearance: member.appearance ?? null,
       symbol: member.symbol ?? null,
       onSymbol: member.onSymbol ?? null,
-      interval: validInterval(member.interval) ? member.interval : null,
-      onInterval: member.onInterval ?? null,
+      tokens: {
+        interval: validToken(member.interval) ? member.interval : null,
+        chartType: validToken(member.chartType) ? member.chartType : null,
+      },
+      follow: { interval: member.onInterval ?? null, chartType: member.onChartType ?? null },
+      drawings: member.drawings ?? null,
+      sharing: false,
       unsubscribe: [],
       crosshairs: [],
     };
@@ -260,10 +333,10 @@ export class LinkGroup {
       chart.on('zoom', () => this._onViewport(entry)),
       chart.on('symbol', (p) => this._onSymbolEvent(entry, p)),
       chart.on('style:change', () => this.syncAppearance(chart)),
-      chart.on('interval', (p) => {
-        const interval = typeof p === 'string' ? p : (p as { interval?: unknown } | null)?.interval;
-        if (validInterval(interval)) this._applyInterval(entry, interval);
-      }),
+      ...TOKEN_CHANNELS.map(channel => chart.on(channel, (p) => {
+        const value = typeof p === 'string' ? p : (p as Record<string, unknown> | null)?.[channel];
+        if (validToken(value)) this._applyToken(entry, channel, value);
+      })),
       // Without this the group holds a destroyed chart (and every listener
       // closure it captured) until the next channel event happens to prune it,
       // which for a group whose other member is idle is forever.
@@ -273,16 +346,22 @@ export class LinkGroup {
     // The first member to declare an instrument establishes the group's.
     if (this._symbol === null && entry.symbol !== null) this._symbol = entry.symbol;
     if (this._options.symbol) this._convergeSymbol();
-    if (this._interval === null && entry.interval !== null) this._interval = entry.interval;
-    if (this._options.interval) this._convergeInterval();
+    for (const channel of TOKEN_CHANNELS) {
+      if (this._tokens[channel] === null) this._tokens[channel] = entry.tokens[channel];
+      if (this._options[channel]) this._convergeToken(channel);
+    }
+    // Strictly true: an option spread in as undefined is off, and must not leave unjoined.
+    this._share(entry, this._options.drawings === true);
   }
 
   /** Take a chart out of the group. Safe to call twice, and after `destroy`. */
   public remove(chart: LinkChart): void {
     const i = this._members.findIndex((m) => m.chart === chart);
     if (i < 0) return;
-    this._release(this._members[i]);
-    this._members.splice(i, 1);
+    // Out of the list before any host callback runs, so an adapter's `leave`
+    // that removes this chart again finds nothing left to splice.
+    const [member] = this._members.splice(i, 1);
+    this._release(member);
   }
 
   /**
@@ -298,8 +377,15 @@ export class LinkGroup {
 
   /** Report a host-owned interval selection; followers opt in through `onInterval`. */
   public setInterval(chart: LinkChart, interval: string): void {
-    const entry = this._find(chart);
-    if (entry !== null && validInterval(interval)) this._applyInterval(entry, interval);
+    this._report(chart, 'interval', interval);
+  }
+
+  /**
+   * Report a host-owned chart type selection: the imperative twin of emitting
+   * `'chartType'` on that chart's event bus. Followers opt in through `onChartType`.
+   */
+  public setChartType(chart: LinkChart, chartType: string): void {
+    this._report(chart, 'chartType', chartType);
   }
 
   /** Report an appearance edit. `style:change` does this automatically for settings patches. */
@@ -315,10 +401,11 @@ export class LinkGroup {
   /** Unlink everything: no listeners, no linked crosshairs, no references. */
   public destroy(): void {
     this._destroyed = true;
-    for (const m of this._members) this._release(m);
-    this._members.length = 0;
+    // Emptied first: a drawings adapter's `leave` is host code and may call back in.
+    for (const m of this._members.splice(0)) this._release(m);
     this._symbol = null;
-    this._interval = null;
+    this._tokens.interval = null;
+    this._tokens.chartType = null;
   }
 
   // ── channels ──────────────────────────────────────────────────────────────
@@ -381,25 +468,42 @@ export class LinkGroup {
     });
   }
 
-  private _applyInterval(from: Member, interval: string): void {
+  private _report(chart: LinkChart, channel: TokenChannel, value: string): void {
+    const entry = this._find(chart);
+    if (entry !== null && validToken(value)) this._applyToken(entry, channel, value);
+  }
+
+  private _applyToken(from: Member, channel: TokenChannel, value: string): void {
     // A follower can echo a normalized token while applying the request. Such
     // an echo must not replace the leader's selection before the guard runs.
     if (this._broadcasting || this._destroyed || !alive(from.chart)) return;
-    from.interval = interval;
-    this._interval = interval;
-    if (this._options.interval) this._broadcast(from, target => this._followInterval(target, interval));
+    from.tokens[channel] = value;
+    this._tokens[channel] = value;
+    if (this._options[channel]) this._broadcast(from, target => this._followToken(target, channel, value));
   }
 
-  private _followInterval(target: Member, interval: string): void {
-    if (target.interval === interval || target.onInterval === null) return;
-    if (target.onInterval(interval, target.chart) !== false) target.interval = interval;
+  private _followToken(target: Member, channel: TokenChannel, value: string): void {
+    const follow = target.follow[channel];
+    if (target.tokens[channel] === value || follow === null) return;
+    // Recorded only when accepted, so a refusal is asked again next time.
+    if (follow(value, target.chart) !== false) target.tokens[channel] = value;
   }
 
-  private _convergeInterval(): void {
-    const interval = this._interval;
-    if (interval !== null && this._options.interval) {
-      this._broadcast(null, target => this._followInterval(target, interval));
+  private _convergeToken(channel: TokenChannel): void {
+    const value = this._tokens[channel];
+    if (value !== null && this._options[channel]) {
+      this._broadcast(null, target => this._followToken(target, channel, value));
     }
+  }
+
+  /** Join or leave drawing sharing, each at most once in a row. See `LinkDrawingsAdapter`. */
+  private _share(member: Member, on: boolean): void {
+    if (member.drawings === null || member.sharing === on) return;
+    // A host callback may have removed the member, or destroyed the group, meanwhile.
+    if (on && (this._destroyed || !this._members.includes(member) || !alive(member.chart))) return;
+    member.sharing = on;
+    if (on) member.drawings.join();
+    else member.drawings.leave();
   }
 
   // ── plumbing ──────────────────────────────────────────────────────────────
@@ -437,11 +541,17 @@ export class LinkGroup {
   /** Drop destroyed members, releasing the group's reference to them. */
   private _prune(): void {
     for (let i = this._members.length - 1; i >= 0; i--) {
-      if (alive(this._members[i].chart)) continue;
+      // A drawings adapter's `leave` below is host code and may remove other
+      // members, which only shifts the unvisited ones down: an index past the
+      // end is skipped, and every member still below is visited.
+      const member = this._members[i];
+      if (member === undefined || alive(member.chart)) continue;
       // No `_release`: its chart is gone, so unsubscribing and detaching
       // primitives would only touch a corpse (and `addPrimitive` on one would
-      // resurrect a pane). Dropping the entry is the whole job.
+      // resurrect a pane). Dropping the entry is the whole job, apart from
+      // telling the host's drawing sharer, which keeps a list of its own.
       this._members.splice(i, 1);
+      this._share(member, false);
     }
   }
 
@@ -453,6 +563,7 @@ export class LinkGroup {
     for (const off of member.unsubscribe) off();
     member.unsubscribe.length = 0;
     this._detachCrosshairs(member);
+    this._share(member, false);
   }
 
   /**

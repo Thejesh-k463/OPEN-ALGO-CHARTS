@@ -4,6 +4,7 @@ import { setCompareLegends } from './compare.js';
 import { autosave } from './persist.js';
 import { PaneLegend } from '/dist/openalgo-charts.mjs';
 import { selectedPane } from './pane-target.js';
+import { intervalLabel } from './intervals.js';
 
 let app;
 export function initVolume(a) {
@@ -19,13 +20,13 @@ export const VOLUME_DEFAULTS = {
 
 export const VOLUME_TAB = { id: 'volume', label: 'Volume', inputs: [
   { key: 'volume.visible', type: 'boolean', label: 'Show volume', group: 'Histogram' },
-  { key: 'volume.colorByDirection', type: 'boolean', label: 'Match candle colours', group: 'Histogram' },
+  { key: 'volume.colorByDirection', type: 'boolean', label: 'Match candle colors', group: 'Histogram' },
   { key: 'volume.showMA', type: 'boolean', label: 'Show moving average', group: 'Moving average' },
   { key: 'volume.maPeriod', type: 'number', label: 'Period', min: 1, max: 500, step: 1, group: 'Moving average' },
-  { key: 'volume.maColor', type: 'color', label: 'Colour', group: 'Moving average' },
+  { key: 'volume.maColor', type: 'color', label: 'Color', group: 'Moving average' },
   { key: 'volume.maWidth', type: 'number', label: 'Thickness', min: 1, max: 5, step: 0.5, group: 'Moving average' },
   { key: 'volume.maStyle', type: 'select', label: 'Line style', group: 'Moving average',
-    options: ['solid', 'dashed', 'dotted'].map(value => ({ value, label: value })) },
+    options: ['solid', 'dashed', 'dotted'].map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) })) },
 ].map(input => ({ ...input, default: VOLUME_DEFAULTS[input.key] })) };
 
 export function volumeValues(saved = {}) {
@@ -172,7 +173,7 @@ export function setLegend(bar) {
   if (!app.symbolLegend) return;
   app.symbolLegend.setOptions({
     title: nameOf(app.req.symbol || ''),
-    params: `${(app.req.interval || '').toUpperCase()} · ${exchangeOf(app.req.symbol || '')}`,
+    params: `${intervalLabel(app.req.interval || '')} · ${exchangeOf(app.req.symbol || '')}`,
   });
   setCompareLegends(bar);
   if (!bar) { app.symbolLegend.setValues([]); app.volLegend && app.volLegend.setValues([]); return; }

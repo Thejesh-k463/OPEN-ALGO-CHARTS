@@ -118,14 +118,17 @@ test('after a reload each symbol gets its own drawings back', async ({ page }) =
 });
 
 test('a layout saved before drawings were per symbol keeps them on the symbol it was saved on', async ({ page }) => {
-  await mount(page, 'persist=legacy&symbol=AAA');
+  await mount(page, 'symbol=AAA');
   await showing(page, 'AAA');
   await page.evaluate(() => (window as any).fixture.addLine(0, 40, 120));
   const onA = await drawings(page);
   await page.evaluate(() => {
-    (window as any).fixture.widget.destroy();
-    // Only the layout itself, the way an older release left the storage.
-    for (const key of Object.keys(localStorage)) if (key !== 'oac-widget:legacy:state') localStorage.removeItem(key);
+    const widget = (window as any).fixture.widget;
+    // Only the layout itself, its drawings inside it, in localStorage: the
+    // way an older release left the storage. The default store is IndexedDB
+    // now, which copies it in on the first read of the namespace.
+    localStorage.setItem('oac-widget:legacy:state', JSON.stringify(widget.getState()));
+    widget.destroy();
   });
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('oac-widget:legacy:state')!).chart.drawings.drawings.length)).toBe(1);
   // Opened on another symbol: the saved drawings are not that symbol's.

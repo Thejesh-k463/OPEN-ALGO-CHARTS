@@ -54,7 +54,8 @@ describe('host-owned indicator source', () => {
     expect(node('indsource').hidden).toBe(false);
     expect(node('indsource-owner').textContent).toContain('Chart 2');
     expect(node('indsource-owner').textContent).toContain('<img src=x>');
-    expect(node('indsource-owner').textContent).toContain('second');
+    // The second study of its name on that chart, numbered as the widget numbers it rather than by its internal id.
+    expect(node('indsource-owner').textContent).toBe('Chart 2: <img src=x>, Source signal sample (2)');
     expect(node('indsource-owner').innerHTML).toBe('');
     expect(node('indsource-code').textContent).toContain(sourceSignalDescriptor.toString());
     expect(node('indsource-code').innerHTML).toBe('');
@@ -81,7 +82,7 @@ describe('host-owned indicator source', () => {
     const off = bindIndicatorSource(replacement, 1);
     replacement.emit('indicatorSource', request('restored'));
     expect(node('indsource-owner').textContent).toContain('MSFT');
-    expect(node('indsource-owner').textContent).toContain('restored');
+    expect(node('indsource-owner').textContent).toBe('Chart 1: MSFT, Source signal sample');
     off();
     expect(node('indsource').hidden).toBe(true);
   });

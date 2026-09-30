@@ -1,6 +1,6 @@
 import { chartDataFile, chartDataUnavailableReason, downloadChartData } from './chart-data.js';
 import { capturePaneTarget } from './pane-target.js';
-import { el, openOverlay, closeOverlay, toast } from './ui.js';
+import { el, openOverlay, closeOverlay, toast, studyNames } from './ui.js';
 
 let closeCurrent = null;
 
@@ -45,7 +45,8 @@ export function openChartDataControls(app, target = capturePaneTarget(app)) {
       throw new Error('The chart changed; reopen the download controls');
     }
   };
-  const studies = target.chart.indicators().map(study => ({ id: study.id, name: study.name }));
+  const names = studyNames(target.chart);
+  const studies = target.chart.indicators().map(study => ({ id: study.id, name: names.get(study.id) }));
   if (!current()) return false;
   el('csv-source').textContent = `Chart ${target.pane}: ${target.request.symbol}, ${target.request.interval}`;
   el('csv-from').value = ''; el('csv-to').value = '';
@@ -54,7 +55,7 @@ export function openChartDataControls(app, target = capturePaneTarget(app)) {
   const boxes = studies.map(study => {
     const label = document.createElement('label'); label.className = 'csv-study';
     const input = document.createElement('input'); input.type = 'checkbox'; input.checked = true;
-    const title = document.createElement('span'); title.textContent = `${study.name} (${study.id})`;
+    const title = document.createElement('span'); title.textContent = study.name;
     label.appendChild(input); label.appendChild(title);
     return { id: study.id, input, label };
   });

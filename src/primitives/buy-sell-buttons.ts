@@ -155,7 +155,7 @@ export class BuySellButtons implements IPrimitive {
       this._sellLabel, this._showPrices ? this._fmt(rc, this._bid) : '', 'left');
     // qty chip (neutral surface)
     const qtyFill = rc.theme.background === 'transparent' ? shade(sell, -0.6) : rc.theme.grid;
-    this._drawChip(ctx, this._qtyRect, dpr, qtyFill, this._qty || '—', rc.theme.axisText);
+    this._drawChip(ctx, this._qtyRect, dpr, qtyFill, this._qty || '-', rc.theme.axisText);
     this._drawButton(ctx, this._buyRect, dpr, hovered(this._buyRect, 'buy') ? shade(buy, 0.12) : buy,
       this._buyLabel, this._showPrices ? this._fmt(rc, this._ask) : '', 'right');
     ctx.restore();

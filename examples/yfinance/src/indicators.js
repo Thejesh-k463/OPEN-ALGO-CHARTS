@@ -1,5 +1,5 @@
 import { registeredIndicators, getIndicator, indicatorDefaults, indicatorStyleInputs, INDICATOR_SOURCES } from '/dist/openalgo-charts.mjs';
-import { el, esc, currentTheme, chartTheme, toast, closeOverlay } from './ui.js';
+import { el, esc, currentTheme, chartTheme, toast, closeOverlay, studyNames } from './ui.js';
 import { autosave } from './persist.js';
 import { capturePaneTarget } from './pane-target.js';
 import { historyGroup } from './history.js';
@@ -59,7 +59,8 @@ export function renderIndicatorChips() {
     }
     const x = document.createElement('button');
     x.textContent = '×';
-    x.title = 'remove';
+    x.setAttribute('aria-label', `Remove ${inst.name}`);
+    x.title = `Remove ${inst.name}`;
     x.addEventListener('click', () => {
       if (!target.current()) return;
       chart.removeIndicator(inst.id);
@@ -164,7 +165,7 @@ export function renderInputRows(host, inputs, values, onChange, unavailable) {
   applyTokens(host, widgetTokens(chartTheme(), currentTheme()));
   host.innerHTML = '';
   const members = [];
-  let group = null, head = null, inline = null;
+  let group = null, head = null, inline = null, box = host;
   for (const input of inputs) {
     if (input.group && input.group !== group) {
       group = input.group;
@@ -172,6 +173,14 @@ export function renderInputRows(host, inputs, values, onChange, unavailable) {
       head.className = 'set-group';
       head.textContent = group;
       host.appendChild(head);
+      // The rows under a heading are a group it names, so a second Up or
+      // Color says whose; the box takes no layout of its own.
+      head.id = `${host.id}-group-${members.length}`;
+      box = document.createElement('div');
+      box.className = 'set-rows';
+      box.setAttribute('role', 'group');
+      box.setAttribute('aria-labelledby', head.id);
+      host.appendChild(box);
       inline = null;
     }
     if (inline && (!inlinable(input) || input.inline !== inline.id)) inline = null;
@@ -183,7 +192,7 @@ export function renderInputRows(host, inputs, values, onChange, unavailable) {
     const row = input.type === 'colorPair'
       ? colorPairRow(host, input, values, onChange, unavailable)
       : simpleRow(host, input, values, onChange, unavailable, lead);
-    host.appendChild(row);
+    box.appendChild(row);
     const fields = [...row.querySelectorAll('[data-key]')];
     const member = { input, row, head, fields, parts: [row], offEl: row, offClass: 'set-row--off', titles: [row],
       offKeys: input.type === 'colorPair' ? [input.up.key, input.down.key] : [input.key] };
@@ -231,6 +240,7 @@ function inlineItem(host, inline, input, values, onChange, unavailable) {
   label.htmlFor = host.id + '_' + input.key;
   if (input.tooltip) label.appendChild(helpMark(input.tooltip));
   const field = inputField(host, input.key, input.type, input, values[input.key], onChange, unavailable);
+  describe(field, input);
   if (input.type === 'boolean') item.append(field, label);
   else item.append(label, field._colorPicker?.el || field);
   inline.ctl.appendChild(item);
@@ -430,18 +440,22 @@ function commitNumber(field, spec, value) {
 
 /**
  * The `?` after a label. Attached to the label rather than the row so it stays
- * with the words it explains when a long label wraps, and reachable by tab so a
- * keyboard user is not the only one who cannot read the help.
+ * with the words it explains when a long label wraps. It is for the pointer:
+ * inside the label its text would be read as part of the field's name, so the
+ * field carries the help as its description instead (describe).
  */
 function helpMark(tooltip) {
   const mark = document.createElement('span');
   mark.className = 'set-help';
   mark.textContent = '?';
   mark.title = tooltip;
-  mark.tabIndex = 0;
-  mark.setAttribute('role', 'note');
-  mark.setAttribute('aria-label', tooltip);
+  mark.setAttribute('aria-hidden', 'true');
   return mark;
+}
+
+/** The help text as the field's description. */
+function describe(field, input) {
+  if (input.tooltip) field.setAttribute('aria-description', input.tooltip);
 }
 
 /** A row carrying one control. Booleans sit in the switch column, in front
@@ -459,6 +473,7 @@ function simpleRow(host, input, values, onChange, unavailable, lead = false) {
   label.htmlFor = host.id + '_' + input.key;
   if (input.tooltip) label.appendChild(helpMark(input.tooltip));
   const field = inputField(host, input.key, input.type, input, values[input.key], onChange, unavailable);
+  describe(field, input);
   if (input.type === 'boolean') {
     field.classList.add('set-sw');
     row.append(field, label);
@@ -516,8 +531,10 @@ function colorPairRow(host, input, values, onChange, unavailable) {
     // Which swatch is which is not obvious at 26px, and the pair is too
     // tight for two more labels: the name goes on the control itself, and
     // keeps the reason alongside it when this half has nothing to paint.
-    sw.title = sw.disabled ? half.label + ' - ' + sw.title : half.label;
-    sw._title = why => why === null ? half.label : half.label + ' - ' + why;
+    sw.title = sw.disabled ? half.label + ': ' + sw.title : half.label;
+    sw._title = why => why === null ? half.label : half.label + ': ' + why;
+    // "Body Up", as the widget names it: three rows each have an Up.
+    (sw._colorPicker?.trigger || sw).setAttribute('aria-label', `${input.label} ${half.label}`);
     ctl.appendChild(sw._colorPicker?.el || sw);
   }
   row.append(label, ctl);
@@ -555,10 +572,12 @@ export function renderSettingsTab(draft) {
   const descriptor = getIndicator(inst.indicatorId);
   const inputs = settingsTab === 'style' ? indicatorStyleInputs(descriptor) : descriptor.inputs.map(input => {
     if (input.type !== 'source' || !input.allowStudyOutputs) return input;
+    // Repeated studies are told apart as the widget numbers them, not by an internal id.
+    const names = studyNames(settingsTarget.chart);
     const studyOutputs = settingsTarget.chart.indicators().flatMap(producer => producer.id === inst.id ? []
       : getIndicator(producer.indicatorId).plots.filter(plot => !plot.ohlc).map(plot => ({
         reference: { kind: 'indicator', instanceId: producer.id, plotKey: plot.key },
-        label: `${producer.name} [${producer.id}] / ${plot.title ?? plot.key}`,
+        label: `${names.get(producer.id)} / ${plot.title ?? plot.key}`,
       })));
     return { ...input, studyOutputs };
   });

@@ -97,10 +97,6 @@ export interface BarCacheOptions {
   /** Injectable clock (ms), for tests and for hosts with a server clock. */
   now?: () => number;
   /**
-   * Interval token to seconds, for feeds with tokens this does not know
-   * (tick, Renko, range bars). Return 0 to disable caching for that interval.
-   */
-  /**
    * Override how the cache decides when a bar closes. Return null for "unknown",
    * which makes the cache refuse to store the series rather than guess. Defaults
    * to {@link barCloseSec}, which asks the interval registry.
@@ -566,6 +562,10 @@ export class BarCache implements DataFeed {
  * Wrap any `DataFeed` in a warm-load bar cache.
  *
  *     const feed = withBarCache(new OpenAlgoDataFeed(cfg), { ttlMs, max, storage });
+ *
+ * A hit ends at the last closed bar; a live subscription supplies the forming
+ * one. A host with none must ask again with `noCache: true` when a hit ends
+ * before a bar it has already shown, or its chart steps back to an older close.
  */
 export function withBarCache(feed: DataFeed, options?: BarCacheOptions): BarCache {
   return new BarCache(feed, options);

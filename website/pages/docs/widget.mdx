@@ -12,7 +12,7 @@ import { Callout } from 'nextra/components'
 with a top bar (symbol, interval, chart type, theme, settings, indicators, objects, alerts), a drawing rail
 down the left, a status line, the dialogs behind each of those buttons, keyboard shortcuts
 with a `?` panel that lists them, and optional persistence of the layout. It is one of nine
-loadable tiers (**99.64 kB** Brotli in 2.5.9) and the only tier that supplies
+loadable tiers (**121.36 kB** Brotli in 2.5.10) and the only tier that supplies
 application controls.
 
 The drawing rail includes Anchored VWAP and fixed-range Volume Profile. They use
@@ -27,7 +27,7 @@ menu after the chart is ready. Applications with their own controls can call
 `exportChartDataCsv(chart)` from the base package and deliver the returned text as
 `text/csv;charset=utf-8`.
 
-<RunnableExample height={480} tiers={['widget']} caption="Pick a tool from the rail, open Indicators, change the chart type, right-click the chart, press ? for the shortcut list. No feed is wired here, so the bars go straight on widget.series." code={`const widget = lib.createWidget(el, {
+<RunnableExample height={480} tiers={['widget']} caption="Pick a tool from the rail, open Indicators, change the chart type, right-click the chart, press ? to see and change the shortcuts. No feed is wired here, so the bars go straight on widget.series." code={`const widget = lib.createWidget(el, {
   symbol: 'DEMO',
   exchange: 'NSE',
   interval: '1h',
@@ -100,6 +100,10 @@ From 2.5.5, the same panel can also hold a **Watchlist** and a **News** reader w
 you pass `watchlist: { store, quotes }` and `news: { feed }`. Each appears only when
 its source is supplied; `widget.openWatchlist()` and `widget.openNews()` open them.
 See [Watchlists & News](/docs/watchlists-and-news).
+
+From 2.5.10, a widget given `workspaces` has a Layouts button in the top bar;
+`widget.openLayouts()` opens the menu and `widget.layouts` is its controller. See
+[Workspaces](/docs/workspaces#layouts-and-templates-in-the-widget).
 
 ## Symbol search and direct typing
 
@@ -235,7 +239,7 @@ For asynchronous account storage use `WorkspaceRepository` and `WorkspaceStorage
 from `openalgo-charts/workspace`. Failed writes reject and can be retried. Create
 a new repository when the account namespace changes, and fence stale restores in
 the host. `migrateWidgetWorkspace` imports validated legacy widget state. The
-widget's `persist` convenience remains synchronous local preference storage.
+widget's `persist` convenience is local preference storage for one browser, not an account adapter.
 Portable documents contain no credentials or trading account state.
 
 Order-entry hosts can also pass `tradingCapabilities`, `tradingMode` and
@@ -306,10 +310,13 @@ widget.openSettings();        // false when no settings dialog is registered
 widget.openIndicatorPicker();
 widget.openObjects();         // searchable inventory, false after destruction
 await widget.reload();        // fetch again for the current symbol and interval
+await widget.setRange('5D');  // a preset range: its interval, its sessions in view (since 2.5.10)
+widget.range();               // '5D', or null once the interval is changed by hand
 const saved = widget.getState();   // { version, symbol, exchange, interval, chartType, theme, variant?, chart, rail }
 widget.restoreState(saved);        // { applied, reason?, chart? }
 widget.destroy();                  // saves if persisting, removes the chrome, destroys the chart
 widget.isDestroyed;
+await widget.ready;                // since 2.5.10: the persisted layout applied, the first load started
 ```
 
 `restoreState` applies a saved viewport only when the state was captured on the same
@@ -344,9 +351,11 @@ while the body scrolls. This also applies to a small chart inside a wide desktop
 ## Mobile widget controls
 
 The `mobile` option defaults to `'auto'`: compact controls activate when the widget
-container is at most 640 CSS px wide or its primary pointer is coarse. This keeps the
-controls on a phone in landscape. Use `'always'` for a permanently touch-oriented host
-or `'never'` to keep desktop chrome at every width.
+container is at most 640 CSS px wide, or, with a coarse primary pointer, at most 960
+px wide and under 600 px tall. A phone keeps them in landscape, while a tablet in
+either orientation and a touch laptop keep the desktop chrome. Use `'always'` for a
+permanently touch-oriented host or `'never'` to keep desktop chrome at every width.
+See [Mobile & Touch](/docs/mobile#packaged-mobile-widget-controls) for the full table.
 
 ```ts
 const widget = createWidget('#terminal', {
@@ -360,7 +369,9 @@ Draw, Studies, Objects and More according to the same `topbar`, `rail` and `indi
 switches as desktop chrome. Drawing selection adds Properties, Lock or Unlock, and Delete.
 The Drawing sheet includes Finish, Cancel, Undo, Redo, Magnet and Stay while a tool is
 active, and the More sheet opens with Undo and Redo, disabled when there is nothing to take
-back. `rail.tools` restricts both layouts to the same allowed drawing ids.
+back. The desktop [bottom bar](#bottom-bar) is hidden here, so the More sheet also shows the
+market status and the clock, the preset ranges, the price scale toggles and the timezone.
+`rail.tools` restricts both layouts to the same allowed drawing ids.
 
 Both layouts drive one `DrawingController`, `ChartObjects` inventory, overlay stack,
 selection and chart-wide undo history. A container resize changes the controls without replacing
@@ -374,6 +385,107 @@ entry exports `MobileMode`, `MobileOptions` and `MobileHandle` as types. `create
 is the usual entry because it supplies the shared context and teardown. See
 [Mobile and Touch](/docs/mobile) and
 [Scales and Panes](/docs/scales-and-panes#navigation-and-autoscale-animation).
+
+## Bottom bar
+
+Since 2.5.10 a thin strip sits under the chart, between the plot and the status line.
+On the left are the preset ranges and **Go to**; on the right are the market status,
+a clock in the chart's timezone and the price scale toggles. It is on by default, and
+`bottombar: false` leaves it out and puts **Go to** back in the top bar. In a chart grid
+the bar is the grid's: `ChartGridOptions.bottombar` (default false) puts one bar under
+the grid for the active chart; see [Chart grid](/docs/chart-grid).
+
+```ts
+import { createWidget } from 'openalgo-charts/widget';
+import { SessionCalendar } from 'openalgo-charts';
+
+const nse = new SessionCalendar({ timezone: 'Asia/Kolkata', sessions: ['0915-1530:23456'] });
+
+const widget = createWidget('#terminal', {
+  feed, symbol: 'RELIANCE', exchange: 'NSE', interval: '5m',
+  // Trading hours per instrument, applied on every symbol change.
+  sessionCalendar: ({ exchange }) => (exchange === 'NSE' ? nse : null),
+});
+const result = await widget.setRange('1D');   // what the 1D button does
+```
+
+**A range is sized in trading sessions, not in hours.** Each button sets the interval,
+the history the feed is asked for and the visible window. One NSE day at one minute is
+the 375 bars from the 09:15 open, not the 1,440 minutes back from the clock: with a
+session calendar the range walks back through its sessions, so a weekend or a closed
+date is skipped rather than counted, and a date with a midday break counts once. Before
+the open, over a weekend, or with a feed that lags, **1D** is the last session that
+traded, because the window ends at the latest bar rather than the wall clock. Without a
+calendar the fetch reaches back over weekdays, and the placement counts the dates the
+loaded bars fall on. A fetch never asks for less than an ordinary load, so older pages
+keep a useful width. **All** asks the source for its whole history even when the
+interval is already weekly. A range holding more bars than the plot shows at its
+narrowest spacing keeps its latest bars in view, so the last price stays on screen, and
+reports `partial` with `clipped`.
+
+| Button | Interval | Span |
+|---|---|---|
+| 1D, 5D | `1m`, `5m` | one and five trading sessions |
+| 1M, 3M, 6M | `30m`, `1h`, `1d` | calendar months back, to midnight on the same date |
+| YTD, 1Y, 5Y | `1d`, `1d`, `1w` | the first of January, one year, five years |
+| All | `1w` | from the first bar the source has |
+
+When the widget does not offer a range's interval, the range uses the nearest one it
+does offer by ratio, the longer on a tie. A range holds while its interval does: a
+symbol change keeps it and places the same span on the new instrument, and an interval
+picked by hand leaves it, after which loads go back to `lookbackBars`. `setRange`
+resolves to the same result as `goTo` (`placed`, `partial`, `no-data` and the rest,
+reported on the status line) and to `invalid` for an id the widget does not know. Pass
+`ranges` for a list of your own, as `WidgetRange` objects with an `id`, a `label`, an
+`interval`, a `unit` (`'session'`, `'month'`, `'year'`, `'ytd'` or `'all'`) and a
+`count`, or `ranges: []` to leave the buttons out. `DEFAULT_RANGES`, `rangeWindow` and
+`rangeInterval` are exported for a host that sizes ranges itself.
+
+**The market status comes from the instrument calendar.** The bar reads
+`marketStatusAt` on the chart's session calendar: market open with its close, pre-open
+with its opening, post-close and extended hours with when they end, closed or holiday
+with the next opening, all on the chart's clock. It is checked again on a timer at the
+next change of phase, and a calendar that cannot answer shows no status rather than
+stopping the bar. The status is a polite live region, so a screen reader hears the
+market open or close as well as seeing the glyph change. Without a calendar, or with **Session state** off in the chart
+settings, no status is shown. With the bar off, the status line says it instead.
+
+**The clock opens the timezone choice.** It shows the time and the zone's offset from
+UTC, and a click opens a searchable menu: the zones the settings dialog offers first,
+then every zone the runtime knows. A zone picked there moves the time axis and the
+sessions, and is saved with the layout.
+
+**The scale toggles follow the price scale.** Auto-fit, logarithmic and percent act on
+the scale the primary series reads from, and show what it is doing, including after a
+drag of the price axis, an undo or a double-click reset. A mode change is a step on the
+chart's undo timeline.
+
+**Session shading is on by default.** `sessionShading` attaches `attachSessionShading`
+to the chart: a faint wash behind pre-open, post-close and extended-hours bars, read from
+the chart's calendar. A calendar without those hours, or no calendar, shades nothing, so
+a regular-hours chart looks as before. `sessionShading: false` turns it off.
+
+In the phone layout the bar is hidden and the **More** sheet carries its controls: the
+market status and the clock at the top, then the ranges, the scale toggles and the
+timezone. With `topbar: false` there is no **More** sheet, so the bar stays, between the
+chart and the phone footer. On a narrow bar the ranges scroll, and the status, the clock
+and the scale toggles keep their size. A chart grid gives its cells no bar of their own. For a host of your own,
+`mountBottombar(context, element, options)` builds the strip over any chart: its
+`target` option is read at every use, so one bar can follow whichever chart has the
+focus, and its `controls` drive the same actions without the markup. The reference
+host mounts it under its stage this way.
+
+The bar's words go through `translate` like the rest of the chrome. A range button's
+text is `schema.ui.range.<id>` (`schema.ui.range.1D`), its accessible name
+`schema.ui.rangeName` (`Range {range}`), its tooltip's second line
+`schema.ui.rangeSpan.<unit>` (`session`, `sessions`, `month`, `months`, `year`, `years`,
+`ytd`, `all`, with `{count}`), and what it did `schema.ui.rangeResult.placed` or
+`schema.ui.rangeResult.empty`. The status is `schema.ui.market.<phase>` (`regular`,
+`pre`, `post`, `extended`, `closed`, `holiday`) with `schema.ui.market.closes`,
+`schema.ui.market.opens` or `schema.ui.market.until` and a `{time}`. The labels of the
+controls themselves are under `schema.ui.bottombar.`: `label`, `ranges`, `noRanges`,
+`scale`, `auto`, `log`, `percent`, `noScale`, `timezone` (with `{zone}`),
+`timezoneHint`, `timezones`, `findZone`, `allZones` and `badZone`.
 
 ## Options
 
@@ -401,15 +513,21 @@ passes through to `createChart` unchanged.
 | `theme` | `'dark'` \| `'light'` \| `ChartTheme` | A named palette or a full theme object. Drives both the canvas and the chrome tokens (see below). Default `'dark'` (the engine's own default is light). |
 | `rail` | `boolean` \| `RailOptions` | The drawing rail. `false` hides it; `tools` restricts which registered tool ids appear (the order follows the rail's own groups); `favorites` seeds the pins when nothing is stored. |
 | `topbar` | `boolean` | The symbol, interval, chart type, indicators, capture, settings and theme controls. |
-| `statusline` | `boolean` | The status line under the chart. |
-| `mobile` | `'auto'` \| `'always'` \| `'never'` | Responsive widget controls. Default `'auto'`, active at a container width of 640 CSS px or less or when the primary pointer is coarse. |
+| `statusline` | `boolean` | The status line under the chart: the readings of the bar under the pointer, and of the latest bar, updated live, while the pointer is away. With the bottom bar off it also shows the market status. |
+| `bottombar` | `boolean` | The strip under the chart with preset ranges, Go to, the market status, the clock and the price scale toggles (since 2.5.10). Default on. See [Bottom bar](#bottom-bar). |
+| `ranges` | `WidgetRange[]` | The preset ranges for the bottom bar and `setRange` (since 2.5.10). Default `DEFAULT_RANGES`; `[]` leaves the buttons out. |
+| `sessionCalendar` | `SessionCalendarSource` \| `(instrument) => SessionCalendarSource \| null` | Trading hours, applied to the chart for the first symbol and on every symbol change (since 2.5.10). They size ranges in sessions and give the market status and the shading their hours. Default: the chart's calendar is left to the host. |
+| `sessionShading` | `boolean` | Shade pre-open, post-close and extended-hours bars from the chart's calendar (since 2.5.10). Default on; nothing is shaded without such hours. |
+| `mobile` | `'auto'` \| `'always'` \| `'never'` | Responsive widget controls. Default `'auto'`, active at a container width of 640 CSS px or less, or up to 960 px wide and under 600 px tall with a coarse primary pointer. |
 | `indicators` | `boolean` | The Indicators button and picker. Turn it off for a host that manages indicators itself. |
-| `persist` | `boolean` \| `string` | `true` saves the state under the `default` namespace (`oac-widget:default:state`) and restores it on the next `createWidget`; a string names the namespace, for more than one widget per origin. |
-| `storage` | `StorageLike` \| `null` | The store behind `persist`. Default: the page's `localStorage`. |
+| `persist` | `boolean` \| `string` | `true` saves the state under the `default` namespace (`oac-widget:default:state`) and restores it on the next `createWidget`; a string names the namespace, for more than one widget per origin. Since 2.5.10 the state lands when `widget.ready` settles (see [Persistence](#persistence)). |
+| `storage` | `StorageLike` \| `AsyncStorageLike` \| `null` | The store behind `persist`. Default: IndexedDB (since 2.5.10), else the page's `localStorage`. Pass `localStorage` to restore synchronously, as before. |
 | `drawingScope` | `'instrument'` \| `'chart'` | Whose drawings the chart shows (since 2.5.9). Default `'instrument'`: each symbol and exchange keeps its own. `'chart'` keeps one set on screen whatever symbol is loaded. See [Drawings per instrument](#drawings-per-instrument). |
 | `drawingStore` | `DrawingDocumentStore` | Where each instrument's drawings are kept (since 2.5.9). Default: beside the layout with `persist`, else in memory. |
 | `drawingTemplates` | `DrawingTemplateStore` | Saved drawing looks (since 2.5.9): a tool's default and named templates, usually a `DrawingTemplateRepository` from `openalgo-charts/workspace`. Without one no template control is shown. See [Drawing toolbar, templates and coordinates](#drawing-toolbar-templates-and-coordinates). |
 | `drawingToolbar` | `boolean` | The floating toolbar over the selected drawings on a desktop layout (since 2.5.9). Default: on with the rail. |
+| `workspaces` | `WorkspaceStore` | Saved layouts and indicator templates (since 2.5.10): usually a `WorkspaceRepository` from `openalgo-charts/workspace`. Adds the Layouts menu and templates in the indicator picker. See [Workspaces](/docs/workspaces#layouts-and-templates-in-the-widget). |
+| `layouts` | `LayoutsController \| false` | What the Layouts menu drives (since 2.5.10). Default: a controller over the widget; `false` for no menu. |
 | `locale` | `string` | A BCP 47 tag the status line formats numbers with. |
 | `symbolSearch` | `(query) => SymbolMatch[] \| Promise<SymbolMatch[]>` | Called as the user types in the symbol box; the results open as a menu under it. |
 | `lookbackBars` | `number` | Bars per load. Default 500. |
@@ -422,6 +540,36 @@ passes through to `createChart` unchanged.
 The chrome switches (`rail`, `topbar`, `statusline`, `indicators`) default to on, so a
 bare `createWidget(el)` is the full terminal. `persist` defaults to off: nothing is
 written to storage until you ask.
+
+## Persistence
+
+With `persist` the widget keeps its layout, rail preferences, panels and each
+instrument's drawings in IndexedDB (since 2.5.10; before, `localStorage`). IndexedDB
+answers later, so the widget is built on its defaults, kept out of sight, and asks the
+feed for nothing until the saved layout has been read; then it applies it and loads the
+saved instrument. Await `widget.ready` before reading or editing the restored state:
+
+```ts
+const widget = createWidget(el, { feed, persist: 'desk' });
+await widget.ready;
+widget.symbol();   // the saved symbol
+```
+
+- **Upgrading.** The first visit copies the `oac-widget:<namespace>:` keys an earlier
+  release left in `localStorage` into IndexedDB, once, and leaves them where they were.
+- **Several tabs.** Each write that lands is announced to the other tabs on the
+  database, so a tab opened earlier shows the lines another tab drew since and does not
+  write over them. A hidden tab writes its layout only when it has a change pending.
+- **Unload.** The writes still pending when the page hides or closes are kept in a small
+  `localStorage` journal and written at the next load.
+- **Failures.** A store that cannot be read runs the session on memory; a refused write
+  is sent again with the next change. Both are reported on the status line.
+- **Keeping localStorage.** `storage: localStorage` (or any synchronous `StorageLike`)
+  restores before `createWidget` returns, exactly as before 2.5.10.
+- **Another store.** `createIndexedDbWidgetStorage(indexedDB, 'my-app-charts')` names the
+  database. Any object with `entries(prefix)`, `setItem` and `removeItem` returning
+  promises (`AsyncStorageLike`) works too. An optional `subscribe(listener)` lets the widget
+  follow the changes others make to it.
 
 <Callout type="info">
 A control exists only where the engine has something behind it. Every dialog is generated
@@ -456,7 +604,8 @@ widget.instrumentDrawings?.document({ symbol: 'INFY', exchange: 'NSE' });   // r
 
 - **Storage.** With `persist`, each instrument's drawings sit beside the layout under
   `oac-widget:<namespace>:drawings:<exchange>:<symbol>` (`DRAWINGS_KEY_PREFIX`), written on
-  every change. Without it they live in memory for the life of the widget. `drawingStore`
+  every change. Since 2.5.10 those keys live in IndexedDB unless `storage` names a
+  synchronous store. Without it they live in memory for the life of the widget. `drawingStore`
   puts them anywhere else.
 - **Layouts.** `getState()` carries the drawings of the symbol it names, the ones on screen.
   A layout restored for another symbol keeps its drawings for that symbol. A layout saved
@@ -640,6 +789,12 @@ element without one can trigger a CSP report during parsing, before the widget r
 A populated stylesheet with this id is left untouched, including its CSS and nonce;
 a host supplying the full stylesheet must include both `WIDGET_CSS` and `DIALOG_CSS`.
 
+The parts the widget loads on first use
+([Loading without a bundler](#loading-without-a-bundler)) are module scripts beside the
+tier file, so `script-src` allows them the way it allows the tier: by origin, or by a
+path ending in `/`. Do not list them by file name: each name carries a content hash,
+which changes from release to release.
+
 ## Extending the rail with your own tools
 
 The rail is a view of the draw tier's tool registry. Register a tool the way
@@ -700,15 +855,39 @@ The standalone script (`openalgo-charts.standalone.js`) is base-only and cannot 
 widget: a tier loaded beside it would import its own second engine. See
 [Use from a CDN](/docs/cdn).
 
+Some of the widget loads on first use. The shortcuts panel, the Layouts menu, the
+indicator templates list, the chart data dialog, a chart grid's bar and menus, and the
+IndexedDB store a persisting widget reads are not in `openalgo-charts.widget.mjs` but in
+files beside it (`openalgo-charts.widget.<part>-<hash>.mjs`), fetched with `import()`
+the first time they are needed. A part resolves against the tier's own URL, so `dist/`
+or a CDN path needs nothing more, and a bundler splits it the same way. Under a Content
+Security Policy, `script-src` must allow the tier's origin, as it already must for the
+tier itself; a part's rules join the widget's stylesheet and keep its nonce. A part that
+cannot load says so in a toast (the store, on the status line) each time it is asked
+for, and the rest of the widget goes on working; a browser keeps a failed module fetch
+until the page reloads. While a part loads, a control pressed again asks once, the last
+control pressed is the one answered, and a user who has moved on by the time it arrives
+(a press elsewhere, Escape, or typing into another field) is not interrupted by it.
+
+A tier file and its parts must come from the same release, because a part uses the
+tier's internals and those change from build to build. The hash in a part's name is of
+its content, so a new tier file asks for its own parts, never for a copy a cache kept. A
+host serving `dist/` itself should serve the tier files, whose names stay the same from
+release to release, with revalidation (`Cache-Control: no-cache`), and may cache the
+hashed parts for a long time (`max-age=31536000, immutable`). A CDN URL must pin the
+exact version, never a range or no version at all (see
+[Pin the version](/docs/cdn#pin-the-version)).
+
 ## Size
 
-Budgets from `.size-limit.json` and measurements from the 2.5.9 build, decimal
+Budgets from `.size-limit.json` and measurements from the 2.5.10 build, decimal
 Brotli kB, enforced by `npm run size`:
 
 | Row | Files | Budget | Measured |
 |---|---|--:|--:|
-| Widget tier | `openalgo-charts.widget.mjs` | 99.65 kB | 99.64 kB |
-| Widget terminal | base + draw + indicators + widget | 327.32 kB | 327.32 kB |
+| Widget tier | `openalgo-charts.widget.mjs` | 121.36 kB | 121.36 kB |
+| Widget first-use parts | `openalgo-charts.widget.<part>-<hash>.mjs`, seven files | 18.19 kB | 18.19 kB |
+| Widget terminal | base + draw + indicators + widget | 354.46 kB | 354.46 kB |
 
 The widget is a tier because of these rows. A host that never calls `createWidget`
 downloads none of it, and the base engine's own budget is unchanged.
@@ -744,8 +923,8 @@ See [data loading](/docs/data-loading) for the interactive failure/retry example
 
 ## Go to a date or range
 
-**Go to** in the toolbar (or **More**, then **Go to** on a narrow screen) opens a
-compact panel. **Date** shows one date at the current zoom; **Range** fits two
+**Go to** in the bottom bar (in the top bar with `bottombar: false`, or **More**, then
+**Go to** on a narrow screen) opens a compact panel. **Date** shows one date at the current zoom; **Range** fits two
 dates, or two date and time pairs, to the plot. Dates and times are read in the
 chart timezone, IST unless the host sets another. A blank time is the start of
 the day, or its end for the To field. Daily and longer intervals show the date

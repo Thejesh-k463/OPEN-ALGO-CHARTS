@@ -18,14 +18,68 @@ import {
   CHROME_ICONS, CHROME_ICON_FILLED, chromeIcon, chromeIconIds,
   CHROME_ICON_VIEWBOX, CHROME_ICON_STROKE, CHROME_ICON_ATTRS,
   DRAWING_TOOL_ACCENTS, drawingToolAccent, CHROME_ICON_ACCENTS, chromeIconAccent,
-  type IconAttrs,
+  chartTypeIcon, layoutIconPath,
+  type IconAttrs, type LayoutIconSlot,
 } from '../src/draw/icons';
+import { chromeIconSvg, iconSvg } from '../src/draw/icon-svg';
 import { registeredDrawingTools, registerBuiltinDrawingTools } from '../src/draw/index';
+import { registeredChartTypes } from '../src/index';
+import { registerTransformChartTypes } from '../src/transform/index';
 import {
   clotted, coords, drawingKey, gridPoints, isClosed, subpathKey, subpaths,
 } from './helpers/icon-geometry';
 
 registerBuiltinDrawingTools();
+registerTransformChartTypes();
+
+/**
+ * Every chrome id a host may code against, other than the chart types. The
+ * ids are public API from the release that ships them: a host's toolbar
+ * names them in its own source, so a rename or a removal breaks it, and this
+ * list is the check that one does not happen by accident.
+ */
+const CHROME_ID_LIST = [
+  // Shipped through 2.5.9.
+  'cursor', 'magnet', 'lock', 'unlock', 'eye', 'eye-off', 'star', 'star-filled', 'trash', 'settings',
+  'undo', 'redo', 'copy', 'paste', 'duplicate', 'front', 'back', 'text', 'chevron-down', 'chevron-right',
+  'close', 'plus', 'minus', 'search', 'grid', 'link', 'unlink', 'camera', 'download',
+  // Capture, navigation and the grid of charts.
+  'capture-grid', 'chevron-up', 'chevron-left', 'check', 'more', 'grip', 'refresh', 'swap',
+  'layout', 'maximize', 'restore', 'fullscreen', 'fullscreen-exit',
+  'link-group', 'drawing-sync', 'crosshair', 'time-range', 'palette',
+  // Time, the market session and replay.
+  'calendar', 'clock', 'globe', 'market-open', 'market-pre', 'market-post', 'market-closed', 'market-holiday',
+  'replay', 'play', 'pause', 'stop', 'step-forward', 'step-back', 'record',
+  // The price scale, layouts and files.
+  'scale-auto', 'scale-log', 'scale-percent',
+  'folder', 'save', 'save-as', 'autosave', 'rename', 'recent', 'template', 'keyboard',
+  // Status, drawing, text, panels and trading.
+  'bell', 'bell-off', 'pin', 'pin-filled', 'info', 'warning', 'error', 'sun', 'moon',
+  'eraser', 'measure', 'fill', 'bold', 'italic',
+  'watchlist', 'news', 'account', 'compare', 'indicators',
+  'buy', 'sell', 'close-position', 'reverse', 'bracket', 'dom-ladder',
+  // Settings tabs and menu marks.
+  'legend', 'axes', 'panels', 'trading', 'brush', 'above-series', 'behind-series', 'fit', 'coordinates',
+  'line-dashed', 'line-dotted', 'line-mixed',
+];
+
+/** The transforms, by the id a host names each by; two of them are chart types as well. */
+const TRANSFORM_IDS = ['heikin-ashi', 'renko', 'range-bars', 'line-break', 'point-figure', 'kagi'];
+
+/**
+ * The layouts a picker offers, as rows, columns and slots. Uneven ones are
+ * spans: one tall pane beside two or three, one wide pane over two.
+ */
+const LAYOUTS: [string, number, number, LayoutIconSlot[] | undefined][] = [
+  ['1x1', 1, 1, undefined], ['1x2', 1, 2, undefined], ['2x1', 2, 1, undefined], ['1x3', 1, 3, undefined],
+  ['3x1', 3, 1, undefined], ['2x2', 2, 2, undefined], ['2x3', 2, 3, undefined], ['3x2', 3, 2, undefined],
+  ['2x4', 2, 4, undefined], ['3x3', 3, 3, undefined], ['3x4', 3, 4, undefined], ['4x4', 4, 4, undefined],
+  ['1+2', 2, 2, [{ row: 0, column: 0, rowSpan: 2 }, { row: 0, column: 1 }, { row: 1, column: 1 }]],
+  ['2+1', 2, 2, [{ row: 0, column: 0 }, { row: 1, column: 0 }, { row: 0, column: 1, rowSpan: 2 }]],
+  ['1+3', 3, 2, [{ row: 0, column: 0, rowSpan: 3 }, { row: 0, column: 1 }, { row: 1, column: 1 }, { row: 2, column: 1 }]],
+  ['1/2', 2, 2, [{ row: 0, column: 0, columnSpan: 2 }, { row: 1, column: 0 }, { row: 1, column: 1 }]],
+  ['2/1', 2, 2, [{ row: 0, column: 0 }, { row: 0, column: 1 }, { row: 1, column: 0, columnSpan: 2 }]],
+];
 
 /**
  * One row per tier. The invariants are the same on both grids; only the
@@ -384,23 +438,47 @@ describe('look-alike glyphs are drawn apart', () => {
 });
 
 describe('the chrome tier', () => {
-  it('ships every glyph a host rail and dialog need', () => {
+  it('ships every glyph a host rail, bar, menu and dialog need', () => {
     // A missing chrome glyph sends the host back to drawing its own, which is
     // the drift this registry exists to end.
-    const needed = [
-      'cursor', 'magnet', 'lock', 'unlock', 'eye', 'eye-off', 'trash', 'settings',
-      'undo', 'redo', 'copy', 'paste', 'duplicate', 'star', 'star-filled',
-      'chevron-down', 'chevron-right', 'close', 'plus', 'minus', 'front', 'back',
-      'text', 'search', 'grid', 'link', 'unlink', 'camera', 'download',
-    ];
-    const missing = needed.filter((id) => chromeIcon(id) === undefined);
+    const missing = CHROME_ID_LIST.filter((id) => chromeIcon(id) === undefined);
     expect(missing, `chrome glyphs missing: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  it('publishes exactly the listed ids besides the chart types, and at least eighty of them', () => {
+    // An id that appears here without being listed is an id nobody agreed
+    // to support; one that disappears breaks a host that names it.
+    const ids = chromeIconIds().filter((id) => !id.startsWith('chart-'));
+    expect([...ids].sort()).toEqual([...CHROME_ID_LIST].sort());
+    expect(new Set(CHROME_ID_LIST).size).toBe(CHROME_ID_LIST.length);
+    expect(ids.length).toBeGreaterThanOrEqual(80);
+  });
+
+  it.each(chromeIconIds())('%s renders as markup through the builder', (id) => {
+    const svg = chromeIconSvg(id);
+    expect(svg).toContain(`<path d="${CHROME_ICONS[id]}"/>`);
+    expect(svg).toContain('viewBox="0 0 16 16"');
+    expect(svg).toContain(`fill="${CHROME_ICON_FILLED.has(id) ? 'currentColor' : 'none'}"`);
   });
 
   it('marks only glyphs it actually has as filled', () => {
     for (const id of CHROME_ICON_FILLED) expect(chromeIcon(id), id).toBeDefined();
     expect(CHROME_ICON_FILLED.has('star-filled')).toBe(true);
     expect(CHROME_ICON_FILLED.has('star')).toBe(false);
+  });
+
+  it.each([...CHROME_ICON_FILLED])('%s has an area to fill', (id) => {
+    // A fill paints only closed shapes; a glyph listed as filled with none
+    // would draw as its outline and show no state change at all.
+    expect(subpaths(chromeIcon(id)!).some(isClosed), `${id} has no closed shape`).toBe(true);
+  });
+
+  it('keeps the outline and the filled state of one control as two drawings', () => {
+    for (const [off, on] of [['star', 'star-filled'], ['pin', 'pin-filled']]) {
+      expect(drawingKey(chromeIcon(off)!)).not.toBe(drawingKey(chromeIcon(on)!));
+      expect(CHROME_ICON_FILLED.has(off)).toBe(false);
+      expect(CHROME_ICON_FILLED.has(on)).toBe(true);
+    }
   });
 
   it('draws the filled star as a closed pentagram, so the nonzero rule fills its centre', () => {
@@ -421,11 +499,120 @@ describe('the chrome tier', () => {
   });
 });
 
+describe('the chart types', () => {
+  it('has a glyph for every registered chart type, transforms included', () => {
+    // The chart-type menu shows every type; one without a glyph leaves a gap
+    // in the column of pictures, and a host fills it with its own drawing.
+    const types = registeredChartTypes();
+    expect(types).toContain('point-figure');
+    expect(types).toContain('kagi');
+    const missing = types.filter((t) => chartTypeIcon(t) === undefined);
+    expect(missing, `chart types with no glyph: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  it('has a glyph for every transform', () => {
+    const missing = TRANSFORM_IDS.filter((t) => chartTypeIcon(t) === undefined);
+    expect(missing, `transforms with no glyph: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  it('draws nothing but chart types and transforms under the chart- prefix', () => {
+    const known = new Set([...registeredChartTypes(), ...TRANSFORM_IDS]);
+    const stray = chromeIconIds().filter((id) => id.startsWith('chart-') && !known.has(id.slice(6)));
+    expect(stray).toEqual([]);
+    expect(chromeIconIds().filter((id) => id.startsWith('chart-'))).toHaveLength(known.size);
+  });
+
+  it('reads the chrome entry of the same name, and nothing for a type a host registered', () => {
+    for (const t of [...registeredChartTypes(), ...TRANSFORM_IDS]) expect(chartTypeIcon(t)).toBe(chromeIcon(`chart-${t}`));
+    expect(chartTypeIcon('my-renderer')).toBeUndefined();
+    expect(chartTypeIcon('')).toBeUndefined();
+    // A chrome id that is not a chart type is not one through this lookup.
+    expect(chartTypeIcon('settings')).toBeUndefined();
+  });
+});
+
+describe('the layout glyphs', () => {
+  const grid = { lo: 2, hi: 14 };
+
+  it.each(LAYOUTS)('%s is drawn to the chrome grid', (_name, rows, columns, slots) => {
+    const d = layoutIconPath(rows, columns, slots);
+    expect(d).not.toMatch(/stroke|fill|width|style|class|[<>]/i);
+    expect(d.startsWith('M2 2h12v12H2z'), 'the frame comes first').toBe(true);
+    for (const n of coords(d)) expect(Number.isInteger(n), `${n} in ${d}`).toBe(true);
+    for (const n of gridPoints(d)) {
+      expect(n).toBeGreaterThanOrEqual(grid.lo);
+      expect(n).toBeLessThanOrEqual(grid.hi);
+    }
+  });
+
+  it.each(LAYOUTS)('%s leaves a pixel clear between any two parallel lines', (_name, rows, columns, slots) => {
+    // A 2px line either side of a whole unit: centres three units apart
+    // leave one clear pixel, and closer ones merge into a block at 16px.
+    const d = layoutIconPath(rows, columns, slots);
+    for (const axis of [0, 1] as const) {
+      const at = [...new Set(subpaths(d).flatMap((s) => s.segments
+        .filter((g) => g.from[axis] === g.to[axis]).map((g) => g.from[axis])))].sort((a, b) => a - b);
+      for (let i = 1; i < at.length; i++) expect(at[i] - at[i - 1], `${d}`).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('draws every layout differently', () => {
+    const seen = new Map<string, string>();
+    for (const [name, rows, columns, slots] of LAYOUTS) {
+      const key = drawingKey(layoutIconPath(rows, columns, slots));
+      expect(seen.get(key), `${name} draws the same as ${seen.get(key)}`).toBeUndefined();
+      seen.set(key, name);
+    }
+  });
+
+  it('splits a grid evenly, and leaves out the dividers inside a spanning pane', () => {
+    expect(layoutIconPath(1, 1)).toBe('M2 2h12v12H2z');
+    expect(layoutIconPath(2, 2)).toBe('M2 2h12v12H2zM8 2 8 14M2 8 14 8');
+    expect(layoutIconPath(1, 3)).toBe('M2 2h12v12H2zM6 2 6 14M10 2 10 14');
+    expect(layoutIconPath(4, 1)).toBe('M2 2h12v12H2zM2 5 14 5M2 8 14 8M2 11 14 11');
+    // One tall pane on the left: the column divider runs the full height,
+    // the row divider only across the right-hand column.
+    expect(layoutIconPath(2, 2, [{ row: 0, column: 0, rowSpan: 2 }, { row: 0, column: 1 }, { row: 1, column: 1 }]))
+      .toBe('M2 2h12v12H2zM8 2 8 14M8 8 14 8');
+    // One pane across the whole grid is the plain frame.
+    expect(layoutIconPath(3, 3, [{ row: 0, column: 0, rowSpan: 3, columnSpan: 3 }])).toBe(layoutIconPath(1, 1));
+  });
+
+  it('draws a cell no slot claims as a pane of its own', () => {
+    expect(layoutIconPath(2, 2, [{ row: 0, column: 0 }])).toBe(layoutIconPath(2, 2));
+    expect(layoutIconPath(2, 2, [])).toBe(layoutIconPath(2, 2));
+  });
+
+  it('refuses what a 16px tile cannot show, and slots that do not fit', () => {
+    for (const [rows, columns] of [[0, 1], [1, 0], [5, 1], [1, 5], [1.5, 2], [Number.NaN, 2], [2, Number.POSITIVE_INFINITY]]) {
+      expect(() => layoutIconPath(rows, columns), `${rows}x${columns}`).toThrow(RangeError);
+    }
+    expect(() => layoutIconPath(2, 2, [{ row: 2, column: 0 }])).toThrow(RangeError);
+    expect(() => layoutIconPath(2, 2, [{ row: 0, column: 1, columnSpan: 2 }])).toThrow(RangeError);
+    expect(() => layoutIconPath(2, 2, [{ row: 0, column: 0, rowSpan: 0 }])).toThrow(RangeError);
+    expect(() => layoutIconPath(2, 2, [{ row: -1, column: 0 }])).toThrow(RangeError);
+    expect(() => layoutIconPath(2, 2, [{ row: 0, column: 0, rowSpan: 2 }, { row: 1, column: 0 }])).toThrow(/overlaps/);
+  });
+});
+
 describe('the lookup', () => {
   it('returns undefined for an unknown tool rather than a placeholder', () => {
     // A host handed a question mark ships it; one handed nothing sees the gap.
     expect(drawingToolIcon('no-such-tool')).toBeUndefined();
     expect(chromeIcon('no-such-button')).toBeUndefined();
+  });
+
+  it('reads only its own entries, never a name every object inherits', () => {
+    // The registries are plain objects: `toString` is a function there, and
+    // was handed back as path data where an unknown id gives undefined.
+    for (const id of ['toString', 'constructor', 'hasOwnProperty', '__proto__']) {
+      expect(drawingToolIcon(id), id).toBeUndefined();
+      expect(drawingToolAccent(id), id).toBeUndefined();
+      expect(chromeIcon(id), id).toBeUndefined();
+      expect(chromeIconAccent(id), id).toBeUndefined();
+      expect(() => chromeIconSvg(id), id).toThrow(/no chrome icon/);
+      expect(() => iconSvg(id), id).toThrow(/no tool icon/);
+    }
   });
 
   it('lists every id it covers', () => {

@@ -17,12 +17,12 @@
  * transaction on the chart history), so one click is one undo step, and a
  * selection the user may not edit shows its controls greyed with the reason.
  */
-import { applyDrawingSettings, drawingSettingsSchema, getDrawingTool, LINE_STYLE_OPTIONS } from 'openalgo-charts/draw';
+import { applyDrawingSettings, chromeIconSvg, drawingSettingsSchema, getDrawingTool, LINE_STYLE_OPTIONS } from 'openalgo-charts/draw';
 import type { Drawing, DrawingTool, SettingsField } from 'openalgo-charts/draw';
 import { editableIds, type WidgetContext } from './context';
+import { commandChord } from './keymap';
 import { createColorPicker } from './color-picker';
-import { boxInRoot, button, chromeGlyph, el, glyphSvg } from './form';
-import { MORE_GLYPH, LINE_STYLE_GLYPH } from './glyphs';
+import { boxInRoot, button, chromeGlyph, el } from './form';
 import { widgetText } from './localization';
 import { openMenu, type MenuRow } from './topbar';
 import { commonSchema, mountDrawingProperties, resolvedDrawingValues } from './dialogs/drawing-properties';
@@ -45,6 +45,14 @@ export interface DrawingToolbarHandle {
 
 /** Widths offered in the width menu: the steps a stroke visibly changes at. */
 export const TOOLBAR_LINE_WIDTHS: readonly number[] = [1, 1.5, 2, 3, 4];
+
+/**
+ * The chrome glyph for each line style, and for a selection that disagrees
+ * (a solid line over a dashed one). The solid line is `minus`, the same drawing.
+ */
+const LINE_STYLE_ICONS: Readonly<Record<string, string>> = {
+  solid: 'minus', dashed: 'line-dashed', dotted: 'line-dotted', mixed: 'line-mixed',
+};
 
 /** Room kept between the toolbar and the selection, and between it and the chart's edge. */
 const GAP = 10;
@@ -150,7 +158,7 @@ export function mountDrawingToolbar(ctx: WidgetContext, host: HTMLElement, opts:
   const remove = button(doc, { label: widgetText(ctx, 'Delete'), icon: 'trash', iconOnly: true, variant: 'danger', onClick: () => {
     act('delete', () => { draw.removeMany(writable()); });
   } });
-  const more = button(doc, { label: widgetText(ctx, 'More drawing actions'), svg: glyphSvg(MORE_GLYPH), iconOnly: true, onClick: () => openMore() });
+  const more = button(doc, { label: widgetText(ctx, 'More drawing actions'), icon: 'more', iconOnly: true, onClick: () => openMore() });
   more.setAttribute('aria-haspopup', 'menu');
   const sep = (): HTMLElement => el(doc, 'span', 'oac-sep');
   const lineSep = sep();
@@ -216,7 +224,7 @@ export function mountDrawingToolbar(ctx: WidgetContext, host: HTMLElement, opts:
     if (field === undefined) return;
     const now = valueAcross(live, field, ctx.chartTheme.lineColor);
     menuOf(style, LINE_STYLE_OPTIONS.map((o) => ({
-      label: styleLabel(o.value), on: now === o.value, onSelect: () => setField('style.lineStyle', o.value),
+      label: styleLabel(o.value), icon: LINE_STYLE_ICONS[o.value], on: now === o.value, onSelect: () => setField('style.lineStyle', o.value),
     })), widgetText(ctx, 'Line style'));
   }
   const styleLabel = (value: string): string => value === 'dashed' ? widgetText(ctx, 'Dashed') : value === 'dotted' ? widgetText(ctx, 'Dotted') : widgetText(ctx, 'Solid');
@@ -225,16 +233,16 @@ export function mountDrawingToolbar(ctx: WidgetContext, host: HTMLElement, opts:
     const hidden = live.length > 0 && live.every((d) => d.visible === false);
     const why = readOnly();
     const rows: Array<MenuRow | string> = [
-      { label: widgetText(ctx, 'Properties...'), onSelect: () => { mountDrawingProperties(ctx, undefined, { ids: targets }); } },
-      { label: widgetText(ctx, 'Duplicate'), key: 'Ctrl+D', onSelect: () => act('duplicate', () => { draw.duplicate(targets); }) },
-      { label: hidden ? widgetText(ctx, 'Show') : widgetText(ctx, 'Hide'), disabled: why !== null, sub: why ?? undefined,
+      { label: widgetText(ctx, 'Properties...'), icon: 'settings', onSelect: () => { mountDrawingProperties(ctx, undefined, { ids: targets }); } },
+      { label: widgetText(ctx, 'Duplicate'), icon: 'duplicate', key: commandChord(ctx.keymap, 'duplicate', 'Mod+D'), onSelect: () => act('duplicate', () => { draw.duplicate(targets); }) },
+      { label: hidden ? widgetText(ctx, 'Show') : widgetText(ctx, 'Hide'), icon: hidden ? 'eye-off' : 'eye', disabled: why !== null, sub: why ?? undefined,
         onSelect: () => act('visibility', () => { draw.updateMany(editableIds(draw, targets).map((target) => ({ id: target, patch: { visible: hidden } }))); }) },
       widgetText(ctx, 'Order'),
       // The controller moves one drawing at a time; the transaction makes the lot one step.
-      { label: widgetText(ctx, 'Bring to front'), onSelect: () => act('front', () => { for (const target of targets) draw.bringToFront(target); }) },
-      { label: widgetText(ctx, 'Send to back'), onSelect: () => act('back', () => { for (const target of targets) draw.sendToBack(target); }) },
-      { label: widgetText(ctx, 'In front of the series'), onSelect: () => act('above', () => { for (const target of targets) draw.bringAboveSeries(target); }) },
-      { label: widgetText(ctx, 'Behind the series'), onSelect: () => act('behind', () => { for (const target of targets) draw.sendBehindSeries(target); }) },
+      { label: widgetText(ctx, 'Bring to front'), icon: 'front', onSelect: () => act('front', () => { for (const target of targets) draw.bringToFront(target); }) },
+      { label: widgetText(ctx, 'Send to back'), icon: 'back', onSelect: () => act('back', () => { for (const target of targets) draw.sendToBack(target); }) },
+      { label: widgetText(ctx, 'In front of the series'), icon: 'above-series', onSelect: () => act('above', () => { for (const target of targets) draw.bringAboveSeries(target); }) },
+      { label: widgetText(ctx, 'Behind the series'), icon: 'behind-series', onSelect: () => act('behind', () => { for (const target of targets) draw.sendBehindSeries(target); }) },
     ];
     if (opts.templates) rows.push(...templateMenuRows(ctx, opts.templates, targets, more));
     menuOf(more, rows, widgetText(ctx, 'More drawing actions'));
@@ -283,7 +291,7 @@ export function mountDrawingToolbar(ctx: WidgetContext, host: HTMLElement, opts:
     if (styleField !== undefined) {
       const now = valueAcross(live, styleField, theme);
       const value = now === MIXED ? 'mixed' : typeof now === 'string' ? now : 'solid';
-      styleGlyph.innerHTML = glyphSvg(LINE_STYLE_GLYPH[value] ?? LINE_STYLE_GLYPH.solid);
+      styleGlyph.innerHTML = chromeIconSvg(LINE_STYLE_ICONS[value] ?? 'minus');
       style.classList.toggle('is-mixed', now === MIXED);
       const said = now === MIXED ? widgetText(ctx, 'mixed') : styleLabel(value);
       style.setAttribute('aria-label', widgetText(ctx, 'Line style: {style}', { style: said }));
@@ -294,15 +302,17 @@ export function mountDrawingToolbar(ctx: WidgetContext, host: HTMLElement, opts:
     const locked = live.filter((d) => d.locked === true).length;
     const allLocked = live.length > 0 && locked === live.length;
     lock.replaceChildren(chromeGlyph(doc, allLocked ? 'lock' : 'unlock'));
-    lock.setAttribute('aria-label', allLocked ? widgetText(ctx, 'Unlock') : widgetText(ctx, 'Lock'));
-    // A selection that is partly locked is neither: the toggle says so.
+    // One name; the pressed state says locked, and a partly locked selection is neither.
+    lock.setAttribute('aria-label', widgetText(ctx, 'Lock'));
     lock.setAttribute('aria-pressed', allLocked ? 'true' : locked > 0 ? 'mixed' : 'false');
     lock.disabled = why !== null;
-    lock.title = why === null ? (allLocked ? widgetText(ctx, 'Unlock') : widgetText(ctx, 'Lock')) : `${widgetText(ctx, 'Lock')} (${why})`;
+    lock.title = why === null ? widgetText(ctx, 'Lock') : `${widgetText(ctx, 'Lock')} (${why})`;
     // Every one locked is the context menu's rule for delete too.
     const noDelete = why ?? (allLocked ? widgetText(ctx, 'locked') : null);
     remove.disabled = noDelete !== null;
-    remove.title = noDelete === null ? `${widgetText(ctx, 'Delete')} (Del)` : `${widgetText(ctx, 'Delete')} (${noDelete})`;
+    // Why it is off, else the chord the user bound: none once Delete has no key.
+    const note = noDelete ?? commandChord(ctx.keymap, 'delete', 'Delete');
+    remove.title = note === undefined ? widgetText(ctx, 'Delete') : `${widgetText(ctx, 'Delete')} (${note})`;
     if (!controls().includes(current)) setRoving(controls()[0] ?? more);
     else setRoving(current);
   }

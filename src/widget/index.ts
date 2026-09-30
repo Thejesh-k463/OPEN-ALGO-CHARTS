@@ -31,7 +31,20 @@ export { createWidget, stripView, resolveTheme, loadWindow, DEFAULT_INTERVALS, D
 export type { Widget, WidgetOptions, WidgetState, WidgetChartState, WidgetRestoreReport, WidgetEventName, WidgetWatchlistOptions, WidgetNewsOptions } from './widget';
 export { createChartGrid, CHART_GRID_PRESETS } from './grid';
 export type { ChartGrid, ChartGridOptions, ChartGridCell, ChartGridLayout, ChartGridPreset, ChartGridApplyReport, ChartGridEvents, ChartGridEventName } from './grid';
+// Hook (chart grid, 2.5.10): the layout catalogue, link groups and the grid's message keys.
+export { CHART_GRID_LAYOUTS } from './grid-layouts';
+export type { ChartGridLayoutId, ChartGridUnevenLayout, ChartGridLayoutSpec, ChartGridLayoutSlot } from './grid-layouts';
+export type { ChartGridLinkGroup } from './grid-links';
+export { CHART_GRID_LAYOUT_NAMES } from './grid-text';
+export type { ChartGridMessage } from './grid-text';
 export { CHART_GRID_CSS } from './grid-styles';
+export { createLayoutsController } from './layouts';
+export type { LayoutsController, LayoutsControllerOptions, LayoutsState, LayoutTarget, LayoutApplyReport, LayoutAutosaveStatus } from './layouts';
+// Layouts: the menu, the one-widget target and indicator templates.
+export { openLayoutsMenu } from './layouts-widget';
+export { widgetLayoutTarget } from './layouts-target';
+export { applyIndicatorTemplate, saveIndicatorTemplate } from './layouts-templates';
+export type { IndicatorTemplateApplyMode } from './layouts-templates';
 export { mountObjectsPanel, createObjectsPanelContent, OBJECTS_PANEL_CSS } from './objects-panel';
 export type { ObjectsPanelOptions, ObjectsPanelContent } from './objects-panel';
 export { readDataWindow, mountDataWindow, DATA_WINDOW_CSS } from './data-window';
@@ -71,9 +84,16 @@ export type {
   DialogMount, DialogHandle, WidgetDialogName,
   OverlayOptions, OverlayStack, TipSpec, TipSource, TipSide, TipController, Box, Size,
 } from './context';
+// Hook (widget storage, 2.5.10): the asynchronous store contract and the IndexedDB store.
+export type { AsyncStorageLike, WidgetStorageOptions, WidgetStorageError } from './context';
+export { createIndexedDbWidgetStorage } from './storage';
+export type { IndexedDbWidgetStorage, IndexedDbWidgetStorageOptions } from './storage';
 
-export { Keymap, openShortcutsPanel, parseKeyCombo, eventKeyCombo, formatKeyCombo, fromChartCombo } from './keymap';
-export type { KeyScope, KeyEventLike, KeyAction, KeyBinding, KeyBindingOptions, KeyConflict, KeymapOptions, KeymapGroup, ChartShortcutSource } from './keymap';
+export { Keymap, openShortcutsPanel, parseKeyCombo, eventKeyCombo, formatKeyCombo, fromChartCombo, KEYMAP_KEY } from './keymap';
+export type {
+  KeyScope, KeyEventLike, KeyAction, KeyBinding, KeyBindingOptions, KeyConflict, KeymapOptions, KeymapGroup, KeymapRow, ChartShortcutSource,
+  KeyChordUse, KeyRebindResult, KeymapOverrides, KeymapChange, ShortcutsPanelOptions,
+} from './keymap';
 
 export { mountRail, toolGlyph, toolName, sanitizeRailPrefs, RAIL_GROUPS, MAGNET_MODES, RAIL_PREFS_KEY } from './rail';
 export type { RailOptions, RailHandle, RailPrefs, RailGroup, RailGroupItem } from './rail';
@@ -101,6 +121,13 @@ export type { WidgetThemeName, WidgetTokens, Rgba } from './tokens';
 export { WIDGET_CSS, WIDGET_STYLE_ID, injectWidgetStyles } from './styles';
 export { WIDGET_COMPONENT_CSS } from './component-styles';
 export { mountMobile } from './mobile';
+// Bottom bar hook: the strip under the chart, its preset ranges and the widget options it reads.
+export { mountBottombar, BOTTOMBAR_CSS, BOTTOMBAR_HEIGHT } from './bottombar';
+export type { BottombarContext, BottombarTarget, BottombarOptions, BottombarControls, BottombarHandle, BottombarScaleToggle, BottombarScaleState } from './bottombar';
+export type { MarketStatusReading } from './bottombar-status';
+export { DEFAULT_RANGES, rangeWindow, rangeInterval } from './ranges';
+export type { WidgetRange, WidgetRangeUnit, WidgetRangeWindow, RangeWindowOptions } from './ranges';
+export type { WidgetBottombarOptions, WidgetSessionCalendar } from './bottombar-shell';
 export type { MobileMode, MobileOptions, MobileHandle } from './mobile';
 export { mountDrawingToolbar, TOOLBAR_LINE_WIDTHS, DRAWING_TOOLBAR_CSS } from './drawing-toolbar';
 export type { DrawingToolbarOptions, DrawingToolbarHandle } from './drawing-toolbar';

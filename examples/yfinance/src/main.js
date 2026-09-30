@@ -10,16 +10,18 @@ import { createChart, PaneLegend } from '/dist/openalgo-charts.mjs';
 // imported by the modules that call into them; the indicators tier is only
 // ever registered, so it is imported here.
 import '/dist/openalgo-charts.indicators.mjs';
-import { el, initShell, chartTheme, chartMotionOptions, setChartState, toast } from './ui.js';
+// The bottom bar and its ranges, read off the namespace like the engine's newer surfaces below.
+import * as widgetTier from '/dist/openalgo-charts.widget.mjs';
+import { el, initShell, chartTheme, chartMotionOptions, setChartState, toast, currentTheme } from './ui.js';
 import { initHover } from './hover.js';
-import { fillIntervalSelect, clampPeriod } from './intervals.js';
+import { fillIntervalSelect, clampPeriod, rangeLoad } from './intervals.js';
 import { initFeed, fetchBars, fetchNote, feedErrorState } from './feed.js';
 import { applyTransform } from './transforms.js';
 import { isExpression, fetchExpressionBars, mountOperatorKeypad, referenceDataContext } from './expression.js';
 import { initStatus, nameOf, symbolStatus } from './status.js';
 import { requestVariant, sessionOf, sessionLabel } from './session.js';
-import { DEFAULT_TZ, initTimezone } from './timezone.js';
-import { initAxisChrome, applyAxisChrome, applyStatusLineChoice, applyTradeChoice } from './axis-chrome.js';
+import { DEFAULT_TZ, initTimezone, syncTimezoneFromChart } from './timezone.js';
+import { initAxisChrome, applyAxisChrome, applyStatusLineChoice, applyTradeChoice, followBottombar } from './axis-chrome.js';
 import { initVolume, attachVolume, refreshVolume, setVolumeShown, setLegend, applyVolumeSettings } from './volume.js';
 import {
   initOrders, saveState, restoreState, cancelOrder, attachOrderLines, removeAllOrders,
@@ -52,9 +54,10 @@ import { initTemplates } from './templates.js';
 import { mountPropertiesBar } from './properties.js';
 import { initDrawing, attachDrawing } from './drawing.js';
 import { scopeDrawings } from './drawing-scope.js';
-import { capturePaneTarget } from './pane-target.js';
+import { capturePaneTarget, selectedPane } from './pane-target.js';
 import { attachTimeline } from './timeline.js';
-import { initGoTo } from './goto.js';
+import { initGoTo, openGoTo } from './goto.js';
+import { attachCanvasTips } from './canvas-tips.js';
 
 // Price-level family (previous close, session extremes, extended hours,
 // bid/ask). Read off the namespace rather than named above on purpose: a
@@ -171,6 +174,7 @@ const app = {
   cache: null,           // the bar cache wrapping the feed; null on a dist/ without one
   offBranding: null,     // refreshes the host link when setBranding changes at runtime
   load: null,            // set below: the modules reach the loader through the app
+  bottombar: null,       // the widget tier's bottom bar under the stage (initBottombar)
 };
 app.load = load;
 app.render = render;
@@ -267,6 +271,10 @@ function render({ keepView = true, state } = {}) {
   // trend line or a box drawn there after Friday's close ends on Monday's
   // bars. Optional-called: an older dist/ has no calendar to take.
   app.chart.dataLayer.setSessionCalendar?.(sessionCalendarFor(app.req.symbol));
+  // The pre-open and post-close hours in that calendar, washed behind their
+  // bars: on an extended-hours chart a move made on thin pre-open volume then
+  // reads as what it is. A regular-hours chart has no bars there to wash.
+  engine.attachSessionShading?.(app.chart);
 
   // Tell the engine the instrument's tick. Left unset, `minMove` is 0, which
   // means "infer precision from the visible range": the axis then renders a
@@ -348,6 +356,9 @@ function render({ keepView = true, state } = {}) {
     if (id.endsWith('::close')) cancelOrder(id.slice(0, -'::close'.length));
   });
   attachOrderLines();
+  // The canvas's own controls say what they do under the pointer.
+  app.offCanvasTips?.();
+  app.offCanvasTips = attachCanvasTips(app.chart, el('chart'), 1);
   updatePositionLine(); // redraw the position line on the rebuilt chart
   if (app.bracket) {
     el('bracket').hidden = false;
@@ -399,6 +410,8 @@ function render({ keepView = true, state } = {}) {
   // Last: everything above built this chart, and none of it is a step. The
   // timeline itself carries over from the chart this one replaced.
   attachHistory(1);
+  // The bar acts on the chart this call just built.
+  app.bottombar?.refresh();
   window.__chart = () => app.chart;
   window.__draw = () => app.draw;
   window.__chart2 = () => app.chart2;
@@ -562,6 +575,119 @@ async function load(opts) {
   }
 }
 
+// ── bottom bar ─────────────────────────────────────────────────────────
+// The widget tier's strip under the stage: preset ranges and Go to on the
+// left, the market status, the clock and the price scale toggles on the
+// right, all acting on whichever chart has the focus. Its root is a layer
+// over the whole stage, so its menus and tips open above the chart and
+// outlive every chart render() throws away; only the strip takes the pointer.
+//
+// A range here is the page's own: the source serves history by named period,
+// so a range picks the interval nearest its own among those this page offers
+// that reach back to its first session, and the shortest period that does,
+// loads them through the ordinary load path unless the pane holds them
+// already, and then places the sessions on the bars that arrived.
+/** The range each pane last took, with the chart it was placed on: a rebuilt chart has left it. */
+const paneRanges = new Map();
+let rangeRequest = 0;
+
+async function applyRange(id) {
+  const { DEFAULT_RANGES, DateNavigator, rangeInterval, rangeWindow } = widgetTier;
+  const range = DEFAULT_RANGES.find(r => r.id === id);
+  const target = capturePaneTarget(app);
+  if (!range || !target?.current()) return { status: 'cancelled' };
+  const mine = ++rangeRequest;
+  const now = Date.now() / 1000;
+  const calendar = sessionCalendarFor(target.request.symbol);
+  const reach = now - rangeWindow(range, { end: now, zone: target.chart.timezone(), calendar }).from;
+  const { interval, period } = rangeLoad(range, reach, rangeInterval);
+  paneRanges.delete(target.pane);
+  const request = { ...target.request, interval, period };
+  // History already on screen only needs the view moved: loading it again
+  // would rebuild the chart, and while a bar is forming it would come from
+  // the wire, all of it, for a change of view. A load under way is about to
+  // replace the chart the view would move on, so the range loads in its place.
+  const onScreen = target.request.interval === interval && target.request.period === period
+    && !(target.pane === 2 ? app.loading2 || app.loadFailed2 : app.loading || app.loadFailed)
+    && !app.replay && !app.replayPicking && !app.replayLoading;
+  if (!onScreen && target.pane === 2) {
+    Object.assign(app.p2, request);
+    await app.loadSecondary();
+  } else if (!onScreen) {
+    for (const key of ['symbol', 'interval', 'period']) el(key).value = request[key];
+    await load();
+  }
+  renderToolbar();
+  if (mine !== rangeRequest) return { status: 'cancelled' };
+  const chart = target.pane === 2 ? app.chart2 : app.chart;
+  // The split was closed while its history loaded, and the range went with it.
+  if (!chart) return { status: 'cancelled' };
+  if (target.pane === 2 ? app.loadFailed2 : app.loadFailed) return { status: 'error', error: new Error(`${request.symbol} history could not load`) };
+  const bars = chart.primaryBars();
+  if (bars.length === 0) return { status: 'no-data' };
+  paneRanges.set(target.pane, { id, chart });
+  const span = rangeWindow(range, { end: bars[bars.length - 1].time, zone: chart.timezone(), calendar: chart.dataLayer.sessionCalendar, bars });
+  const result = await new DateNavigator({ chart }).goTo(span);
+  if (result.status !== 'partial' || !result.clipped || chart.isDestroyed) return result;
+  // A range ends at the latest bar, so one wider than the plot gives up its
+  // oldest bars rather than its newest: the last price stays on screen.
+  const lastBar = bars[bars.length - 1];
+  const last = chart.dataLayer.timeToIndex(lastBar.time) ?? bars.length - 1;
+  const view = chart.getVisibleLogicalRange();
+  const from = last + 0.5 - (view.to - view.from);
+  chart.setVisibleLogicalRange({ from, to: last + 0.5 });
+  return { ...result, from: chart.dataLayer.indexToTime(Math.ceil(from + 0.5)) ?? result.from, to: lastBar.time };
+}
+
+function initBottombar() {
+  const { mountBottombar, createOverlayStack, createTipController, applyTokens, widgetTokens, injectWidgetStyles, WIDGET_COMPONENT_CSS } = widgetTier;
+  const stage = document.querySelector('main.stage');
+  if (!mountBottombar || !stage) return;
+  // The bar's rules ride the widget sheet. The alert layer injects it as well;
+  // whichever comes first fills it and the other call leaves it alone.
+  injectWidgetStyles(document, WIDGET_COMPONENT_CSS);
+  const layer = document.createElement('div');
+  layer.className = 'oac-widget oac-alert-host host-bottombar';
+  const strip = document.createElement('div');
+  layer.appendChild(strip);
+  stage.appendChild(layer);
+  stage.classList.add('has-bottombar');
+  const theme = () => {
+    layer.dataset.theme = currentTheme();
+    applyTokens(layer, widgetTokens(chartTheme(), currentTheme()));
+  };
+  theme();
+  document.addEventListener('oac:theme', theme);
+  const overlays = createOverlayStack(layer, document);
+  const tips = createTipController(layer, overlays.layer, document);
+  const context = {
+    document, tips,
+    openOverlay: (node, options) => overlays.open(node, options),
+    status: (text) => { el('status').textContent = text; },
+  };
+  app.bottombar = mountBottombar(context, strip, {
+    target: () => {
+      const target = capturePaneTarget(app);
+      if (!target) return null;
+      return {
+        // Read when used: a range loads through the page, which builds the
+        // pane a new chart, and what the range did is read off that one. A
+        // split closed meanwhile leaves none, and applyRange cancels then.
+        get chart() { return target.pane === 2 ? app.chart2 : app.chart; },
+        interval: () => target.request.interval,
+        range: () => { const held = paneRanges.get(target.pane); return held && held.chart === target.chart ? held.id : null; },
+        setRange: applyRange,
+      };
+    },
+    onGoTo: (anchor) => openGoTo(anchor),
+    // A zone picked on the main chart survives the next rebuild, the way one picked in the settings does.
+    onTimezone: () => { if (selectedPane(app) === 1) syncTimezoneFromChart(); autosave(); },
+  });
+  // The phone shell hides the bar and a wider window brings it back, and the
+  // corner clock takes whichever side the bar leaves.
+  if (typeof ResizeObserver === 'function') new ResizeObserver(() => followBottombar()).observe(strip);
+}
+
 // Module wiring, in the order the original page registered its listeners.
 initHover();
 // Before the first render(): the shell sets the theme the chart is built in.
@@ -590,6 +716,7 @@ initSnapshot(app);
 initReplay(app);
 initSplit(app);
 initGoTo(app);
+initBottombar();
 initLink(app);
 initClipboard(app);
 initMenus(app);
@@ -652,7 +779,7 @@ initInspection(app);
 // Escape is the overlay stack's (ui.js): one layer per press, each closed
 // through its own close control, so chart settings still revert.
 initToolbar(app);
-app.onFocusPane = () => { renderToolbar(); renderIndicatorChips(); autosave(); };
+app.onFocusPane = () => { renderToolbar(); renderIndicatorChips(); autosave(); app.bottombar?.refresh(); };
 // The rail mounts the properties bar for the selected drawing on the stage,
 // so a bar docked to it comes along into chart-only full screen.
 initRail(app, { mountPropertiesBar });

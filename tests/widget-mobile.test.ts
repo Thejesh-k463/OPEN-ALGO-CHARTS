@@ -2,6 +2,9 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Bar } from '../src/index';
 import { createWidget, type Widget, type WidgetOptions } from '../src/widget/index';
 import {
+  MOBILE_MAX_WIDTH, PHONE_LANDSCAPE_MAX_WIDTH, TABLET_MIN_HEIGHT, resolveMobileMode,
+} from '../src/widget/mobile';
+import {
   ensureWindowGlobal, fakeContainer, fakeWidgetDocument, fire, fireKey,
   type FakeDocument, type FakeElement,
 } from './helpers/fake-dom-widget';
@@ -65,20 +68,20 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function make(opts: WidgetOptions = {}, width = 390, coarsePointer = false): Made {
+function make(opts: WidgetOptions = {}, width = 390, coarsePointer = false, height = 700): Made {
   const doc = fakeWidgetDocument();
   Object.assign(doc, { defaultView: {
     ResizeObserver: ResizeObserverDouble,
     matchMedia: (query: string) => new MediaQueryListDouble(query, query === '(pointer: coarse)' && coarsePointer),
   } });
-  const container = fakeContainer(doc, width, 700);
+  const container = fakeContainer(doc, width, height);
   const w = createWidget(container as unknown as HTMLElement, {
     document: doc as unknown as Document,
     pixelRatio: () => 1,
     raf: { schedule: (cb: () => void) => { cb(); return 1; }, cancel: () => {} },
     ...opts,
   });
-  w.chart.applySize(width, 700);
+  w.chart.applySize(width, height);
   w.series.setData(bars);
   live.push(w);
   return { w, doc, container, root: w.root as unknown as FakeElement };
@@ -117,13 +120,15 @@ describe('mobile mode', () => {
     expect(forcedOff.root.querySelector('.oac-mobile')?.hidden).toBe(true);
   });
 
-  it('keeps auto mode active in wide landscape containers with a coarse pointer', () => {
-    const { w, root } = make({}, 740, true);
+  it('keeps auto mode active in a landscape phone container with a coarse pointer', () => {
+    const { w, root } = make({}, 740, true, 390);
     const pointer = MediaQueryListDouble.instances.find((query) => query.media === '(pointer: coarse)')!;
     expect(root.classList.contains('is-mobile')).toBe(true);
 
     pointer.fire(false);
     expect(root.classList.contains('is-mobile')).toBe(false);
+    pointer.fire(true);
+    expect(root.classList.contains('is-mobile')).toBe(true);
     w.destroy();
     expect(pointer.removeEventListener).toHaveBeenCalledWith('change', expect.any(Function));
   });
@@ -232,7 +237,8 @@ describe('mobile mode', () => {
 
     action(root, 'lock').click();
     expect(w.draw.get(drawing.id)?.locked).toBe(true);
-    expect(action(root, 'lock').textContent).toBe('Unlock');
+    expect(action(root, 'lock').textContent).toBe('Lock');
+    expect(action(root, 'lock').getAttribute('aria-pressed')).toBe('true');
     action(root, 'properties').click();
     expect(root.querySelector('.oac-props')).not.toBeNull();
     w.context.overlays.closeAll();
@@ -252,6 +258,17 @@ describe('mobile mode', () => {
     expect(action(root, 'studies')).toBeNull();
     expect(action(root, 'objects')).toBeNull();
     expect(action(root, 'more')).toBeNull();
+  });
+
+  it('uses the words the rest of the widget uses for studies, the theme and the stay toggle', () => {
+    const { w, root } = make({ mobile: 'always' });
+    expect(action(root, 'studies').textContent).toBe('Indicators');
+    action(root, 'more').click();
+    expect(action(root, 'theme').textContent).toMatch(/^Switch to the (light|dark) theme$/);
+    w.context.overlays.closeAll();
+    w.draw.setTool('trend-line');
+    action(root, 'draw').click();
+    expect(action(root, 'stay').textContent).toBe('Keep tool active: off');
   });
 
   it('keeps an accessible branding link current in the More sheet', () => {
@@ -406,5 +423,140 @@ describe('mobile mode', () => {
     action(root, 'draw').click();
     fire(doc.body, 'pointerdown');
     expect(root.querySelector('.oac-mobile-sheet')).toBeNull();
+  });
+});
+
+/** Give the fake container a new size and deliver it the way a browser does, through the observer. */
+function resize(container: FakeElement, width: number, height: number): void {
+  container.clientWidth = width;
+  container.clientHeight = height;
+  container.rect = { left: 0, top: 0, width, height };
+  for (const observer of ResizeObserverDouble.instances) observer.fire();
+}
+
+describe('auto mobile mode decision', () => {
+  // Width and height of the widget container, whether the primary pointer is
+  // coarse, and whether the compact controls should show.
+  const table: Array<[number, number, boolean, boolean]> = [
+    [390, 740, false, true],
+    [640, 700, false, true],
+    [641, 700, false, false],
+    [932, 430, false, false],
+    [820, 1180, false, false],
+    [390, 740, true, true],
+    [640, 1000, true, true],
+    [740, 390, true, true],
+    [932, 430, true, true],
+    [960, 599, true, true],
+    [961, 430, true, false],
+    [960, 600, true, false],
+    [744, 1133, true, false],
+    [820, 1180, true, false],
+    [1180, 820, true, false],
+    [1024, 768, true, false],
+    [1366, 768, true, false],
+    [0, 700, false, false],
+    [0, 700, true, false],
+    [820, 0, true, false],
+  ];
+
+  it.each(table)('a %i by %i container with coarse pointer %s shows compact controls: %s', (width, height, coarse, expected) => {
+    const { root } = make({}, width, coarse, height);
+    expect(root.classList.contains('is-mobile')).toBe(expected);
+    expect(root.dataset.mobile).toBe(String(expected));
+    expect(root.querySelector('.oac-mobile')?.hidden).toBe(!expected);
+  });
+
+  it('resolves the same table as a pure function, and explicit modes ignore it', () => {
+    expect([MOBILE_MAX_WIDTH, PHONE_LANDSCAPE_MAX_WIDTH, TABLET_MIN_HEIGHT]).toEqual([640, 960, 600]);
+    for (const [width, height, coarse, expected] of table) {
+      expect(resolveMobileMode('auto', width, height, coarse)).toBe(expected);
+      expect(resolveMobileMode('always', width, height, coarse)).toBe(true);
+      expect(resolveMobileMode('never', width, height, coarse)).toBe(false);
+    }
+  });
+
+  it('keeps explicit modes whatever the container and pointer', () => {
+    expect(make({ mobile: 'always' }, 1180, false, 820).root.classList.contains('is-mobile')).toBe(true);
+    expect(make({ mobile: 'never' }, 390, true, 740).root.classList.contains('is-mobile')).toBe(false);
+    expect(MediaQueryListDouble.instances.some((query) => query.media === '(pointer: coarse)')).toBe(false);
+  });
+
+  it('re-evaluates when the container changes size, with the window left alone', () => {
+    const { container, root } = make({}, 820, true, 1180);
+    expect(root.classList.contains('is-mobile')).toBe(false);
+
+    resize(container, 1180, 820);
+    expect(root.classList.contains('is-mobile')).toBe(false);
+    resize(container, 820, 500);
+    expect(root.classList.contains('is-mobile')).toBe(true);
+    resize(container, 1180, 500);
+    expect(root.classList.contains('is-mobile')).toBe(false);
+    resize(container, 600, 1180);
+    expect(root.classList.contains('is-mobile')).toBe(true);
+    // Hiding the container (a background tab) leaves the open sheet alone.
+    action(root, 'draw').click();
+    resize(container, 0, 0);
+    expect(root.classList.contains('is-mobile')).toBe(true);
+    expect(root.querySelector('.oac-mobile-sheet')).not.toBeNull();
+    resize(container, 820, 1180);
+    expect(root.classList.contains('is-mobile')).toBe(false);
+    expect(root.querySelector('.oac-mobile-sheet')).toBeNull();
+    resize(container, 0, 0);
+    expect(root.classList.contains('is-mobile')).toBe(false);
+  });
+
+  it('keeps the layout of a container collapsed to no height, and decides again once it has one', () => {
+    const { container, root } = make({}, 820, true, 450);
+    expect(root.classList.contains('is-mobile')).toBe(true);
+    action(root, 'draw').click();
+    // A closed accordion or a zero-height transition: the width is still there,
+    // but a height of 0 must not read as a tablet and close the open sheet.
+    resize(container, 820, 0);
+    expect(root.classList.contains('is-mobile')).toBe(true);
+    expect(root.querySelector('.oac-mobile-sheet')).not.toBeNull();
+    resize(container, 820, 1180);
+    expect(root.classList.contains('is-mobile')).toBe(false);
+  });
+
+  it('starts an unmeasured container on the desktop controls and decides once it has a size', () => {
+    const { container, root } = make({}, 0, true, 0);
+    expect(root.classList.contains('is-mobile')).toBe(false);
+    resize(container, 390, 740);
+    expect(root.classList.contains('is-mobile')).toBe(true);
+  });
+
+  it('holds the layout while a text field in the widget has focus', () => {
+    const { container, doc, root } = make({}, 820, true, 1180);
+    const field = root.querySelector('.oac-sym__input') as FakeElement;
+    field.focus();
+    // An on-screen keyboard shortens the container: switching now would hide the field being typed in.
+    resize(container, 820, 520);
+    expect(root.classList.contains('is-mobile')).toBe(false);
+
+    field.blur();
+    expect(doc.activeElement).toBe(doc.body);
+    expect(root.classList.contains('is-mobile')).toBe(true);
+
+    resize(container, 820, 1180);
+    expect(root.classList.contains('is-mobile')).toBe(false);
+    const button = root.querySelector('.oac-rail__btn') as FakeElement;
+    button.focus();
+    resize(container, 820, 520);
+    expect(root.classList.contains('is-mobile')).toBe(true);
+  });
+
+  it('keeps holding while focus moves on to another text field in the widget', () => {
+    const { container, doc, root } = make({}, 820, true, 1180);
+    const field = root.querySelector('.oac-sym__input') as FakeElement;
+    const next = doc.createElement('input');
+    root.appendChild(next);
+    field.focus();
+    resize(container, 820, 520);
+    // Tabbing from one field to the next keeps the keyboard up, so the switch still waits.
+    next.focus();
+    expect(root.classList.contains('is-mobile')).toBe(false);
+    next.blur();
+    expect(root.classList.contains('is-mobile')).toBe(true);
   });
 });

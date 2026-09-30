@@ -116,10 +116,11 @@ export const WIDGET_CSS = `
   width: 13px; height: 13px; margin-left: 5px; vertical-align: -2px; flex: none;
   border: 1px solid ${v('bd')}; border-radius: 50%; color: ${v('faint')};
   font-size: 9px; font-weight: 600; line-height: 1; cursor: help; user-select: none; }
-.oac-widget .oac-help:hover, .oac-widget .oac-help:focus-visible {
-  color: ${v('tx')}; border-color: ${v('bd-hover')}; outline: none; }
+.oac-widget .oac-help:hover { color: ${v('tx')}; border-color: ${v('bd-hover')}; }
+/* A heading's rows as one named group, laid out as if the box were not there. */
+.oac-widget .oac-form__group { display: contents; }
 
-/* Buttons: flat, 28px tall, a tint when pressed or armed. */
+/* Buttons: flat, 28px tall, a tint when pressed or active. */
 .oac-widget .oac-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   height: ${v('ctl-h')}; padding: 0 9px; background: transparent; border: 1px solid transparent;
   border-radius: ${v('radius')}; color: ${v('tx')}; white-space: nowrap; transition: background .1s, border-color .1s, color .1s; }
@@ -260,6 +261,7 @@ export const WIDGET_CSS = `
 .oac-widget .oac-fly__star[aria-pressed="false"] > svg { fill: none; }
 
 /* Tooltip */
+.oac-widget .oac-tip-spot { position: absolute; width: 1px; height: 1px; pointer-events: none; }
 .oac-widget .oac-tip { position: absolute; z-index: 200; left: 0; top: 0; max-width: 260px; pointer-events: none;
   padding: 5px 9px; border-radius: 6px; background: ${v('elev-2')}; color: ${v('tx')}; border: 1px solid ${v('bd')};
   box-shadow: ${v('shadow')}; font-size: 12px; line-height: 1.4; opacity: 0; transition: opacity .09s ease; }
@@ -317,6 +319,8 @@ export const WIDGET_CSS = `
 .oac-widget .oac-mobile-sheet__controls { grid-column: 1 / -1; display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid ${v('bd-soft')}; margin-bottom: 6px; }
 .oac-widget .oac-mobile-sheet__body small { display: block; color: ${v('faint')}; }
+/* A sheet row with a glyph (a chart type): the glyph sits on the middle of its label, not the baseline. */
+.oac-widget .oac-mobile-sheet .oac-mobile__action > .oac-glyph { vertical-align: middle; margin: -2px 8px 0 0; }
 .oac-widget .oac-mobile-results { width: min(360px, calc(100% - 16px)); max-height: min(50%, 360px); overflow: hidden;
   display: flex; flex-direction: column; background: ${v('panel')}; border: 1px solid ${v('bd')}; border-radius: 10px; box-shadow: ${v('shadow')}; }
 .oac-widget .oac-mobile-results__head { flex: none; display: flex; align-items: center; gap: 8px; min-height: 44px;
@@ -408,4 +412,15 @@ export function injectWidgetStyles(doc: Document, extra = '', nonce?: string): H
   style.textContent = WIDGET_CSS + extra;
   if (existing === null) (doc.head ?? doc.body ?? doc.documentElement).appendChild(style);
   return style;
+}
+
+/**
+ * Add the rules of a part that loads on first use (lazy.ts) to the sheet,
+ * once per document. Appended to the widget's own sheet they keep its CSP
+ * nonce, and they come after every rule they refine, as they did when the
+ * part was bundled in. A page with no sheet gets none here, as before.
+ */
+export function addWidgetStyles(doc: Document, css: string): void {
+  const style = doc.getElementById(WIDGET_STYLE_ID);
+  if (style !== null && !(style.textContent ?? '').includes(css)) style.appendChild(doc.createTextNode(css));
 }

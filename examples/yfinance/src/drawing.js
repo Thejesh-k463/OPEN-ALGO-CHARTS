@@ -1,9 +1,9 @@
 import { DrawingController, BUILTIN_DRAWING_TOOLS, drawingShortcuts } from '/dist/openalgo-charts.draw.mjs';
-import { el, inTextField } from './ui.js';
+import { el, inTextField, MOD } from './ui.js';
 import { clipboardPort, activeDraw, canClip, clipboardAction } from './clipboard.js';
 import {
   buildRail, syncRail, syncMobileControls, observeMobileControls,
-  armCursor, setDrawLock, magnetMode, stayMode,
+  armCursor, setDrawLock, magnetMode, stayMode, toolName,
 } from './rail.js';
 import { autosave } from './persist.js';
 import { followSessionMarks } from './session-marks.js';
@@ -31,7 +31,7 @@ export function attachDrawing() {
   app.chart.on('draw:tool', ({ tool }) => { syncRail(tool); syncMobileControls(tool); armCursor(el('chart'), tool); });
   // A drawing with a policy is the host's (a session mark put back after a
   // rebuild), not something the user just drew.
-  app.chart.on('draw:add', ({ drawing }) => { if (!drawing.policy) el('status').textContent = `drew ${drawing.tool}`; });
+  app.chart.on('draw:add', ({ drawing }) => { if (!drawing.policy) el('status').textContent = `drew ${toolName(drawing.tool)}`; });
   followSessionMarks(app.chart, app.draw, () => app.req?.symbol);
   // The modifier gestures leave no drawing behind to explain them, so the
   // status line says what is on the chart and how it goes.
@@ -50,7 +50,7 @@ export function attachDrawing() {
   app.chart.on('draw:select', ({ id }) => {
     const d = id ? app.draw.get(id) : null;
     if (d && canClip()) {
-      el('status').textContent = `${d.tool} selected · Ctrl+C copy · Ctrl+X cut · Ctrl+V paste`;
+      el('status').textContent = `${toolName(d.tool)} selected · ${MOD}+C copy · ${MOD}+X cut · ${MOD}+V paste`;
     }
   });
   for (const ev of ['draw:add', 'draw:remove', 'draw:update']) app.chart.on(ev, autosave);

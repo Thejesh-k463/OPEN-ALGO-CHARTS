@@ -8,6 +8,7 @@
  * a fresh answer replaces it. It never derives a quote from bars.
  */
 import type { InstrumentKey, QuoteFeed, QuoteSnapshot, QuoteStreamStatus, UnsubscribeFn } from 'openalgo-charts';
+import { errorText } from './localization';
 
 /** How far a row's quote can be trusted right now. */
 export type QuoteRowStatus = 'loading' | 'live' | 'delayed' | 'snapshot' | 'stale' | 'unavailable' | 'error';
@@ -54,7 +55,7 @@ const RETAINED = 1000;
 // A timer keeps its delay in a signed 32-bit integer; a longer one wraps and fires at once.
 const MAX_DELAY = 2 ** 31 - 1;
 const idOf = (key: InstrumentKey): string => JSON.stringify([key.symbol, key.exchange]);
-const message = (error: unknown): string => error instanceof Error ? error.message : String(error);
+const message = (error: unknown): string => errorText({}, error);
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 
 /** Change and percent change against the provider's reference close, or null when it gave none. */

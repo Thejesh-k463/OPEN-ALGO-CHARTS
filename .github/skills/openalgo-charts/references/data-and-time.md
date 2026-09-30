@@ -34,6 +34,29 @@ instrument's hours are dropped when the chart's data context moves to another sy
 or exchange; hours a host set itself stay until it replaces them.
 See [times past the last bar](#times-past-the-last-bar) for what it changes.
 
+`InstrumentCalendar` (and `SessionCalendarSpec`) also take optional `preMarketMinutes`
+and `postMarketMinutes`, whole minutes 0 to 1439 counted back from each trading date's
+first regular opening and on from its last close, so a shortened day, a special session
+and a closed date move them, and `extendedHours`, windows written like `sessions` for
+hours of their own such as an overnight `'2000-0400:12345'` (none on a date the
+exceptions close). `phaseAt(t)` on an `Instrument` or `SessionCalendar` returns a
+`SessionPhase`: `'pre'`, `'regular'`, `'post'`, `'extended'`, `'closed'` or `'holiday'`
+(a date an exception closes although its weekly sessions would open, midnight to
+midnight in the calendar's zone); overlaps resolve regular, then pre, post, extended.
+`phaseSpans(from, to)` returns consecutive `SessionPhaseSpan` objects
+(`{ phase, start, end }`, UTC seconds, end exclusive) over at most 400 days.
+`marketStatusAt(t)` returns a `MarketStatus` (`phase`, `changesAt`, `nextPhase`,
+`opensAt`, `closesAt`, null past a 14-day horizon); the free `marketStatusAt(source, t)`
+does the same for any `SessionPhaseSource`, such as `chart.dataLayer.sessionCalendar` (a
+`SessionCalendarSource` may now carry an optional `phaseSpans`), and returns null when
+there is none. `calendarMarketPhase(source)` is the `MarketPhaseFn` that `PriceLevels`
+takes for its extended-hours levels. Boundaries resolve per date in the calendar's IANA
+zone; nothing changes for a calendar without these fields. A window whose boundary a
+daylight-saving change removes throws on that date, as `sessionAt` does; `phaseAt` then
+throws from the day before to two days after it and a status from about fifteen days
+before to four after, so a readout on a timer catches it. `attachSessionShading` shades
+these phases on the chart: see [primitives-and-plugins](primitives-and-plugins.md).
+
 `OpenAlgoConfig.hasOpenInterest(request)` optionally supplies instrument
 capability to the REST adapter. Explicit false removes the API's placeholder
 OI column before caching or calculation. True/undefined preserves finite

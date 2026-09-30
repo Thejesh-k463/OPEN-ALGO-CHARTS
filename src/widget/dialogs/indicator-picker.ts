@@ -9,17 +9,33 @@ import { widgetText } from '../localization';
  * Picking a row adds an instance and leaves the picker up: a trader building
  * a layout adds three studies in a row, and closing after each would make
  * that three round trips through the menu.
+ *
+ * With a template store (the widget's `workspaces`), the footer's Templates
+ * button opens the saved study sets, bottom left where a dialog keeps its
+ * secondary control.
  */
 import { registeredIndicators } from 'openalgo-charts';
 import type { IndicatorApi, IndicatorDescriptor, IndicatorPolicy } from 'openalgo-charts';
+import type { WorkspaceStore } from 'openalgo-charts/workspace';
 import type { WidgetContext } from '../context';
 import { button, dialogFrame, el, openPanel, type PanelHandle } from '../form';
+import { templateStoreOf } from '../layouts-templates';
+import { lazyPart, partFailed, usePart, type PartSlot } from '../lazy';
+
+/** The templates list, fetched when it first opens. Internal. */
+export const templatesPart = lazyPart(() => import('../layouts-templates-menu'));
 
 export interface IndicatorPickerOptions {
   /** Runs after each instance is added, with its handle. */
   onAdd?(inst: IndicatorApi): void;
   /** Close the picker after the first add. Default false. */
   closeOnAdd?: boolean;
+  /**
+   * Where saved indicator templates live. Default: the store the widget was
+   * given (`WidgetOptions.workspaces`); null offers none. A store without
+   * `planIndicatorTemplateState` offers none either. Since 2.5.10.
+   */
+  templates?: WorkspaceStore | null;
 }
 
 /** Descriptors matching `query` (name, id or category, case-insensitive), sorted by name. */
@@ -73,6 +89,21 @@ export function mountIndicatorPicker(
   frame.body.appendChild(runningHead);
   frame.body.appendChild(running);
   frame.actions.appendChild(button(doc, { label: widgetText(ctx, 'Done'), variant: 'primary', onClick: () => handle.close() }));
+  const templates = opts.templates === undefined ? templateStoreOf(ctx) : opts.templates ?? undefined;
+  let templatesMenu: PanelHandle | null = null;
+  if (templates?.planIndicatorTemplateState !== undefined) {
+    // The list loads on first use; a press while it loads opens it once, and none opens after the picker closed.
+    const slot: PartSlot = { waiting: null };
+    const open = button(doc, { label: widgetText(ctx, 'Templates'), icon: 'template', onClick: () => {
+      usePart(templatesPart, module => {
+        templatesMenu?.close();
+        templatesMenu = module.openTemplatesMenu(ctx, open, templates);
+      }, error => ctx.toast(partFailed(ctx, widgetText(ctx, 'Templates'), error), 'error'), () => handle.isOpen(), { slot, doc, from: open });
+    } });
+    open.dataset.action = 'templates';
+    open.setAttribute('aria-haspopup', 'dialog');
+    frame.lead.appendChild(open);
+  }
 
   let rows: HTMLButtonElement[] = [];
   let active = -1;
@@ -188,7 +219,7 @@ export function mountIndicatorPicker(
   const offObjects = chart.on('objects:change', paint);
   const offRemove = chart.on('indicatorRemoved', paint);
   const offRestore = chart.on('state:restore:end', paint);
-  const cleanup = (): void => { offObjects(); offRemove(); offRestore(); };
+  const cleanup = (): void => { offObjects(); offRemove(); offRestore(); templatesMenu?.close(); };
 
   const panel = openPanel(
     ctx, frame.el,

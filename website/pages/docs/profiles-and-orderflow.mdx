@@ -77,7 +77,7 @@ available in **2.1.1**. See the [release notes](/docs/release-notes#211).
 
 Seven readable, one-minute bars replay a **deterministic NIFTY simulation around 23,800**.
 Executions use a one-point simulation grid and are grouped into **2-point price rows** by
-default. Each simulated execution represents 1–16 lots of 65 quantity units. These are demo settings,
+default. Each simulated execution represents 1 to 16 lots of 65 quantity units. These are demo settings,
 rather than a statement of current exchange contract specifications. This is an illustration,
 not a live market feed. The demo opens paused so you can inspect the numbers before resuming.
 
@@ -201,7 +201,7 @@ highlights and brackets; pass `stackedImbalances: 0` to hide the brackets.
 
 ### Raw quantity and lots
 
-Use **Quantity → Lots** to divide the displayed numbers by **Lot size**, initially `65` in
+Set **Quantity** to **Lots** to divide the displayed numbers by **Lot size**, initially `65` in
 this NIFTY simulation. Edit that positive whole-number setting to compare other divisors,
 or select **Raw** to see the underlying quantities. Try the
 [NIFTY table in lots](/demos/orderflow/index.html?paused=1&table=1&units=lots&lot=65).
@@ -275,11 +275,11 @@ Use the independent `tableRows` option when you want cards and a table together.
 | `bidVolume` | Executed volume at the bid |
 | `deltaPct` | Delta as a percentage of bar volume |
 | `cvd` | `cvdOffset` plus cumulative delta across the loaded bars |
-| `trades` | Actual execution count from `tradeCount`; unavailable legacy counts display `—` |
+| `trades` | Actual execution count from `tradeCount`; unavailable legacy counts display `-` |
 
 `footprint.stats()` exposes the same calculations. Its `trades` value is `null` when an older
 manually assembled bar has no count metadata; occupied price levels are not a trade count.
-`minDelta` and `maxDelta` also return `null` and display `—` when legacy bars lack intrabar
+`minDelta` and `maxDelta` also return `null` and display `-` when legacy bars lack intrabar
 extrema. They describe the running execution-by-execution delta path, not the largest or
 smallest price-row delta; aggregated cells alone cannot recover them. Replaying the same
 retained executions with a different price grouping preserves both extrema.

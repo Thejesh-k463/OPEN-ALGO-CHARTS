@@ -183,7 +183,7 @@ export { LinkGroup, createLinkGroup, followerIndex, followerRange, LinkCrosshair
 export type {
   LinkChart, LinkOptions, LinkMemberOptions, ResolvedLinkOptions,
   LinkDataLayer, LinkMissingPolicy,
-  LinkAppearanceAdapter, LinkAppearanceValues,
+  LinkAppearanceAdapter, LinkAppearanceValues, LinkDrawingsAdapter,
 } from './link/index';
 
 export { CandleBuilder, DEFAULT_CANDLE_BUILDER_OPTIONS } from './feed/candle-builder';
@@ -221,6 +221,9 @@ export { TextWatermark } from './primitives/text-watermark';
 export type { TextWatermarkOptions } from './primitives/text-watermark';
 export { ReplayShade } from './primitives/replay-shade';
 export type { ReplayShadeOptions } from './primitives/replay-shade';
+// opt-in wash behind pre-open, post-close and extended-hours bars, from a session calendar
+export { SessionShade, attachSessionShading } from './primitives/session-shade';
+export type { SessionShadeOptions, SessionShading } from './primitives/session-shade';
 export { BuySellButtons } from './primitives/buy-sell-buttons';
 export type { BuySellButtonsOptions } from './primitives/buy-sell-buttons';
 export { ChartTable, tableOrigin, DEFAULT_CHART_TABLE_OPTIONS } from './primitives/table';
@@ -254,6 +257,9 @@ export type { DataFeed, TradeFeed, BarsRequest, BarsPageRequest, BarsPage, BarSu
 export type { InstrumentKey, QuoteSnapshot, QuoteRequest, QuoteStreamStatus, QuoteStreamHandlers, QuoteFeed, NewsRequest, NewsItem, NewsPage, NewsFeed } from './feed/types';
 export { Instrument, SessionCalendar } from './feed/instrument';
 export type { InstrumentMetadata, InstrumentCalendar, InstrumentSession, SessionCalendarSpec } from './feed/instrument';
+// market phases and status, derived from a calendar when the host supplies none
+export { marketStatusAt, calendarMarketPhase } from './feed/market-status';
+export type { SessionPhase, SessionPhaseSpan, SessionPhaseSource, MarketStatus } from './feed/market-status';
 export { TickSchedule } from './feed/tick-schedule';
 export type { TickBand } from './feed/tick-schedule';
 export { checkTradingCapability, assertTradingCapability, TradingCapabilityError } from './feed/trading-capabilities';

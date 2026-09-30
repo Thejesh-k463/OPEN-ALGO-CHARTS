@@ -101,8 +101,9 @@ requests, authorization and any cancellation of old account work.
 `migrateWidgetWorkspace` explicitly imports a legacy widget envelope into a
 validated workspace document. Invalid versions and malformed documents are
 rejected before a write. Portable documents omit credentials and trading state.
-The widget's existing `persist`/`storage` convenience API remains synchronous
-local preference storage; it is not an asynchronous account adapter.
+The widget's `persist`/`storage` convenience API is local preference storage for one
+browser (IndexedDB by default since 2.5.10, with synchronous reads over a copy in
+memory); it is not an account adapter.
 
 Regression evidence lives in `tests/workspace-repository.test.ts` (write failure,
 queue recovery, account separation, conflict and private-field stripping),

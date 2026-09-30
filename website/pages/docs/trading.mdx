@@ -188,7 +188,7 @@ await eng.placeMarket('RELIANCE', 'BUY', 10);   // one-click market order
 ```
 
 The engine enforces tick-size snapping, price-band / freeze-quantity validation,
-client-token idempotency, **OCO** (one fill cancels the peer), and a reconnect → stale
+client-token idempotency, **OCO** (one fill cancels the peer), and a reconnect-to-stale
 transition.
 
 ## Drag-to-modify
@@ -244,8 +244,8 @@ The chart renders the interaction states itself (no app code needed):
   ghost** (a dimmed line at the pre-drag price) marks where the order was, so
   the trader always sees what a release will change.
 - **Pills.** Order lines carry a broker-style segmented group,
-  `[badge][qty][label][✕]`: a solid colored badge (`BUY`, `SL`, `TP`), boxed
-  qty and info segments, and an integrated cancel `✕`. Pending (un-acked)
+  `[badge][qty][label][close]`: a solid colored badge (`BUY`, `SL`, `TP`), boxed
+  qty and info segments, and an integrated cancel box. Pending (un-acked)
   orders draw dimmed; partial fills show progress (`3/10`). Badge text
   auto-contrasts with its fill, so custom colors stay legible on any theme.
 
@@ -548,10 +548,10 @@ building a custom controller or a headless rendering pipeline.
 ### WorkingOrderLine
 
 A horizontal dashed line at the order price, coloured by side (theme `buy` /
-`sell`), with a segmented pill group (`[SIDE][qty][TYPE price ±LTP-distance][✕]`)
+`sell`), with a segmented pill group (`[SIDE][qty][TYPE price ±LTP-distance][close]`)
 and a compact price tag on the axis. The hit-test returns `order:<id>` with an
 `ns-resize` cursor within 4 px of the line (or anywhere on the pill group), and
-`order:<id>::close` with a `pointer` cursor on the ✕ segment.
+`order:<id>::close` with a `pointer` cursor on the close segment.
 
 ```ts
 import { WorkingOrderLine } from 'openalgo-charts/trade';

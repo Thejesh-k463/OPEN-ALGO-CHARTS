@@ -48,6 +48,7 @@ the first real request, so static serving and --fixture work without it.
 from __future__ import annotations
 
 import argparse
+import functools
 import gzip
 import hashlib
 import json
@@ -61,8 +62,9 @@ import time
 import traceback
 import unittest
 import zlib
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from typing import Callable, NamedTuple
 from urllib.parse import parse_qs, urlparse
 
 # Package root (two levels up from examples/yfinance/), so /dist and /examples resolve.
@@ -319,63 +321,125 @@ def banded_price(v: float) -> float:
     return round(math.floor(v / tick + 0.5) * tick, 2)
 
 
-# Bars sit in a 09:15 to 15:30 IST session, spelled in UTC. IST is this
-# library's default zone and has no daylight saving, so the window is the
-# same number every day of the year.
-SESSION_OPEN = 3 * 3600 + 45 * 60
-SESSION_CLOSE = 10 * 3600
-# Extended hours in the fixture: two hours either side of the regular
-# session, on the same grid, so the regular bars are the same observations in
-# both series and only the pre and post market bars differ.
-EXTENDED_OPEN = SESSION_OPEN - 2 * 3600
-EXTENDED_CLOSE = SESSION_CLOSE + 2 * 3600
+# ── venues ────────────────────────────────────────────────────────────────
+# Each symbol trades in its own venue's hours, by the rule the reference host
+# reads its session calendar and its status line from (src/status.js, exchangeOf
+# and SESSIONS; src/ticks.js for BANDED). A chart of fixture bars then agrees
+# with its own calendar, as a chart of live bars does: a US stock's regular bars
+# sit in New York's regular session, where the session shading leaves them
+# alone, and its staleness is judged against the hours it actually trades.
 DAY = 86400
+EPOCH_ORDINAL = date(1970, 1, 1).toordinal()
 
 
-def _weekday(t: int) -> int:
+@functools.lru_cache(maxsize=256)
+def _new_york_daylight(year: int) -> tuple:
+    """The local days (since 1970) daylight time starts and ends in New York in `year`.
+
+    Spelled out rather than read from the zone database: some systems give
+    Python none without the tzdata package, and the fixture promises the same
+    bytes on every machine. The self-test holds the rule to the zone database
+    where one is installed.
+    """
+    def sunday(month: int, n: int) -> int:
+        if n > 0:
+            first = date(year, month, 1)
+            return first.toordinal() + (6 - first.weekday()) % 7 + 7 * (n - 1)
+        last = date(year, month + 1, 1).toordinal() - 1
+        return last - (date.fromordinal(last).weekday() + 1) % 7
+    start, end = (sunday(3, 2), sunday(11, 1)) if year >= 2007 else (sunday(4, 1), sunday(10, -1))
+    return start - EPOCH_ORDINAL, end - EPOCH_ORDINAL
+
+
+def _new_york_offset(day: int) -> int:
+    # The clocks change at 02:00 on a Sunday, so for every trading hour the
+    # local date alone says which offset is in force.
+    start, end = _new_york_daylight(date.fromordinal(day + EPOCH_ORDINAL).year)
+    return -4 * 3600 if start <= day < end else -5 * 3600
+
+
+class Venue(NamedTuple):
+    """A venue's trading hours, in seconds after local midnight."""
+    offset: Callable[[int], int]  # the UTC offset on a local day
+    open: int
+    close: int
+    # The walk runs from `pre` to `post` on each trading day, and extended hours
+    # are served there where the source has them.
+    pre: int
+    post: int
+    week: int   # trading days a week: 5, Monday to Friday, or 7
+    depth: int  # levels of the walk's tree: enough trading minutes to reach the year 2100
+
+
+# Mumbai walks two hours either side of its session although the source serves
+# no extended hours there: the NSE prices stay the ones every earlier run drew.
+MUMBAI = Venue(lambda day: 19800, 9 * 3600 + 15 * 60, 15 * 3600 + 30 * 60, 7 * 3600 + 15 * 60, 17 * 3600 + 30 * 60, 5, 25)
+NEW_YORK = Venue(_new_york_offset, 9 * 3600 + 30 * 60, 16 * 3600, 4 * 3600, 20 * 3600, 5, 25)
+AROUND_THE_CLOCK = Venue(lambda day: 0, 0, DAY, 0, DAY, 7, 27)
+INDIA_INDICES = {"^NSEI", "^NSEBANK", "^BSESN"}
+US_INDICES = {"^GSPC", "^DJI", "^IXIC", "^RUT", "^VIX"}
+
+
+def venue_of(symbol: str) -> Venue:
+    """The venue a symbol trades on: the host's rule, and BANDED's own metadata."""
+    s = symbol.upper()
+    if s == BANDED or s.endswith((".NS", ".BO")) or s in INDIA_INDICES:
+        return MUMBAI
+    if s.endswith("-USD"):
+        return AROUND_THE_CLOCK
+    if s in US_INDICES or not s.startswith("^"):
+        return NEW_YORK
+    # An index the host has no hours for keeps the session the fixture always used.
+    return MUMBAI
+
+
+def _weekday(day: int) -> int:
     # 1970-01-01 was a Thursday; Monday is 0 to match datetime.weekday().
-    return ((t // DAY) + 3) % 7
+    return (day + 3) % 7
 
 
-def _month_start(year: int, month: int) -> int:
-    return int(datetime(year, month, 1, tzinfo=timezone.utc).timestamp())
+def _trading_day(venue: Venue, day: int) -> bool:
+    return venue.week == 7 or _weekday(day) < 5
 
 
-def fixture_grid(interval: str, start: int, end: int, extended: bool = False) -> list:
-    """Ascending bar start times in [start, end) on the interval's calendar."""
+def _at(venue: Venue, day: int, seconds: int) -> int:
+    """UTC seconds of a wall-clock time on a local day at the venue."""
+    return day * DAY + seconds - venue.offset(day)
+
+
+def _local(venue: Venue, t: int) -> tuple:
+    """The local day of `t` at the venue, and the seconds into it."""
+    day = (t + venue.offset(t // DAY)) // DAY
+    return day, t + venue.offset(day) - day * DAY
+
+
+def fixture_grid(interval: str, start: int, end: int, extended: bool = False, venue: Venue = MUMBAI) -> list:
+    """Ascending bar start times in [start, end) on the interval's calendar, in the venue's hours."""
     out = []
+    # Local days, with one either side: an offset moves a day by less than that.
+    days = range(start // DAY - 1, end // DAY + 2)
     if interval in INTRADAY:
         step = INTERVALS[interval]
-        opens, closes = (EXTENDED_OPEN, EXTENDED_CLOSE) if extended else (SESSION_OPEN, SESSION_CLOSE)
-        day = (start // DAY) * DAY
-        while day < end:
-            if _weekday(day) < 5:
-                t = day + opens
-                while t < day + closes and t < end:
+        opens, closes = (venue.pre, venue.post) if extended else (venue.open, venue.close)
+        for day in days:
+            if _trading_day(venue, day):
+                t, stop = _at(venue, day, opens), _at(venue, day, closes)
+                while t < stop and t < end:
                     if t >= start:
                         out.append(t)
                     t += step
-            day += DAY
-    elif interval == "1d":
-        day = (start // DAY) * DAY
-        while day + SESSION_OPEN < end:
-            t = day + SESSION_OPEN
-            if t >= start and _weekday(day) < 5:
+    elif interval in ("1d", "5d", "1wk"):
+        # Daily bars at the session open, weekly ones on Mondays.
+        for day in days:
+            t = _at(venue, day, venue.open)
+            if start <= t < end and _trading_day(venue, day) and (interval == "1d" or _weekday(day) == 0):
                 out.append(t)
-            day += DAY
-    elif interval in ("5d", "1wk"):
-        day = (start // DAY) * DAY
-        while day + SESSION_OPEN < end:
-            t = day + SESSION_OPEN
-            if t >= start and _weekday(day) == 0:
-                out.append(t)
-            day += DAY
     else:
         months = 1 if interval == "1mo" else 3
-        d = datetime.fromtimestamp(start, tz=timezone.utc)
+        d = date.fromordinal(_local(venue, start)[0] + EPOCH_ORDINAL)
         year, month = d.year, ((d.month - 1) // months) * months + 1
         while True:
-            t = _month_start(year, month) + SESSION_OPEN
+            t = _at(venue, date(year, month, 1).toordinal() - EPOCH_ORDINAL, venue.open)
             if t >= end:
                 break
             if t >= start:
@@ -392,23 +456,98 @@ def _noise(symbol: str, t: int, salt: str) -> float:
     return (zlib.crc32(f"{symbol}|{t}|{salt}".encode()) & 0xFFFFFFFF) / 2 ** 32
 
 
+# The fixture's price is a seeded random walk, so a chart of it reads like a
+# traded stock. It walks in trading time: each trading day adds the minutes
+# from its venue's pre-open to its post-close, and a night or a closed day adds
+# none, so the open follows on from the last close the way a quiet night's does.
+# Every value is still a pure function of (symbol, bar time): the walk is laid
+# out as a Brownian bridge over a binary tree of minute spans, each split drawn
+# from a digest of the symbol and the span, so the level at any minute costs one
+# descent of the tree rather than a sum of every step since 1970.
+# A symbol trades at its base price at the start of 2025 and walks from there.
+WALK_ANCHOR = 1_735_689_600
+# BANDED's walk comes back to 100 about every 53 trading days, so its tick
+# boundary stays on screen at any date instead of drifting off it.
+BANDED_SPAN = 1 << 15
+
+
+def _trading_minute(t: int, venue: Venue = MUMBAI) -> int:
+    """Minutes of the venue's walked hours from 1970 to t; a night or a closed day holds the last one."""
+    day, into = _local(venue, t)
+    length = venue.post - venue.pre
+    if venue.week == 7:
+        before = day
+    else:
+        weeks, rest = divmod(day, 7)
+        before = weeks * 5 + sum(1 for i in range(rest) if _weekday(i) < 5)
+        if _weekday(day) >= 5:
+            return before * length // 60
+    return (before * length + min(max(into - venue.pre, 0), length)) // 60
+
+
+@functools.lru_cache(maxsize=1 << 16)
+def _gauss(symbol: str, lo: int, size: int) -> float:
+    """A standard normal draw for one span of one symbol's walk. A digest, not crc32: neighbouring spans must not correlate."""
+    digest = hashlib.blake2b(f"{symbol}|walk|{lo}|{size}".encode(), digest_size=8).digest()
+    u = (int.from_bytes(digest[:4], "big") + 0.5) / 2 ** 32
+    v = int.from_bytes(digest[4:], "big") / 2 ** 32
+    return math.sqrt(-2.0 * math.log(u)) * math.cos(2 * math.pi * v)
+
+
+def _walk(symbol: str, n: int, pin: int = 0, depth: int = 25) -> float:
+    """The sum of the first n unit steps of the symbol's walk; with `pin`, less the line through each pin-long span's ends."""
+    lo, size = 0, 1 << depth
+    total = _gauss(symbol, -1, size) * math.sqrt(size)
+    acc = 0.0
+    block = None
+    while True:
+        if size == pin:
+            block = (lo, acc, total)
+        if n <= lo:
+            s = acc
+            break
+        if n >= lo + size:
+            s = acc + total
+            break
+        half = size >> 1
+        # Brownian bridge: given a span's total, its first half is half of it
+        # plus a draw whose spread is half the span's root length.
+        left = total / 2 + _gauss(symbol, lo, size) * math.sqrt(size) / 2
+        if n >= lo + half:
+            acc += left
+            lo += half
+            total -= left
+        else:
+            total = left
+        size = half
+    if not pin:
+        return s
+    if block is None:
+        return 0.0
+    start, before, span_total = block
+    return s - before - (n - start) / pin * span_total
+
+
+@functools.lru_cache(maxsize=256)
+def _walk_anchor(symbol: str) -> float:
+    venue = venue_of(symbol)
+    return _walk(symbol, _trading_minute(WALK_ANCHOR, venue), depth=venue.depth)
+
+
 def fixture_level(symbol: str, t: int) -> float:
-    """The synthetic close at time t: a base per symbol, a slow drift and three waves whose periods the symbol picks."""
+    """The synthetic close at time t: the symbol's random walk from its base, with a drift and a volatility it picks."""
     seed = zlib.crc32(symbol.encode()) & 0xFFFFFFFF
-    banded = symbol == BANDED
-    # BANDED holds still around its boundary instead of drifting off it.
-    base = 100 if banded else 20 + seed % 2000
-    slow = DAY * (40 + seed % 50)
-    mid = DAY * (7 + (seed >> 8) % 20)
-    fast = 3600 * (3 + (seed >> 16) % 30)
-    phase = ((seed >> 4) % 628) / 100
-    years = (t - 1_600_000_000) / 31_557_600
-    drift = 0 if banded else years * 0.02 * (seed % 7 - 3)
-    wave = 0.12 * math.sin(2 * math.pi * t / slow + phase) \
-        + 0.05 * math.sin(2 * math.pi * t / mid + 2 * phase) \
-        + 0.02 * math.sin(2 * math.pi * t / fast + 3 * phase)
-    jitter = (_noise(symbol, t, "c") - 0.5) * 0.01
-    return base * math.exp(drift + wave + jitter)
+    venue = venue_of(symbol)
+    n = _trading_minute(t, venue)
+    if symbol == BANDED:
+        return 100 * math.exp(0.0004 * _walk(symbol, n, BANDED_SPAN))
+    base = 20 + seed % 2000
+    # A day's move is 1.2 to 2.3 percent, and a year drifts -9 to +9 percent.
+    minutes = (venue.post - venue.pre) // 60
+    vol = (0.012 + ((seed >> 8) % 12) / 1000) / math.sqrt(minutes)
+    drift = (seed % 7 - 3) * 0.03 / ((261 if venue.week == 5 else 365) * minutes)
+    ref = _trading_minute(WALK_ANCHOR, venue)
+    return base * math.exp(vol * (_walk(symbol, n, depth=venue.depth) - _walk_anchor(symbol)) + drift * (n - ref))
 
 
 def fixture_bars(req: HistoryRequest, now: int) -> list:
@@ -425,7 +564,7 @@ def fixture_bars(req: HistoryRequest, now: int) -> list:
     # One bar before the window, so the first bar's open is the close of the
     # bar before it rather than a number the chart never saw.
     lead = INTERVALS[req.interval] * (10 if req.interval in INTRADAY else 2)
-    grid = fixture_grid(req.interval, start - lead, end + 1, getattr(req, "session", "regular") == "extended")
+    grid = fixture_grid(req.interval, start - lead, end + 1, getattr(req, "session", "regular") == "extended", venue_of(symbol))
     bars = []
     prev_close = None
     for t in grid:
@@ -511,11 +650,12 @@ def fixture_quotes(symbols: list, now: int) -> list:
         if key in FIXTURE_SENTINELS:
             continue
         last = fixture_level(key, t) * (1 + (_noise(key, t, "q") - 0.5) * 0.002)
-        # The previous weekday's close in the fixture session, whatever day it is now.
-        day = (t // DAY) * DAY - DAY
-        while _weekday(day) >= 5:
-            day -= DAY
-        previous = fixture_level(key, day + SESSION_CLOSE - 60)
+        # The previous trading day's close at the symbol's venue, whatever day it is there now.
+        venue = venue_of(key)
+        day = _local(venue, t)[0] - 1
+        while not _trading_day(venue, day):
+            day -= 1
+        previous = fixture_level(key, _at(venue, day, venue.close) - 60)
         spread = max(0.01, round(last * 0.0004, 2))
         out.append({
             "symbol": symbol, "exchange": "", "last": round(last, 2), "previousClose": round(previous, 2),
@@ -865,28 +1005,80 @@ class SelfTest(unittest.TestCase):
         for prev, cur in zip(bars, bars[1:]):
             self.assertEqual(cur["open"], prev["close"])
 
-    def test_intraday_grid_sits_in_the_session_on_weekdays(self):
-        _, _, bars = self.json("/api/history?symbol=AAPL&interval=5m&from=1700000000&to=1700600000")
-        self.assertGreater(len(bars), 300)
-        for b in bars:
-            day_sec = b["time"] % DAY
-            self.assertGreaterEqual(day_sec, SESSION_OPEN)
-            self.assertLess(day_sec, SESSION_CLOSE)
-            self.assertLess(_weekday(b["time"]), 5)
-            self.assertEqual((b["time"] - SESSION_OPEN) % 300, 0)
-        # Consecutive bars inside a day are one interval apart.
-        gaps = {cur["time"] - prev["time"] for prev, cur in zip(bars, bars[1:]) if cur["time"] // DAY == prev["time"] // DAY}
-        self.assertEqual(gaps, {300})
+    def test_the_price_is_a_random_walk_not_a_wave(self):
+        # A random walk's variance over q days is q times its one-day
+        # variance, so the ratio of the two sits near 1. Waves that repeat
+        # within a quarter hold the 125-day change to their amplitude, and the
+        # ratio falls towards 0: the sine fixture this replaced measured 0.18.
+        # One symbol's ratio is noisy, so it is pooled over several.
+        q, days = 125, 1300
+        ratios = []
+        for symbol in ("AAPL", "RELIANCE.NS", "INFY.NS", "MSFT", "^NSEI", "TCS.NS", "GOOG", "SBIN.NS", "BTC-USD"):
+            venue, closes, day = venue_of(symbol), [], 1_700_000_000 // DAY
+            while len(closes) < days:
+                if _trading_day(venue, day):
+                    closes.append(math.log(fixture_level(symbol, _at(venue, day, venue.close) - 60)))
+                day += 1
+
+            def variance(xs):
+                mean = sum(xs) / len(xs)
+                return sum((x - mean) ** 2 for x in xs) / len(xs)
+            one = variance([b - a for a, b in zip(closes, closes[1:])])
+            ratios.append(variance([closes[i + q] - closes[i] for i in range(days - q)]) / (q * one))
+        self.assertGreater(sum(ratios) / len(ratios), 0.5)
+        self.assertLess(sum(ratios) / len(ratios), 1.6)
+
+    def test_intraday_grid_sits_in_the_venue_session_on_weekdays(self):
+        # New York across the March 2024 clock change, and Mumbai, each in its own hours.
+        for symbol, venue, window, count in (("AAPL", NEW_YORK, "&from=1709800000&to=1710600000", 400),
+                                             ("RELIANCE.NS", MUMBAI, "&from=1700000000&to=1700600000", 300)):
+            _, _, bars = self.json(f"/api/history?symbol={symbol}&interval=5m" + window)
+            self.assertGreater(len(bars), count, symbol)
+            for b in bars:
+                day, into = _local(venue, b["time"])
+                self.assertGreaterEqual(into, venue.open, symbol)
+                self.assertLess(into, venue.close, symbol)
+                self.assertLess(_weekday(day), 5, symbol)
+                self.assertEqual((into - venue.open) % 300, 0, symbol)
+            # Consecutive bars inside a day are one interval apart.
+            gaps = {cur["time"] - prev["time"] for prev, cur in zip(bars, bars[1:])
+                    if _local(venue, cur["time"])[0] == _local(venue, prev["time"])[0]}
+            self.assertEqual(gaps, {300}, symbol)
+
+    def test_new_york_clock_changes_match_the_zone_database(self):
+        try:
+            from zoneinfo import ZoneInfo
+            zone = ZoneInfo("America/New_York")
+        except Exception:
+            self.skipTest("no zone database on this machine")
+        for year in range(2000, 2036):
+            for ordinal in range(date(year, 1, 1).toordinal(), date(year + 1, 1, 1).toordinal()):
+                d = date.fromordinal(ordinal)
+                noon = datetime(d.year, d.month, d.day, 12, tzinfo=zone)
+                self.assertEqual(_new_york_offset(ordinal - EPOCH_ORDINAL), noon.utcoffset().total_seconds(), noon)
+
+    def test_a_pair_trades_around_the_clock(self):
+        # 2024-03-08 is a Friday: the weekend has bars, every hour of every day.
+        _, _, bars = self.json("/api/history?symbol=BTC-USD&interval=1h&from=1709856000&to=1710111600")
+        self.assertEqual([b["time"] for b in bars], list(range(1709856000, 1710111600 + 1, 3600)))
+        _, _, daily = self.json("/api/history?symbol=BTC-USD&interval=1d&from=1709856000&to=1710374400")
+        self.assertEqual([b["time"] for b in daily], list(range(1709856000, 1710374400 + 1, DAY)))
 
     def test_calendar_intervals_land_on_their_boundaries(self):
-        _, _, weekly = self.json("/api/history?symbol=AAPL&interval=1wk&from=1690000000&to=1710000000")
-        self.assertTrue(all(_weekday(b["time"]) == 0 for b in weekly))
-        self.assertGreater(len(weekly), 25)
-        _, _, monthly = self.json("/api/history?symbol=AAPL&interval=1mo&from=1600000000&to=1710000000")
-        self.assertTrue(all(datetime.fromtimestamp(b["time"], tz=timezone.utc).day == 1 for b in monthly))
-        self.assertGreater(len(monthly), 40)
-        _, _, quarterly = self.json("/api/history?symbol=AAPL&interval=3mo&from=1600000000&to=1710000000")
-        self.assertTrue(all(datetime.fromtimestamp(b["time"], tz=timezone.utc).month in (1, 4, 7, 10) for b in quarterly))
+        for symbol, venue in (("AAPL", NEW_YORK), ("RELIANCE.NS", MUMBAI)):
+            local = [_local(venue, b["time"]) for b in self.json(f"/api/history?symbol={symbol}&interval=1d&from=1690000000&to=1710000000")[2]]
+            self.assertTrue(all(into == venue.open and _weekday(day) < 5 for day, into in local), symbol)
+            self.assertGreater(len(local), 150)
+            weekly = self.json(f"/api/history?symbol={symbol}&interval=1wk&from=1690000000&to=1710000000")[2]
+            self.assertTrue(all(_weekday(_local(venue, b["time"])[0]) == 0 for b in weekly), symbol)
+            self.assertGreater(len(weekly), 25)
+            dates = [date.fromordinal(_local(venue, b["time"])[0] + EPOCH_ORDINAL)
+                     for b in self.json(f"/api/history?symbol={symbol}&interval=1mo&from=1600000000&to=1710000000")[2]]
+            self.assertTrue(all(d.day == 1 for d in dates), symbol)
+            self.assertGreater(len(dates), 40)
+            dates = [date.fromordinal(_local(venue, b["time"])[0] + EPOCH_ORDINAL)
+                     for b in self.json(f"/api/history?symbol={symbol}&interval=3mo&from=1600000000&to=1710000000")[2]]
+            self.assertTrue(all(d.day == 1 and d.month in (1, 4, 7, 10) for d in dates), symbol)
 
     def test_intraday_period_is_clamped_like_the_source(self):
         _, _, bars = self.json("/api/history?symbol=AAPL&interval=1m&period=1y")
@@ -910,13 +1102,14 @@ class SelfTest(unittest.TestCase):
         # hours add bars before the open and after the close, nothing else.
         for b in regular:
             self.assertEqual(closes[b["time"]], b["close"])
-        extra = [b for b in extended if b["time"] not in {r["time"] for r in regular}]
-        self.assertTrue(any(b["time"] % DAY < SESSION_OPEN for b in extra))
-        self.assertTrue(any(b["time"] % DAY >= SESSION_CLOSE for b in extra))
-        for b in extra:
-            self.assertGreaterEqual(b["time"] % DAY, EXTENDED_OPEN)
-            self.assertLess(b["time"] % DAY, EXTENDED_CLOSE)
-            self.assertLess(_weekday(b["time"]), 5)
+        extra = [_local(NEW_YORK, b["time"]) for b in extended if b["time"] not in {r["time"] for r in regular}]
+        # New York's own pre and post market, 04:00 to 09:30 and 16:00 to 20:00.
+        self.assertTrue(any(into < NEW_YORK.open for _, into in extra))
+        self.assertTrue(any(into >= NEW_YORK.close for _, into in extra))
+        for day, into in extra:
+            self.assertGreaterEqual(into, NEW_YORK.pre)
+            self.assertLess(into, NEW_YORK.post)
+            self.assertLess(_weekday(day), 5)
         again = self.get("/api/history?symbol=AAPL&interval=5m&session=extended" + window)[2]
         self.assertEqual(json.loads(again), extended)
 

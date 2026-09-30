@@ -110,11 +110,10 @@ for (const surface of ['widget', 'demo'] as const) {
   test(`${surface} source controls select real outputs, reject cycles and retain unavailable references`, async ({ page }, info) => {
     const errors = await mount(page, surface);
     let { dialog, source, accept, cancel } = controls(page, surface);
-    const { producerId, consumerId } = await page.evaluate(() => ({
-      producerId: window.__studySourceUi.producer.id, consumerId: window.__studySourceUi.consumer.id,
-    }));
-    const producerLabel = `Source choice [${producerId}] / Signal`;
-    const consumerLabel = `Source choice [${consumerId}] / Signal`;
+    const producerId = await page.evaluate(() => window.__studySourceUi.producer.id);
+    // Numbered by their place among their name, never named by an internal id.
+    const producerLabel = 'Source choice (1) / Signal';
+    const consumerLabel = 'Source choice (2) / Signal';
     await expect(source.locator('option', { hasText: producerLabel })).toHaveCount(1);
     await expect(source.locator('option', { hasText: consumerLabel })).toHaveCount(0);
     expect(await lastValue(page)).toBe(393);

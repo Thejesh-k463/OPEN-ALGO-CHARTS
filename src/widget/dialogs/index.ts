@@ -176,6 +176,8 @@ export const DIALOG_CSS = `
 .oac-widget .oac-levels__x { width: 24px; height: 24px; display: grid; place-items: center; padding: 0; background: transparent;
   border: 0; border-radius: 5px; color: ${v('faint')}; }
 .oac-widget .oac-levels__x:hover { background: ${v('elev-2')}; color: ${v('danger')}; }
+/* A row's remove cross stays a size under the panel's close, so the two do not read as one control. */
+.oac-widget .oac-levels__x > .oac-glyph > svg { width: 12px; height: 12px; }
 .oac-widget .oac-levels__foot { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
 .oac-widget .oac-levels__foot .oac-spacer { flex: 1 1 auto; }
 
@@ -203,8 +205,6 @@ export const DIALOG_CSS = `
 .oac-widget .oac-ctx__row[aria-checked="true"] { color: ${v('acc-2')}; }
 .oac-widget .oac-ctx__mark { width: 16px; height: 16px; display: inline-grid; place-items: center; flex: none; color: ${v('mut')}; }
 .oac-widget .oac-ctx__row[aria-checked="true"] .oac-ctx__mark { color: ${v('acc-2')}; }
-.oac-widget .oac-ctx__mark > svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.8;
-  stroke-linecap: round; stroke-linejoin: round; }
 .oac-widget .oac-ctx__dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .oac-widget .oac-ctx__label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .oac-widget .oac-ctx__note { color: ${v('faint')}; font-size: 11px; }

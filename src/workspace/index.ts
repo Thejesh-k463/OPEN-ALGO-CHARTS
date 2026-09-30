@@ -4,7 +4,8 @@ export {
   parseIndicatorTemplate, parseIndicatorTemplatePayload, parseIndicatorStates, migrateWidgetWorkspace,
 } from './documents';
 export { WorkspaceRepository, WorkspaceConflictError, parseWorkspaceCatalog } from './repository';
-export type { WorkspaceCatalog, WorkspaceStorage, WorkspaceRepositoryOptions, WorkspaceOperationOptions, WorkspaceOpenOptions } from './repository';
+export type { WorkspaceCatalog, WorkspaceStorage, WorkspaceStore, WorkspaceRepositoryOptions, WorkspaceOperationOptions, WorkspaceOpenOptions } from './repository';
+export { createMemoryWorkspaceStorage } from './memory';
 export { createIndexedDbWorkspaceStorage } from './indexed-db';
 export type { IndexedDbWorkspaceStorage, IndexedDbCatalogStorage } from './indexed-db';
 export {
@@ -30,6 +31,7 @@ export { captureIndicatorTemplate, planIndicatorTemplateState } from './template
 export type { IndicatorTemplateApplyOptions, IndicatorTemplatePlan } from './template-layout';
 export type {
   WorkspaceKind, WorkspaceSettings, WorkspaceChartState, WorkspaceComparison, WorkspaceSlot, WorkspacePane,
-  WorkspacePayload, WorkspaceDocument, IndicatorTemplateDocument, IndicatorTemplateInput,
+  WorkspacePayload, WorkspaceSync, WorkspaceLinkChannels, WorkspaceLinkGroup, WorkspaceDocument,
+  IndicatorTemplateDocument, IndicatorTemplateInput,
   IndicatorTemplatePayload, IndicatorTemplateLayout, IndicatorTemplatePlotBinding,
 } from './documents';

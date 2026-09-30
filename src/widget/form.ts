@@ -25,7 +25,7 @@ import { INDICATOR_SOURCES, registeredIntervals, parseSessionSpec } from 'openal
 import type { ChartSettingsInput, IndicatorInputPresentation } from 'openalgo-charts';
 import { chromeIconSvg, CHROME_ICON_STROKE } from 'openalgo-charts/draw';
 import type { SettingsField } from 'openalgo-charts/draw';
-import type { OverlayOptions } from './context';
+import { glyph, type OverlayOptions } from './context';
 import { widgetText, type WidgetTranslationOptions } from './localization';
 import { createColorPicker, type ColorPickerOptions } from './color-picker';
 import { inputStates } from './input-conditions';
@@ -323,9 +323,10 @@ export function el<K extends keyof HTMLElementTagNameMap>(
 const XMLNS = 'http://www.w3.org/2000/svg';
 
 /**
- * An inline glyph on the chrome grid for the few icons the tier does not
- * carry (a settings tab's picture). Same frame as `chromeIconSvg`, so the two
- * kinds sit side by side at one weight.
+ * Chrome-grid path data the registry derives rather than lists (a layout
+ * picker's tile), in the frame `chromeIconSvg` draws, so it sits beside the
+ * listed glyphs at one weight. Every picture the widget shows is registry
+ * data: a glyph drawn here instead would escape the registry's checks.
  */
 export function glyphSvg(path: string): string {
   return `<svg xmlns="${XMLNS}" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor"`
@@ -334,9 +335,7 @@ export function glyphSvg(path: string): string {
 
 /** A chrome glyph wrapped for the stylesheet's `.oac-glyph--chrome` sizing. */
 export function chromeGlyph(doc: Document, id: string): HTMLElement {
-  const span = el(doc, 'span', 'oac-glyph oac-glyph--chrome');
-  span.innerHTML = chromeIconSvg(id);
-  return span;
+  return glyph(doc, chromeIconSvg(id), 'chrome');
 }
 
 export type ButtonVariant = 'ghost' | 'primary' | 'danger';
@@ -345,8 +344,6 @@ export interface ButtonSpec {
   label: string;
   /** Chrome icon id. With `iconOnly` the label becomes the accessible name. */
   icon?: string;
-  /** Inline SVG markup for a glyph the chrome set does not carry; used instead of `icon`. */
-  svg?: string;
   iconOnly?: boolean;
   variant?: ButtonVariant;
   onClick?: (e: MouseEvent) => void;
@@ -364,11 +361,6 @@ export function button(doc: Document, spec: ButtonSpec): HTMLButtonElement {
   if (spec.variant === 'danger') classes.push('oac-btn--danger');
   b.className = classes.join(' ');
   if (spec.icon !== undefined) b.appendChild(chromeGlyph(doc, spec.icon));
-  else if (spec.svg !== undefined) {
-    const g = el(doc, 'span', 'oac-glyph oac-glyph--chrome');
-    g.innerHTML = spec.svg;
-    b.appendChild(g);
-  }
   if (spec.iconOnly === true) {
     b.setAttribute('aria-label', spec.label);
     b.title = spec.chord === undefined ? spec.label : `${spec.label} (${spec.chord})`;
@@ -587,7 +579,7 @@ export function selectionPoint(
 export interface TabSpec {
   id: string;
   label: string;
-  /** Inline SVG markup for the glyph beside the label. */
+  /** Chrome icon id for the glyph beside the label. */
   icon?: string;
 }
 
@@ -622,11 +614,7 @@ export function tabList(
     b.type = 'button';
     b.setAttribute('role', 'tab');
     b.dataset.tab = t.id;
-    if (t.icon !== undefined) {
-      const g = el(doc, 'span', 'oac-glyph oac-glyph--chrome');
-      g.innerHTML = t.icon;
-      b.appendChild(g);
-    }
+    if (t.icon !== undefined) b.appendChild(chromeGlyph(doc, t.icon));
     b.appendChild(el(doc, 'span', 'oac-tab__label', t.label));
     b.addEventListener('click', (e) => { e.stopPropagation(); pick(t.id); });
     b.addEventListener('keydown', (e) => {
@@ -950,16 +938,20 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
     const label = el(doc, 'label', className, c.kind === 'timestamp'
       ? widgetText(opts, '{label} (UTC seconds)', { label: c.label }) : c.label);
     // The mark rides inside the label so it lands the same way in all three row
-    // shapes below, and so a pointer-less device can still reach it by tab.
+    // shapes below. It is for the pointer: inside the label its text would be
+    // read as part of the control's name, so the control carries it as its
+    // description instead (bindLabel).
     if (c.tooltip !== undefined && c.tooltip !== '') {
       const help = el(doc, 'span', 'oac-help', '?');
       help.title = c.tooltip;
-      help.tabIndex = 0;
-      help.setAttribute('role', 'note');
-      help.setAttribute('aria-label', c.tooltip);
+      help.setAttribute('aria-hidden', 'true');
       label.appendChild(help);
     }
     return label;
+  };
+  const bindLabel = (label: HTMLLabelElement, control: HTMLElement, c: FormControl): void => {
+    label.htmlFor = control.id;
+    if (c.tooltip !== undefined && c.tooltip !== '') control.setAttribute('aria-description', c.tooltip);
   };
   const member = (c: FormControl, row: HTMLElement, head: HTMLElement | undefined, fields: Bound[], parts: HTMLElement[]): Member => {
     const m: Member = { control: c, fields, parts, offKeys: fields.map(f => f.key), offEl: row, offClass: 'oac-row--off',
@@ -985,11 +977,20 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
 
   let lastGroup: string | undefined;
   let head: HTMLElement | undefined;
+  // Where rows go: the form, or the group of the heading above them.
+  let box = host;
   let inline: { id: string; row: HTMLElement; ctl: HTMLElement } | null = null;
   for (const c of controls) {
     if (c.group !== undefined && c.group !== lastGroup) {
       head = el(doc, 'div', 'oac-head', c.group);
       host.appendChild(head);
+      // The rows under a heading are a group it names, so a second Color says
+      // whose. The box takes no layout (display: contents), the rows stay the grid's.
+      head.id = idFor(`group-${members.length}`);
+      box = el(doc, 'div', 'oac-form__group');
+      box.setAttribute('role', 'group');
+      box.setAttribute('aria-labelledby', head.id);
+      host.appendChild(box);
       inline = null;
     }
     lastGroup = c.group ?? lastGroup;
@@ -1001,7 +1002,7 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
       const f = field(c.key, c.kind, c, opts.values[c.key]);
       f.b.control.id = idFor(c.key);
       const label = labelFor(c, 'oac-inline__label');
-      label.htmlFor = (f.b.focus ?? f.b.control).id;
+      bindLabel(label, f.b.focus ?? f.b.control, c);
       bound.push(f.b);
       const item = el(doc, 'span', 'oac-inline__item');
       item.dataset.key = c.key;
@@ -1027,7 +1028,7 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
       const ctl = el(doc, 'div', 'oac-row__ctl');
       ctl.appendChild(body);
       row.appendChild(ctl);
-      host.appendChild(row);
+      box.appendChild(row);
       // The body is the dialog's own markup, so there is nothing here to
       // disable: a condition can only show or hide it.
       member(c, row, head, [], [row]).offEl = null;
@@ -1041,7 +1042,7 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
         const sw = field(pair.enabled.key, 'boolean', c, opts.values[pair.enabled.key]);
         sw.ctl.classList.add('oac-row__sw');
         sw.ctl.id = idFor(pair.enabled.key);
-        label.htmlFor = sw.ctl.id;
+        bindLabel(label, sw.ctl, c);
         bound.push(sw.b);
         fields.push(sw.b);
         row.appendChild(sw.ctl);
@@ -1050,8 +1051,10 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
       }
       row.appendChild(label);
       const ctl = el(doc, 'div', 'oac-row__ctl');
+      let first: HTMLElement | undefined;
       for (const half of [pair.up, pair.down]) {
         const f = field(half.key, 'color', c, opts.values[half.key]);
+        first ??= f.b.focus ?? f.b.control;
         f.b.control.id = idFor(half.key);
         // Which swatch is which is not obvious at 26px, and the row is too
         // tight for two more labels, so the name rides on the control.
@@ -1062,9 +1065,9 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
         fields.push(f.b);
         ctl.appendChild(f.ctl);
       }
-      if (pair.enabled === undefined) label.htmlFor = `${idFor(pair.up.key)}-trigger`;
+      if (pair.enabled === undefined && first !== undefined) bindLabel(label, first, c);
       row.appendChild(ctl);
-      host.appendChild(row);
+      box.appendChild(row);
       // Inert only when both halves are: one live half keeps the row live and
       // dims the swatch with nothing to paint.
       member(c, row, head, fields, [row]).offKeys = [pair.up.key, pair.down.key];
@@ -1073,7 +1076,7 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
 
     const f = field(c.key, c.kind, c, opts.values[c.key]);
     f.b.control.id = idFor(c.key);
-    label.htmlFor = (f.b.focus ?? f.b.control).id;
+    bindLabel(label, f.b.focus ?? f.b.control, c);
     bound.push(f.b);
     let parts: HTMLElement[] = [row];
     let titles: HTMLElement[] = [row];
@@ -1112,7 +1115,7 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
       inline = { id: c.inline as string, row, ctl: row.lastChild as HTMLElement };
     }
     errorLine(c.key, f.b, row);
-    host.appendChild(row);
+    box.appendChild(row);
     const m = member(c, row, head, [f.b], parts);
     m.titles = titles;
     rows.get(c.key)!.member = m;

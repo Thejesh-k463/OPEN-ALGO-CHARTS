@@ -4,11 +4,11 @@
 // on screen.
 import * as engine from '/dist/openalgo-charts.mjs';
 import { round2 } from './ui.js';
-import { SESSIONS, exchangeOf } from './status.js';
+import { exchangeOf, venueCalendar } from './status.js';
 
 // Read off the namespace, like the other version-dependent surfaces: an older
 // dist/ without schedules still loads and draws every other symbol.
-const { Instrument, SessionCalendar } = engine;
+const { Instrument } = engine;
 
 /**
  * Host-supplied instrument metadata, keyed by symbol. Synthetic, not any
@@ -33,25 +33,24 @@ export function instrumentFor(symbol) {
   return meta && Instrument ? new Instrument(meta) : null;
 }
 
-const hhmm = (minutes) => String(Math.floor(minutes / 60)).padStart(2, '0') + String(minutes % 60).padStart(2, '0');
-
 /**
  * The hours the space right of the last candle is laid out in, for
  * `chart.dataLayer.setSessionCalendar`: a drawing placed past Friday's close
  * then lands on Monday's bars, not on Friday night. A symbol with host
- * metadata brings its own calendar; otherwise the venue's regular hours from
- * the status line's table. Null for a venue with no hours here, one that never
- * closes, or a dist/ without calendars, and the chart then spaces the future
- * at the recent median bar interval. There is no holiday list behind this, so
- * an exchange holiday is laid out as a trading day, the same limit the status
- * line states.
+ * metadata brings its own calendar; otherwise the venue's calendar from the
+ * status line's table, the same one its session state is read from. That one
+ * carries the pre-open and post-close the source serves, so the chart's own
+ * calendar is enough for the bottom bar's market status and the session
+ * shading; the future is laid out in the regular sessions alone. Null for a
+ * venue with no hours here, one that never closes, or a dist/ without
+ * calendars, and the chart then spaces the future at the recent median bar
+ * interval. The table lists no holidays, so an exchange holiday is laid out as
+ * a trading day, the same limit the status line states.
  */
 export function sessionCalendarFor(symbol) {
   const instrument = instrumentFor(symbol);
   if (instrument && typeof instrument.sessionFrom === 'function') return instrument;
-  const hours = SESSIONS[exchangeOf(symbol)];
-  if (!hours || !SessionCalendar) return null;
-  return new SessionCalendar({ timezone: hours.zone, sessions: [`${hhmm(hours.open)}-${hhmm(hours.close)}:23456`] });
+  return venueCalendar(exchangeOf(symbol));
 }
 
 /** The instrument's tick schedule, or null: no metadata, a constant tick, or a dist/ without schedules. */

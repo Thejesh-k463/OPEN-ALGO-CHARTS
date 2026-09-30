@@ -68,9 +68,29 @@ const text = files.map((f) => readFileSync(f, 'utf8')).join('\n')
 const namedId = (id) =>
   text.includes(`\`${id}\``) || text.includes(`'${id}'`) || text.includes(`| ${id} `)
 
+/**
+ * The names a tier's declarations export: its public surface. A bundle can
+ * export more at runtime: the widget's parts that load on first use import
+ * the shell's helpers from the tier file under minified names (rollup's
+ * internal exports), which are no API and match any text, so only declared
+ * names are counted.
+ */
+function declared(tier) {
+  const file = tier === 'base' ? 'index.d.ts' : `${tier}/index.d.ts`
+  const names = new Set()
+  for (const clause of readFileSync(join(ROOT, 'dist', file), 'utf8').matchAll(/export\s+(?:type\s+)?\{([^}]*)\}/g)) {
+    for (const part of clause[1].split(',')) {
+      const name = part.trim().replace(/^type\s+/, '').split(/\s+as\s+/).pop()
+      if (name) names.add(name)
+    }
+  }
+  return names
+}
+
 const groups = []
 for (const [tier, m] of Object.entries(mods)) {
-  groups.push([`exports:${tier}`, Object.keys(m), (n) => text.includes(n)])
+  const surface = declared(tier)
+  groups.push([`exports:${tier}`, Object.keys(m).filter((n) => surface.has(n)), (n) => text.includes(n)])
 }
 groups.push(['indicator ids', mods.base.registeredIndicators().map((d) => d.id), namedId])
 groups.push(['chart types', mods.base.registeredChartTypes(), namedId])

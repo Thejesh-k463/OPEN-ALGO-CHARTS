@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as engine from '/dist/openalgo-charts.mjs';
 import { HOST_INSTRUMENTS, instrumentFor, tickScheduleFor, axisMinMove, snapPrice, tickNote, sessionCalendarFor } from '../src/ticks.js';
+import { venueCalendar } from '../src/status.js';
 import { fakeDocument } from '../../../tests/helpers/fake-dom';
 import { initOrders, placeOrder, fillMarket, repriceOrder } from '../src/orders.js';
 import { initBracket, makeBracket, setBracketPrice } from '../src/bracket.js';
@@ -70,6 +71,17 @@ describe('the host trading hours', () => {
     expect(us.calendar.sessions).toEqual(['0930-1600:23456']);
     expect(us.sessionFrom(nyc('2026-02-06 16:00')).open).toBe(nyc('2026-02-09 09:30'));
     expect(sessionCalendarFor('^NSEI').timezone).toBe('Asia/Kolkata');
+  });
+
+  it('hands the chart the venue calendar, pre-open and post-close included', () => {
+    const us = sessionCalendarFor('AAPL');
+    expect(us).toBe(venueCalendar('US'));
+    expect(us.phaseAt(nyc('2026-02-06 05:00'))).toBe('pre');
+    expect(us.phaseAt(nyc('2026-02-06 17:00'))).toBe('post');
+    expect(us.phaseAt(nyc('2026-02-06 21:00'))).toBe('closed');
+    // The future is still laid out in the regular session alone.
+    expect(us.sessionFrom(nyc('2026-02-09 05:00')).open).toBe(nyc('2026-02-09 09:30'));
+    expect(sessionCalendarFor('RELIANCE.NS').phaseAt(ist('2026-02-06T09:00:00'))).toBe('closed');
   });
 
   it('uses the host instrument where one exists and nothing for a venue that never closes', () => {

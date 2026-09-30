@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   YFinanceDataFeed, initFeed, barsRequest, fetchBars, fetchNote, abortFetch,
   classifyHistoryResponse, feedErrorState, staleness, currentStaleness, syncStaleBadge,
-  FeedError, NotFoundError, RateLimitedError, NetworkError, AbortedError, STALE_GRACE_SEC,
+  FeedError, NotFoundError, RateLimitedError, NetworkError, AbortedError, STALE_GRACE_SEC, overdueText,
 } from '../src/feed.js';
 import { UnknownIntervalError } from '../src/intervals.js';
 import { fakeDom, flatBar } from './helpers.js';
@@ -240,6 +240,19 @@ describe('bar requests', () => {
     expect(calls).toHaveLength(1);
   });
 
+  it('reaches the wire again when a warm answer would end before the newest bar seen', async () => {
+    // 16:30 in New York on Wednesday 10 January: the day's bar has traded and,
+    // by its length, has not closed, so the cache rightly holds it back.
+    vi.setSystemTime(Date.UTC(2024, 0, 10, 21, 30));
+    const today = Date.UTC(2024, 0, 10, 14, 30) / 1000;
+    stubFetch([flatBar(today - DAY, 99), flatBar(today, 100)], calls);
+    await fetchBars('AMZN', '1d', '1y');
+    const again = await fetchBars('AMZN', '1d', '1y');
+    expect(again.at(-1)).toMatchObject({ time: today, close: 100 });
+    expect(calls).toHaveLength(2);
+    expect(fetchNote()).toMatch(/^ {2}· {2}fetched \d+ ms$/);
+  });
+
   it('reaches the wire again when asked to ignore the cache', async () => {
     const last = Date.UTC(2024, 0, 5, 0) / 1000;
     stubFetch([flatBar(last, 100)], calls);
@@ -314,19 +327,21 @@ describe('the forming bar and the cache', () => {
     stubFetch(bars, calls);
     const cold = await fetchBars('AAPL', '5m', '1mo');
     expect(cold.map((b) => b.time)).toEqual([at(14, 55), at(15, 0), at(15, 5)]);
-    // The warm answer holds closed bars only: the 15:05 bar is still being
-    // built and a snapshot of it would be a frozen candle.
-    const warm = await fetchBars('AAPL', '5m', '1mo');
-    expect(fetchNote()).toContain('warm');
-    expect(warm.map((b) => b.time)).toEqual([at(14, 55), at(15, 0)]);
-    expect(calls).toHaveLength(1);
+    // The cache holds closed bars only: the 15:05 bar is still being built
+    // and a snapshot of it would be a frozen candle. The page has shown that
+    // bar already, so it comes from the wire, as it now stands.
+    stubFetch([bars[0], bars[1], flatBar(at(15, 5), 102.5)], calls);
+    const again = await fetchBars('AAPL', '5m', '1mo');
+    expect(fetchNote()).toContain('fetched');
+    expect(again.at(-1)).toMatchObject({ time: at(15, 5), close: 102.5 });
+    expect(calls).toHaveLength(2);
     // 15:10 has passed: the 15:05 bar is closed and something newer exists,
     // so a hit past coverage is no longer safe. Well inside the TTL, so it
     // is the close time and nothing else that forces the fetch.
     vi.setSystemTime(Date.UTC(2024, 0, 10, 15, 10, 30));
     stubFetch(bars.concat(flatBar(at(15, 10), 103)), calls);
     const fresh = await fetchBars('AAPL', '5m', '1mo');
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     expect(fresh[fresh.length - 1].time).toBe(at(15, 10));
   });
 
@@ -353,7 +368,7 @@ describe('the forming bar and the cache', () => {
     expect(staleness('BTC-USD', '5m', saturday - 200, saturday).stale).toBe(false);
   });
 
-  it('puts the badge on the status line after a warm load and takes it off when the market shuts', async () => {
+  it('puts the badge on the status line when the source falls behind and takes it off when the market shuts', async () => {
     const dom = fakeDom();
     const inserted = [];
     dom.get('status').parentNode = { insertBefore: (n) => inserted.push(n) };
@@ -362,8 +377,9 @@ describe('the forming bar and the cache', () => {
     await fetchBars('AAPL', '5m', '1mo');
     expect(currentStaleness().stale).toBe(false);
     expect(dom.get('stale').hidden).toBe(true);
+    // Asked again, the source has nothing past 15:00, which closed at 15:05.
+    stubFetch(bars.slice(0, 1), calls);
     await fetchBars('AAPL', '5m', '1mo');
-    expect(fetchNote()).toContain('warm');
     expect(currentStaleness()).toEqual({ stale: true, overdueSec: 120 });
     const badge = dom.get('stale');
     expect(badge.hidden).toBe(false);
@@ -394,5 +410,13 @@ describe('the forming bar and the cache', () => {
     await fetchBars('AAPL', '1mo', '5y');
     const now = Math.floor(WEDNESDAY_1507 / 1000);
     expect(currentStaleness()).toEqual({ stale: false, overdueSec: now - (today + DAY) });
+  });
+});
+
+describe('overdueText', () => {
+  it('rounds to the minute before it splits hours, so no reading says 60 min', () => {
+    expect(overdueText(7190)).toBe('2 h 0 min');
+    expect(overdueText(3660)).toBe('1 h 1 min');
+    expect(overdueText(90)).toBe('2 min');
   });
 });

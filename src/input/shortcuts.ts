@@ -63,7 +63,8 @@ const MODIFIER_KEYS = new Set([
   'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight', 'OSLeft', 'OSRight',
 ]);
 
-function detectMac(): boolean {
+/** Internal: the chart's key hints read it too. Not part of the package's API. */
+export function detectMac(): boolean {
   return typeof navigator !== 'undefined' && /mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent || '');
 }
 
@@ -148,8 +149,8 @@ export const DEFAULT_KEYMAP: KeymapEntry[] = [
   { command: 'panDown', label: 'Pan down', combos: ['ArrowDown'] },
   { command: 'zoomIn', label: 'Zoom in', combos: ['Equal', 'Shift+Equal', 'NumpadAdd'] },
   { command: 'zoomOut', label: 'Zoom out', combos: ['Minus', 'NumpadSubtract'] },
-  { command: 'resetScale', label: 'Reset scale', combos: ['Home', 'Digit0'] },
-  { command: 'fitContent', label: 'Fit content', combos: ['Alt+KeyF'] },
+  { command: 'resetScale', label: 'Reset view', combos: ['Home', 'Digit0'] },
+  { command: 'fitContent', label: 'Fit all bars', combos: ['Alt+KeyF'] },
   { command: 'screenshot', label: 'Screenshot (PNG)', combos: ['Alt+Shift+KeyS'] },
   { command: 'toggleGridVert', label: 'Toggle vertical grid', combos: ['Alt+KeyV'] },
   { command: 'toggleGridHorz', label: 'Toggle horizontal grid', combos: ['Alt+KeyH'] },
@@ -188,6 +189,7 @@ export class ShortcutManager {
   private _entries = new Map<string, KeymapEntry>();
   private _reverse = new Map<string, string>();
   private readonly _listeners = new Set<(e: ShortcutTriggerEvent) => void>();
+  private readonly _changes = new Set<() => void>();
 
   public constructor(options: ShortcutManagerOptions = {}) {
     this.scope = options.scope ?? 'hover';
@@ -277,6 +279,16 @@ export class ShortcutManager {
     return () => this._listeners.delete(cb);
   }
 
+  /**
+   * Called after every change to the keymap (a binding set, disabled or reset,
+   * a preset, a custom shortcut), so a hint drawn from it can follow. Returns
+   * the unsubscriber.
+   */
+  public onChange(fn: () => void): () => void {
+    this._changes.add(fn);
+    return () => { this._changes.delete(fn); };
+  }
+
   public setBinding(command: string, combo: string | string[]): boolean {
     const arr = toArray(combo).map(normalizeCombo).filter((c) => c !== '' && !isReservedCombo(c));
     if (arr.length === 0) return false;
@@ -331,6 +343,7 @@ export class ShortcutManager {
   private _after(): void {
     this._rebuild();
     this._save();
+    for (const fn of [...this._changes]) fn();
   }
 
   private _save(): void {

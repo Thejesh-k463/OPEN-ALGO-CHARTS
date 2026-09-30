@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { chartDecorationsForRebuild } from '../src/chart-settings.js';
+import { chartDecorationsForRebuild, chartSettingUnavailable } from '../src/chart-settings.js';
 
 describe('chart rebuild settings', () => {
   it('carries each chart own legend button size through a rebuild', () => {
@@ -31,5 +31,12 @@ describe('chart rebuild settings', () => {
       .toEqual({ branding });
     expect(chartDecorationsForRebuild(null)).toEqual({});
     expect(chartDecorationsForRebuild({})).toEqual({});
+  });
+});
+
+describe('chart settings availability', () => {
+  it('names the chart that trades as Chart 1, the way the rest of the page names it', () => {
+    expect(chartSettingUnavailable('trading.longColor', undefined, { pane: 2, request: { symbol: 'AAPL' }, chart: {} }))
+      .toBe('Trading is available on Chart 1');
   });
 });

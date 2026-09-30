@@ -34,3 +34,15 @@ export const STOCK_BARS_SOURCE = `function stockBars(startTime, count, intervalS
   }
   return bars;
 }`;
+
+export interface StockBar { time: number; open: number; high: number; low: number; close: number; volume: number }
+
+/**
+ * The same generator for a component that builds its chart directly. It is
+ * made from the source string above, so a runnable example's data and a
+ * component's data come from one definition and cannot drift apart.
+ */
+export const stockBars = new Function(`${STOCK_BARS_SOURCE}\nreturn stockBars;`)() as (
+  startTime: number, count: number, intervalSec: number, startPrice: number, seed: number,
+  volatility?: number, baseVolume?: number,
+) => StockBar[];

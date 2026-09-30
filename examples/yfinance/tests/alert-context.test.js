@@ -68,7 +68,7 @@ describe('reference alert context actions', () => {
   });
   it('offers only the list for empty oscillator space, time scales and unavailable chart UI', () => {
     const { app } = host();
-    expect(alertContextEntries(app, event({ paneIndex: 1 })).map(row => row.label)).toEqual(['Alerts']);
+    expect(alertContextEntries(app, event({ paneIndex: 1 })).map(row => row.label)).toEqual(['Alerts...']);
     expect(alertContextEntries(app, event({ price: null, target: { kind: 'time-scale' } }))).toHaveLength(1);
     app.alertUi = null;
     expect(alertContextEntries(app, event())).toEqual([]);

@@ -132,7 +132,11 @@ describe('Momentum', () => {
   });
 });
 
-describe('Rate Of Change', () => {
+describe('Rate of Change', () => {
+  it('is named like Balance of Power, with a lower-case of', () => {
+    expect(ROC.name).toBe('Rate of Change');
+  });
+
   it('is 100 * (src - src[length]) / src[length]', () => {
     const out = run(ROC, rising());
     expect(out.roc[9]).toBe(9); // 100 * (109 - 100) / 100

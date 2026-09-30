@@ -383,16 +383,24 @@ export async function fetchBars(symbol, interval, period, opts) {
   const before = app.cache ? app.cache.stats().hits : 0;
   const t0 = performance.now();
   let bars;
+  let warm = false;
   try {
     bars = await feed.getBars(req);
+    warm = Boolean(app.cache) && app.cache.stats().hits > before;
+    // The cache holds back a bar that has not closed, as it must, so a warm
+    // answer can end before the newest bar this page has already shown: the
+    // day's candle after the close, the forming one in the session. With no
+    // live subscription here to supply it again, the chart would put an
+    // older close up as the last price. The wire has it.
+    const seen = lastBarSeen.get(seenKey(symbol, wire, variant));
+    if (warm && seen !== undefined && (bars.at(-1)?.time ?? -Infinity) < seen) {
+      bars = await feed.getBars({ ...req, noCache: true });
+      warm = false;
+    }
   } finally {
     if (controller && inflight.get(slot) === controller) inflight.delete(slot);
   }
-  lastFetch = {
-    cached: Boolean(app.cache),
-    warm: Boolean(app.cache) && app.cache.stats().hits > before,
-    ms: Math.round(performance.now() - t0),
-  };
+  lastFetch = { cached: Boolean(app.cache), warm, ms: Math.round(performance.now() - t0) };
   if (bars.length) {
     lastBarSeen.set(seenKey(symbol, wire, variant), bars[bars.length - 1].time);
     // Freshness is judged on the wire frame: a folded month is as fresh as
@@ -417,10 +425,10 @@ export function fetchNote() {
 // A chart that stops updating looks exactly like a chart that is up to
 // date, and this page draws Buy and Sell on it. The badge says when the
 // newest bar is not the one that should be forming right now: the feed is
-// behind, or the load was warm and the cache (rightly) kept the forming bar
-// back. Judged from the registry's close time for the bar, not from the
-// epoch grid, because a session-anchored hourly bar opens at 09:15 and the
-// grid would call it late an hour early.
+// behind, or the load was warm and the cache (rightly) kept back a forming
+// bar this page had not seen yet. Judged from the registry's close time for
+// the bar, not from the epoch grid, because a session-anchored hourly bar
+// opens at 09:15 and the grid would call it late an hour early.
 
 /** Seconds a bar may be overdue before it is called stale: the source's own publication delay. */
 export const STALE_GRACE_SEC = 60;
@@ -452,7 +460,11 @@ export function currentStaleness(nowSec = Math.floor(Date.now() / 1000)) {
   return staleness(app.req.symbol, seen.wire, seen.time, nowSec, app.chartTimezone, sessionOf(app.req));
 }
 
-const overdueText = (sec) => (sec >= 3600 ? `${Math.floor(sec / 3600)} h ${Math.round((sec % 3600) / 60)} min` : `${Math.max(1, Math.round(sec / 60))} min`);
+// Minutes are rounded before the hours are split off, or 7190 s reads "1 h 60 min".
+export const overdueText = (sec) => {
+  const min = Math.max(1, Math.round(sec / 60));
+  return min >= 60 ? `${Math.floor(min / 60)} h ${min % 60} min` : `${min} min`;
+};
 
 let staleTimer = 0;
 let shellWatch = null;

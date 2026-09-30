@@ -400,6 +400,9 @@ describe('a paired time and price in the settings dialog', () => {
     expect(trigger.textContent).toBe('Pick point on chart');
     // The time keeps its own time-only pick.
     expect(h.root.querySelector('[data-input-action="at"]')!.textContent).toBe('Pick on chart');
+    // Each names the input it picks, so two pick buttons never share one name.
+    expect(trigger.getAttribute('aria-label')).toBe('Pick Anchor time and Anchor price on the chart');
+    expect(h.root.querySelector('[data-input-action="at"]')!.getAttribute('aria-label')).toBe('Pick Anchor time on the chart');
     const start = vi.spyOn(h.chart, 'beginPick'), write = vi.spyOn(h.inst, 'setSettings');
     trigger.click();
     expect(start.mock.calls[0][0]).toBe('point');

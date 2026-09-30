@@ -16,7 +16,7 @@ import { describe, it, expect } from 'vitest';
 import { makeCtx } from './helpers/fake-ctx';
 import { INDICATOR_SOURCES } from 'openalgo-charts';
 import type { ChartSettingsInput } from 'openalgo-charts';
-import { LINE_STYLE_OPTIONS, FONT_OPTIONS, type SettingsField } from 'openalgo-charts/draw';
+import { chromeIconSvg, LINE_STYLE_OPTIONS, FONT_OPTIONS, type SettingsField } from 'openalgo-charts/draw';
 import {
   controlsFromInputs, controlsFromFields, renderForm, toHexColor, formatNumber, placePanel, openPanel,
   dialogFrame, tabList, button, selectionPoint, type FormControl,
@@ -490,8 +490,10 @@ suite('renderForm', () => {
 
   /**
    * 2.2.1: a label has nowhere to explain itself in a dense panel, so the help
-   * text rides on a mark beside it. It must not reshape the row, and it must be
-   * reachable without a pointer, or only mouse users can read the docs.
+   * text rides on a mark beside it. It must not reshape the row. Since 2.5.10
+   * the text reaches assistive technology as the control's description, not
+   * as part of its name, and the mark is no tab stop: its title never showed
+   * on focus, so the stop gave a keyboard user nothing to read.
    */
   it('renders a help mark inside the label only for a control that carries a tooltip', () => {
     const d = doc();
@@ -508,8 +510,11 @@ suite('renderForm', () => {
     expect(mark).not.toBeNull();
     expect(mark!.textContent).toBe('?');
     expect(mark!.title).toBe('Bars in the window.');
-    expect(mark!.getAttribute('aria-label')).toBe('Bars in the window.');
-    expect(mark!.tabIndex).toBe(0);
+    expect(mark!.getAttribute('aria-hidden')).toBe('true');
+    expect(mark!.getAttribute('aria-label')).toBeNull();
+    expect(mark!.getAttribute('tabindex')).toBeNull();
+    expect(rows[0].querySelector('input')!.getAttribute('aria-description')).toBe('Bars in the window.');
+    expect(rows[1].querySelector('input')!.getAttribute('aria-description')).toBeNull();
     // Inside the label, so it stays with the words when a long label wraps.
     expect(rows[0].querySelector('.oac-row__label')!.querySelector('.oac-help')).not.toBeNull();
 
@@ -528,9 +533,23 @@ suite('renderForm', () => {
     ], { values: {}, idPrefix: 't', onChange: () => {} });
     const rows = (host as unknown as FakeElement).querySelectorAll('.oac-row');
     expect(rows[0].querySelector('.oac-help')!.title).toBe('Draw the band.');
+    expect(rows[0].querySelector('input')!.getAttribute('aria-description')).toBe('Draw the band.');
     expect(rows[1].querySelector('.oac-help')!.title).toBe('Up and down colours.');
+    // The pair's label points at its first swatch, which carries the description.
+    const target = (host as unknown as FakeElement).querySelector(`#${(rows[1].querySelector('label') as FakeElement).htmlFor}`)!;
+    expect(target.getAttribute('aria-description')).toBe('Up and down colours.');
     // The pair still renders both swatches: the mark must not have displaced one.
     expect(rows[1].querySelectorAll('input[type=color]').length).toBe(2);
+  });
+
+  it('puts the rows under a heading in a group it names, so a second Color says whose', () => {
+    const { host } = mount();
+    const groups = host.querySelectorAll('[role="group"]');
+    expect(groups).toHaveLength(2);
+    const heads = host.querySelectorAll('.oac-head');
+    expect(groups.map((g) => host.querySelector(`#${g.getAttribute('aria-labelledby')}`))).toEqual(heads);
+    expect(groups[0].querySelectorAll('.oac-row').map((r) => r.dataset.key)).toEqual(['a.on', 'a.n']);
+    expect(groups[1].querySelectorAll('.oac-row').map((r) => r.dataset.key)).toEqual(['a.pair', 'a.sel', 'a.op', 'a.txt']);
   });
 
   it('draws group heads once, a switch in the switch column, and a pair as one row of two swatches', () => {
@@ -693,13 +712,14 @@ suite('furniture', () => {
   it('draws tabs with glyphs and moves the selection with the arrow keys', () => {
     const d = doc();
     const picked: string[] = [];
-    const list = tabList(d, [{ id: 'a', label: 'A', icon: '<svg></svg>' }, { id: 'b', label: 'B' }], 'a', 'rail', (id) => picked.push(id));
+    const list = tabList(d, [{ id: 'a', label: 'A', icon: 'settings' }, { id: 'b', label: 'B' }], 'a', 'rail', (id) => picked.push(id));
     const nav = list.el as unknown as FakeElement;
     (d.body as unknown as FakeElement).appendChild(nav);
     const tabs = nav.querySelectorAll('[role="tab"]');
     expect(tabs.length).toBe(2);
     expect(tabs[0].getAttribute('aria-selected')).toBe('true');
-    expect(tabs[0].querySelector('.oac-glyph')).not.toBeNull();
+    expect(tabs[0].querySelector('.oac-glyph')?.innerHTML).toBe(chromeIconSvg('settings'));
+    expect(tabs[1].querySelector('.oac-glyph')).toBeNull();
     tabs[0].focus();
     tabs[0].fire('keydown', { key: 'ArrowDown' });
     expect(picked).toEqual(['b']);

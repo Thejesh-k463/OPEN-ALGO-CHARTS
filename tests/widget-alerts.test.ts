@@ -183,6 +183,16 @@ describe('widget alert editor', () => {
     expect(root.querySelector('.oac-alerts__summary')!.textContent).toContain('AAA / X / 1m / Extended hours USD');
   });
 
+  it('refuses an alert with no name', () => {
+    const { w, root } = make();
+    const editor = widget.mountAlertEditor(w.context);
+    change(root, 'title', '   ');
+    click(root, 'save-alert');
+    expect(w.alerts.list()).toHaveLength(0);
+    expect(editor.isOpen()).toBe(true);
+    expect(root.querySelector('.oac-alert-error')!.textContent).toBe('Enter a name');
+  });
+
   it('keeps keyboard focus on a selector when its dependent fields change', () => {
     const { w, root } = make();
     widget.mountAlertEditor(w.context);
@@ -401,6 +411,80 @@ describe('widget alert editor', () => {
 });
 
 describe('widget alert list', () => {
+  it('names each source the way the editor lists it, and prints a price in the pane format', () => {
+    const { w, root } = make();
+    const fib = w.draw.add({ tool: 'fib-retracement', paneIndex: 0, style: {}, points: [{ time: 900, price: 90 }, { time: 1100, price: 110 }] });
+    const line = w.draw.add({ tool: 'trend-line', paneIndex: 0, style: {}, points: [{ time: 900, price: 90 }, { time: 1100, price: 110 }] });
+    const study = w.chart.addIndicator('widget-alert-study');
+    const onFib = w.alerts.add({ source: { kind: 'drawing', drawingId: fib.id, level: 'ratio:0.618' } });
+    const onLine = w.alerts.add({ source: { kind: 'drawing', drawingId: line.id, level: 'line' } });
+    const onStudy = w.alerts.add({ source: { kind: 'indicator', instanceId: study.id, plotKey: 'close', value: 100 } });
+    const onPrice = w.alerts.add({ source: { kind: 'price', price: 22345.6789 } });
+    widget.mountAlertsPanel(w.context);
+    const summary = (id: string): string => root.querySelector(`[data-alert-id="${id}"] .oac-alerts__summary`)!.textContent;
+    // The level the editor lists for ratio 0.618.
+    expect(summary(onFib.id)).toContain('/ 61.8%');
+    expect(summary(onFib.id)).not.toContain('ratio:');
+    expect(summary(onLine.id)).toContain('/ Line');
+    expect(summary(onStudy.id)).toContain('Alert study / Close reading: 100');
+    const shown = w.chart.panes()[w.chart.primaryPaneIndex()].readoutScale().format(22345.6789);
+    expect(summary(onPrice.id)).toContain(`Price ${shown}`);
+    expect(summary(onPrice.id)).not.toContain('22345.6789');
+  });
+
+  it('prints a study value and its upper bound on the study\'s own scale', () => {
+    const { w, root } = make();
+    const study = w.chart.addIndicator('widget-alert-study');
+    const one = w.alerts.add({ source: { kind: 'indicator', instanceId: study.id, plotKey: 'close', value: 1.23456789 } });
+    const band = w.alerts.add({ source: { kind: 'indicator', instanceId: study.id, plotKey: 'close', value: 1.23456789, upperValue: 2.98765432 } });
+    widget.mountAlertsPanel(w.context);
+    const summary = (id: string): string => root.querySelector(`[data-alert-id="${id}"] .oac-alerts__summary`)!.textContent;
+    const scale = study.series('close')!.priceScale();
+    expect(scale.format(1.23456789)).not.toBe('1.23456789');
+    expect(summary(one.id)).toContain(`Alert study / Close reading: ${scale.format(1.23456789)}`);
+    expect(summary(band.id)).toContain(`${scale.format(1.23456789)} to ${scale.format(2.98765432)}`);
+    expect(summary(band.id)).not.toContain('1.23456789');
+  });
+
+  it('gives one object one number in Objects and the alert editor, counting only listed drawings', () => {
+    const { w, root } = make();
+    const at = [{ time: 900, price: 90 }, { time: 1100, price: 110 }];
+    const add = (tool: string, listed = true) => w.draw.add({ tool, paneIndex: 0, style: {}, points: at, ...(listed ? {} : { policy: { listed: false } }) });
+    const unlisted = add('trend-line', false), first = add('trend-line'), box = add('rectangle'), second = add('trend-line');
+    // Brought to the front, the first line is now the second of its name, on both surfaces.
+    w.draw.reorder(first.id, 1); w.draw.reorder(first.id, 1);
+    const panel = widget.createObjectsPanelContent(w.context);
+    const tree = panel.element as unknown as FakeElement;
+    const row = (id: string): string => tree.querySelector(`[data-object-id="drawing:${id}"] .oac-objects__name`)!.textContent;
+    expect([row(first.id), row(box.id), row(second.id)]).toEqual(['Trend Line (2)', 'Rectangle', 'Trend Line (1)']);
+    widget.mountAlertEditor(w.context, undefined, { source: { kind: 'drawing', drawingId: second.id } });
+    const options = new Map(field(root, 'drawingId').querySelectorAll('option').map(option => [option.value, option.textContent]));
+    expect([options.get(first.id), options.get(box.id), options.get(second.id)]).toEqual(['Trend Line (2)', 'Rectangle', 'Trend Line (1)']);
+    expect(options.has(unlisted.id)).toBe(false);
+    // An unlisted drawing an alert already names is listed for it, after the listed ones.
+    const onHidden = w.alerts.add({ source: { kind: 'drawing', drawingId: unlisted.id, level: 'line' } });
+    widget.mountAlertsPanel(w.context);
+    expect(root.querySelector(`[data-alert-id="${onHidden.id}"] .oac-alerts__summary`)!.textContent).toContain('Trend Line (3) / Line');
+    panel.destroy();
+  });
+
+  it('gives one study one number in Objects, the alert editor and the alert list', () => {
+    const { w, root } = make();
+    w.chart.addIndicator('widget-alert-study', {}, { policy: { listed: false } });
+    const first = w.chart.addIndicator('widget-alert-study');
+    const second = w.chart.addIndicator('widget-alert-study');
+    const panel = widget.createObjectsPanelContent(w.context);
+    const tree = panel.element as unknown as FakeElement;
+    const row = (id: string): string => tree.querySelector(`[data-object-id="indicator:${id}"] .oac-objects__name`)!.textContent;
+    expect([row(first.id), row(second.id)]).toEqual(['Alert study (1)', 'Alert study (2)']);
+    const onSecond = w.alerts.add({ source: { kind: 'indicator', instanceId: second.id, plotKey: 'close', value: 100 } });
+    widget.mountAlertEditor(w.context, undefined, { alertId: onSecond.id });
+    expect(field(root, 'instanceId').querySelectorAll('option').map(option => option.textContent)).toEqual(['Alert study (1)', 'Alert study (2)']);
+    widget.mountAlertsPanel(w.context);
+    expect(root.querySelector(`[data-alert-id="${onSecond.id}"] .oac-alerts__summary`)!.textContent).toContain('Alert study (2) / Close reading');
+    panel.destroy();
+  });
+
   it('refreshes an open price-only list when the chart timezone changes without changing the expiry instant', () => {
     const { w, root } = make();
     w.chart.setTimezone('UTC');
@@ -454,7 +538,7 @@ describe('widget alert list', () => {
     expect(opener).not.toBeNull();
     fire(opener!, 'click');
     let row = root.querySelector(`[data-alert-id="${record.id}"]`)!;
-    expect(row.textContent).toContain('Armed');
+    expect(row.textContent).toContain('Active');
     click(row, 'toggle-alert');
     expect(w.alerts.list()[0].state).toBe('disabled');
     row = root.querySelector(`[data-alert-id="${record.id}"]`)!;

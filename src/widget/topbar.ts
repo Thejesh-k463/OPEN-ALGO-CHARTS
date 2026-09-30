@@ -1,4 +1,4 @@
-import { widgetText, type WidgetTranslationOptions } from './localization';
+import { errorText, widgetText, type WidgetTranslationOptions } from './localization';
 /**
  * The top bar: symbol, interval, chart type, indicators, settings, capture
  * and theme, left to right.
@@ -13,7 +13,7 @@ import { widgetText, type WidgetTranslationOptions } from './localization';
  * they render disabled, with their state visible, rather than dead.
  */
 import { registeredChartTypes, getChartType, exportChartDataCsv } from 'openalgo-charts';
-import { chromeIconSvg } from 'openalgo-charts/draw';
+import { chartTypeIcon, chromeIcon, chromeIconSvg } from 'openalgo-charts/draw';
 import { h, glyph, type WidgetContext } from './context';
 import type { WidgetThemeName } from './tokens';
 import { mountSymbolPicker, type SymbolPickerHandle } from './symbol-picker';
@@ -21,8 +21,14 @@ import { timeBuckets } from './date-navigator';
 export { SEARCH_DEBOUNCE_MS } from './symbol-picker';
 export type { SymbolMatch, SymbolSearch } from './symbol-picker';
 import type { SymbolSearch } from './symbol-picker';
-import { openChartDataExportDialog } from './chart-data-export-dialog';
 import type { PanelHandle } from './form';
+import type { LayoutsController } from './layouts';
+import { layoutNeedsAttention, layoutStatusText } from './layouts-widget';
+import { lazyPart, partFailed, usePart, type PartSlot } from './lazy';
+import { ariaKeys } from './keymap';
+
+/** The chart data dialog, fetched when it first opens. Internal. */
+export const dataExportPart = lazyPart(() => import('./chart-data-export-dialog'));
 
 /** Labels for the built-in chart types; anything else is read from its id. */
 export const CHART_TYPE_LABELS: Readonly<Record<string, string>> = {
@@ -76,10 +82,16 @@ export function intervalLabel(code: string): string {
 
 export interface MenuRow {
   label: string;
+  /**
+   * A chrome icon id for a glyph before the label. Once one row has a glyph,
+   * every row keeps the column, so the labels share a left edge; an id the
+   * registry does not carry leaves its slot empty. Since 2.5.10.
+   */
+  icon?: string;
   sub?: string;
   /** Shown at the right edge, for a chord. */
   key?: string;
-  /** Marks the row as the current choice. */
+  /** Makes the row one of a set of choices, true for the current one; a row without it is an action. */
   on?: boolean;
   disabled?: boolean;
   danger?: boolean;
@@ -91,6 +103,10 @@ export interface MenuOptions {
   find?: string;
   ariaLabel?: string;
 }
+
+/** A menu row's glyph: the registry's, or an empty slot the stylesheet sizes like one. */
+const rowGlyph = (id: string | undefined): string =>
+  id !== undefined && chromeIcon(id) !== undefined ? chromeIconSvg(id) : '<svg aria-hidden="true"></svg>';
 
 /**
  * A popup menu under `anchor`. Rows are buttons; a `{ head }` string starts a
@@ -111,6 +127,7 @@ export function openMenu(ctx: WidgetContext, anchor: HTMLElement, rows: Readonly
   const body = h(doc, 'div', 'oac-menu__body');
   m.appendChild(body);
   let close: () => void = () => {};
+  const glyphs = rows.some((r) => typeof r !== 'string' && r.icon !== undefined);
 
   const paint = (q: string): void => {
     const needle = q.trim().toLowerCase();
@@ -128,9 +145,12 @@ export function openMenu(ctx: WidgetContext, anchor: HTMLElement, rows: Readonly
         body.appendChild(g);
         pending = null;
       }
+      // A row with an `on` is one of a set of choices; any other is an action, which has no checked state.
       const b = h(doc, 'button', 'oac-menu__row' + (r.danger ? ' is-danger' : ''), {
-        type: 'button', role: 'menuitemradio', 'aria-checked': String(r.on === true), 'aria-disabled': String(r.disabled === true),
+        type: 'button', role: r.on === undefined ? 'menuitem' : 'menuitemradio', 'aria-disabled': String(r.disabled === true),
       });
+      if (r.on !== undefined) b.setAttribute('aria-checked', String(r.on));
+      if (glyphs) b.appendChild(glyph(doc, rowGlyph(r.icon), 'chrome'));
       const label = h(doc, 'span', 'oac-menu__label');
       label.textContent = r.label;
       b.appendChild(label);
@@ -140,9 +160,11 @@ export function openMenu(ctx: WidgetContext, anchor: HTMLElement, rows: Readonly
         b.appendChild(s);
       }
       if (r.key) {
-        const k = h(doc, 'kbd', 'oac-menu__key');
+        // Shown beside the name, said as the row's shortcut rather than read into its name.
+        const k = h(doc, 'kbd', 'oac-menu__key', { 'aria-hidden': 'true' });
         k.textContent = r.key;
         b.appendChild(k);
+        b.setAttribute('aria-keyshortcuts', ariaKeys(r.key));
       }
       b.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -166,6 +188,9 @@ export function openMenu(ctx: WidgetContext, anchor: HTMLElement, rows: Readonly
     // Enter picks the only remaining row, so a unique search needs no click.
     input.addEventListener('keydown', (e) => {
       if ((e as KeyboardEvent).key !== 'Enter') return;
+      // Bottom bar hook: the pick closes the menu and focus returns to its
+      // button, which the same Enter would otherwise press and reopen.
+      e.preventDefault();
       const only = body.querySelectorAll('.oac-menu__row');
       if (only.length === 1) (only[0] as HTMLElement).click();
     });
@@ -214,10 +239,19 @@ export interface TopbarOptions {
   onNews?(anchor: HTMLElement): void | boolean;
   /** Open the date and range navigation panel, omitted without a handler. */
   onGoTo?(anchor: HTMLElement): void | boolean;
+  /**
+   * The saved layouts the Layouts button names: it shows the held layout and
+   * marks one with unsaved changes. Omitted, with `onLayouts`, without a store.
+   */
+  layouts?: LayoutsController;
+  /** Open the Layouts menu from `anchor`. */
+  onLayouts?(anchor: HTMLElement): void | boolean;
   settingsAvailable(): boolean;
   indicatorsAvailable(): boolean;
   /** Refuse CSV export while the host is replacing or recovering its data. */
   dataAvailable?(): boolean;
+  /** Hook (chart grid, 2.5.10): more capture menu rows, read on every open; a string starts a group. */
+  captureRows?: () => ReadonlyArray<MenuRow | string>;
 }
 
 export interface TopbarHandle {
@@ -329,7 +363,7 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
   const pills = h(doc, 'div', 'oac-pills', { role: 'radiogroup', 'aria-label': widgetText(ctx, 'Interval') });
   const pillByCode = new Map<string, HTMLButtonElement>();
   for (const code of opts.intervals) {
-    const b = h(doc, 'button', undefined, { type: 'button', role: 'radio', 'aria-pressed': 'false', 'aria-label': widgetText(ctx, 'Interval {code}', { code }) });
+    const b = h(doc, 'button', undefined, { type: 'button', role: 'radio', 'aria-pressed': 'false', 'aria-label': widgetText(ctx, 'Interval {code}', { code: intervalLabel(code) }) });
     b.textContent = intervalLabel(code);
     b.dataset.interval = code;
     b.addEventListener('click', () => opts.onInterval(code));
@@ -341,14 +375,16 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
 
   // ── chart type ───────────────────────────────────────────────────────
   const typeBtn = btn(widgetText(ctx, 'Chart type'), 'oac-topbar__type');
+  // The type in force as its glyph and its name; a type with no glyph shows the name alone.
+  const typeGlyph = glyph(doc, '', 'chrome');
   const typeLabel = h(doc, 'span');
-  typeBtn.appendChild(typeLabel);
+  typeBtn.append(typeGlyph, typeLabel);
   typeBtn.appendChild(chev());
   typeBtn.setAttribute('aria-haspopup', 'menu');
   typeBtn.addEventListener('click', () => {
     const cur = opts.state().chartType;
     openMenu(ctx, typeBtn, chartTypeChoices().map((id) => ({
-      label: widgetText(ctx, `schema.chartType.${id}`, {}, chartTypeLabel(id)), on: id === cur, onSelect: () => opts.onChartType(id),
+      label: widgetText(ctx, `schema.chartType.${id}`, {}, chartTypeLabel(id)), icon: `chart-${id}`, on: id === cur, onSelect: () => opts.onChartType(id),
     })), { ariaLabel: widgetText(ctx, 'Chart type') });
   });
   host.appendChild(typeBtn);
@@ -376,6 +412,43 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
   const brandingSlot = h(doc, 'span', 'oac-topbar__branding-slot');
   let brandingAnchor: HTMLAnchorElement | null = null;
   host.appendChild(brandingSlot);
+
+  // ── layouts ──────────────────────────────────────────────────────────
+  // The held layout's name on the button: which document the chart is, at a
+  // glance, with a dot while it has changes that are not saved.
+  let offLayouts: (() => void) | null = null;
+  const controller = opts.layouts;
+  if (controller !== undefined && opts.onLayouts) {
+    const title = widgetText(ctx, 'schema.ui.layouts.title', {}, 'Layouts');
+    const held = (): string | null => {
+      const state = controller.state();
+      return state.layoutId === null ? null : state.catalog?.workspaces.find(doc => doc.id === state.layoutId)?.name ?? null;
+    };
+    const layouts = btn(title, 'oac-topbar__layouts');
+    layouts.setAttribute('aria-haspopup', 'dialog');
+    layouts.appendChild(glyph(doc, chromeIconSvg('layout'), 'chrome'));
+    const label = h(doc, 'span', 'oac-topbar__layouts-name');
+    layouts.appendChild(label);
+    ctx.tips.attach(layouts, () => {
+      const name = held();
+      const state = controller.state();
+      const said = name === null ? title : `${title}: ${name}`;
+      const status = layoutStatusText(ctx, state);
+      // The mark is a dot: a screen reader hears what it means with the name.
+      return { title: said, label: layoutNeedsAttention(state) ? `${said}, ${status}` : undefined, sub: status, side: 'bottom' };
+    });
+    const paintLayouts = (): void => {
+      label.textContent = held() ?? title;
+      layouts.dataset.attention = String(layoutNeedsAttention(controller.state()));
+      ctx.tips.refreshLabel(layouts);
+    };
+    offLayouts = controller.subscribe(paintLayouts);
+    paintLayouts();
+    layouts.addEventListener('click', () => { opts.onLayouts?.(layouts); });
+    host.appendChild(layouts);
+    // The bar measures itself, so the name can give way before it wraps (LAYOUTS_BUTTON_CSS).
+    host.classList.add('has-layouts');
+  }
 
   // Tick and volume bars have no date to go to: greyed with the reason, not dead.
   const goTo = opts.onGoTo ? btn(widgetText(ctx, 'Go to'), 'oac-topbar__goto') : null;
@@ -424,6 +497,7 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
   snapBtn.setAttribute('aria-haspopup', 'menu');
   ctx.tips.attach(snapBtn, { title: widgetText(ctx, 'Capture'), sub: widgetText(ctx, 'PNG, SVG, CSV or the clipboard'), side: 'bottom' });
   let dataDialog: PanelHandle | null = null;
+  const dataSlot: PartSlot = { waiting: null };
   const openCapture = (anchor: HTMLElement): void => {
     const s = { ...opts.state() };
     const capturedChart = ctx.chart;
@@ -457,24 +531,29 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
           const Item = (globalThis as { ClipboardItem: new (parts: Record<string, Blob>) => unknown }).ClipboardItem;
           (globalThis.navigator.clipboard as unknown as { write(items: unknown[]): Promise<void> })
             .write([new Item({ 'image/png': blob })])
-            .then(() => ctx.status(widgetText(ctx, 'Chart copied')), (err: unknown) => ctx.status(widgetText(ctx, 'Copy failed: {error}', { error: String((err as Error)?.message ?? err) }), 'error'));
+            .then(() => ctx.status(widgetText(ctx, 'Chart copied')), (err: unknown) => ctx.status(widgetText(ctx, 'Copy failed: {error}', { error: errorText(ctx, err) }), 'error'));
         }, 'image/png');
       } },
       { label: widgetText(ctx, 'Download chart data (CSV)'), disabled: !dataAvailable(), onSelect: () => {
-        try {
-          checkSource();
-          dataDialog?.close();
-          dataDialog = openChartDataExportDialog(ctx, anchor, options => {
+        const failed = (error: unknown): void => ctx.status(widgetText(ctx, 'Data export failed: {error}', { error: errorText(ctx, error) }), 'error');
+        // The dialog loads on first use (lazy.ts), and the chart it captures is checked again when it arrives.
+        usePart(dataExportPart, module => {
+          try {
             checkSource();
-            const csv = exportChartDataCsv(capturedChart, options);
-            checkSource();
-            if (!downloadText(doc, captureName(s.symbol, s.interval) + '.csv', csv, 'text/csv;charset=utf-8')) {
-              throw new Error(widgetText(ctx, 'This runtime cannot save files'));
-            }
-            ctx.status(widgetText(ctx, 'Chart data download started'));
-          });
-        } catch (error) { ctx.status(widgetText(ctx, 'Data export failed: {error}', { error: String((error as Error)?.message ?? error) }), 'error'); }
+            dataDialog?.close();
+            dataDialog = module.openChartDataExportDialog(ctx, anchor, options => {
+              checkSource();
+              const csv = exportChartDataCsv(capturedChart, options);
+              checkSource();
+              if (!downloadText(doc, captureName(s.symbol, s.interval) + '.csv', csv, 'text/csv;charset=utf-8')) {
+                throw new Error(widgetText(ctx, 'This runtime cannot save files'));
+              }
+              ctx.status(widgetText(ctx, 'Chart data download started'));
+            });
+          } catch (error) { failed(error); }
+        }, error => ctx.status(partFailed(ctx, widgetText(ctx, 'Download chart data (CSV)'), error), 'error'), () => host.isConnected, { slot: dataSlot, doc, from: anchor });
       } },
+      ...(opts.captureRows?.() ?? []),
     ], { ariaLabel: widgetText(ctx, 'Capture') });
   };
   snapBtn.addEventListener('click', () => openCapture(snapBtn));
@@ -492,11 +571,11 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
   host.appendChild(setBtn);
 
   // ── theme ────────────────────────────────────────────────────────────
-  // A word rather than a glyph: the chrome set has no sun or moon, and the
-  // name of the theme the click would switch to says more than either.
-  const themeBtn = btn(widgetText(ctx, 'Theme'), 'oac-topbar__theme');
-  const themeLabel = h(doc, 'span');
-  themeBtn.appendChild(themeLabel);
+  // The theme the click switches to, as a sun or a moon; the tip and the
+  // accessible name say it in words.
+  const themeBtn = btn(widgetText(ctx, 'Theme'), 'oac-btn--icon oac-topbar__theme');
+  const themeGlyph = glyph(doc, '', 'chrome');
+  themeBtn.appendChild(themeGlyph);
   ctx.tips.attach(themeBtn, () => ({ title: opts.state().theme === 'dark' ? widgetText(ctx, 'Switch to the light theme') : widgetText(ctx, 'Switch to the dark theme'), side: 'bottom' }));
   themeBtn.addEventListener('click', () => opts.onTheme(opts.state().theme === 'dark' ? 'light' : 'dark'));
   host.appendChild(themeBtn);
@@ -519,12 +598,19 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
       b.setAttribute('aria-pressed', String(on));
       b.setAttribute('aria-checked', String(on));
     }
+    if (typeGlyph.dataset.type !== s.chartType) {
+      typeGlyph.dataset.type = s.chartType;
+      typeGlyph.hidden = chartTypeIcon(s.chartType) === undefined;
+      typeGlyph.innerHTML = typeGlyph.hidden ? '' : chromeIconSvg(`chart-${s.chartType}`);
+    }
     typeLabel.textContent = widgetText(ctx, `schema.chartType.${s.chartType}`, {}, chartTypeLabel(s.chartType));
     setOff(setBtn, !opts.settingsAvailable());
     if (indBtn !== null) setOff(indBtn, !opts.indicatorsAvailable());
     if (goTo !== null) setOff(goTo, timeBuckets(s.interval) === null);
-    themeBtn.dataset.theme = s.theme;
-    themeLabel.textContent = s.theme === 'dark' ? widgetText(ctx, 'Light') : widgetText(ctx, 'Dark');
+    if (themeBtn.dataset.theme !== s.theme) {
+      themeBtn.dataset.theme = s.theme;
+      themeGlyph.innerHTML = chromeIconSvg(s.theme === 'dark' ? 'sun' : 'moon');
+    }
     ctx.tips.refreshLabel(themeBtn);
     ctx.tips.refreshLabel(setBtn);
     if (indBtn !== null) ctx.tips.refreshLabel(indBtn);
@@ -554,6 +640,7 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
     focusSymbol: () => { symInput.focus(); },
     destroy: () => {
       dataDialog?.close();
+      offLayouts?.();
       offBranding();
       picker?.destroy();
       host.textContent = '';

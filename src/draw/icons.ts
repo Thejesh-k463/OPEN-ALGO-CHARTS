@@ -377,18 +377,26 @@ export const DRAWING_TOOL_ACCENTS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * A registry's own entry. The registries are plain objects, so `toString` or
+ * `constructor` would otherwise come back as an inherited function: drawn as
+ * path data where an unknown id must give `undefined`.
+ */
+const own = (registry: Readonly<Record<string, string>>, id: string): string | undefined =>
+  Object.prototype.hasOwnProperty.call(registry, id) ? registry[id] : undefined;
+
+/**
  * The glyph for a tool, or `undefined` when it has none.
  *
  * Undefined rather than a placeholder: a host that renders an empty box has a
  * visible gap to fix, while one handed a question mark ships it.
  */
 export function drawingToolIcon(toolId: string): string | undefined {
-  return DRAWING_TOOL_ICONS[toolId];
+  return own(DRAWING_TOOL_ICONS, toolId);
 }
 
 /** The filled accent for a tool glyph, or `undefined` when it has none. */
 export function drawingToolAccent(toolId: string): string | undefined {
-  return DRAWING_TOOL_ACCENTS[toolId];
+  return own(DRAWING_TOOL_ACCENTS, toolId);
 }
 
 /** Every id this set covers, for a host building a palette from it. */
@@ -426,6 +434,17 @@ const CHROME_MAGNET_CAPS = 'M3 2h2v2H3zM11 2h2v2h-2z';
 const CHROME_PUPIL = dot(8, 8);
 const CHROME_KNOBS = dot(5, 5, 2) + dot(11, 11, 2);
 const CHROME_LENS = dot(8, 9);
+const CHROME_ENDS = dot(4, 12) + dot(12, 4);
+const CHROME_MARKERS = dot(5, 5, 2) + dot(10, 11, 2);
+const CHROME_HEAD = dot(8, 5, 2);
+
+/**
+ * A pip: a stroke of no length, which the round cap paints as a disc one
+ * line wide. The small marks of the chrome tier (an i's dot, a row of keys,
+ * a grip) are pips rather than `dot`s, whose ring of a 2px line is a disc
+ * twice that and crowds a 16px box.
+ */
+const pip = (x: number, y: number): string => `M${x} ${y}h0`;
 
 /**
  * Path data for host chrome: the buttons around the chart rather than the
@@ -442,6 +461,11 @@ const CHROME_LENS = dot(8, 9);
  * They are drawn twice on purpose: a rail button and a toolbar button are
  * different sizes, and the whole point of a second grid is not scaling one
  * drawing to both.
+ *
+ * The tier also carries a glyph for each chart type and transform, under
+ * `chart-<id>` (see `chartTypeIcon`), so a chart-type menu reads from the
+ * same set as the buttons around it. A layout picker's tiles are derived
+ * rather than listed (`layoutIconPath`).
  */
 export const CHROME_ICONS: Readonly<Record<string, string>> = {
   // ── pointer and snapping ────────────────────────────────────────────────
@@ -496,19 +520,210 @@ export const CHROME_ICONS: Readonly<Record<string, string>> = {
   // ── capture ─────────────────────────────────────────────────────────────
   camera: 'M2 5h3l1-2h4l1 2h3v8H2z' + CHROME_LENS,
   download: 'M8 2v9M4 7l4 4 4-4M2 14h12',
+  // Viewfinder corners round four panes. A camera with a grid in its body
+  // overlapped `camera`, which sits beside it in one menu, by 81 percent.
+  'capture-grid': 'M2 5 2 2 5 2M11 2 14 2 14 5M14 11 14 14 11 14M5 14 2 14 2 11'
+    + pip(6, 6) + pip(10, 6) + pip(6, 10) + pip(10, 10),
+
+  // ── navigation, continued ───────────────────────────────────────────────
+  'chevron-up': 'M3 10l5-5 5 5',
+  'chevron-left': 'M10 3 5 8l5 5',
+  // The widget's menu tick moved onto whole units: its short leg ran from
+  // 3,8.5 to an elbow at 6.5,12, and on the grid that elbow is 7,12, so a
+  // menu that adopts this glyph keeps the tick it already shows.
+  check: 'M3 8l4 4 6-8',
+  // Stacked, so it is not read as the dotted line style beside it.
+  more: pip(8, 3) + pip(8, 8) + pip(8, 13),
+  grip: pip(6, 4) + pip(10, 4) + pip(6, 8) + pip(10, 8) + pip(6, 12) + pip(10, 12),
+  refresh: 'M10 12A5 5 0 1 1 12 8M10 6l2 2 2-2',
+  swap: 'M2 5h11M10 2l3 3-3 3M14 11H3M6 8l-3 3 3 3',
+
+  // ── the grid of charts ──────────────────────────────────────────────────
+  // Loose tiles, not a split frame: `grid` is already a split frame, and a
+  // layout glyph is the picker for one. The tiles of a particular layout
+  // come from `layoutIconPath`, not from this registry.
+  layout: 'M2 2 6 2 6 14 2 14zM10 2 14 2 14 6 10 6zM10 10 14 10 14 14 10 14z',
+  // A cell grows to fill the grid along its diagonal, and shrinks back to
+  // its centre; fullscreen is the whole display, so its marks are the
+  // display's corners. The heads are three units, as on the set's other
+  // arrows, and the two arrows of each glyph leave the centre clear, which
+  // is where maximize and restore differ.
+  maximize: 'M10 6 14 2M11 2h3v3M6 10 2 14M2 11v3h3',
+  restore: 'M13 3 9 7M12 7H9V4M3 13l4-4M4 9h3v3',
+  fullscreen: 'M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4',
+  'fullscreen-exit': 'M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4',
+  // The channels a group of charts shares: two panes joined, a drawing by its
+  // anchors, a reticle, a span of time and a palette. The reticle keeps its
+  // centre open: a cross with a gap in the middle was `plus` at 92 percent.
+  'link-group': 'M2 3h4v10H2zM10 3h4v10h-4zM6 8h4',
+  'drawing-sync': 'M4 12 12 4' + CHROME_ENDS,
+  crosshair: ring(8, 8, 4) + 'M8 2 8 4M8 12 8 14M2 8 4 8M12 8 14 8',
+  'time-range': 'M3 4v8M13 4v8M3 8h10',
+  palette: 'M8 14A6 6 0 1 1 14 8L10 10z' + pip(5, 8) + pip(7, 5) + pip(10, 5),
+
+  // ── time and the market ─────────────────────────────────────────────────
+  // A ring with a mark inside is info, clock and globe at once unless the
+  // rings differ: at one radius the ring is most of each glyph's ink, and
+  // clock and info overlapped by 87 percent. The clock is drawn a size
+  // smaller than the other two for that reason.
+  // The rings sit a third of the way in, not near the corners, and the
+  // holiday below is the same page with the day struck off.
+  calendar: 'M2 4h12v10H2zM2 7h12M6 2v3M10 2v3M5 10h2',
+  clock: ring(8, 8, 5) + 'M8 6v2h2',
+  globe: ring(8, 8, 6) + 'M8 2a3 6 0 0 0 0 12a3 6 0 0 0 0-12M2 8h12',
+  // The session as a day on a horizon: the sun up, rising, setting, the moon,
+  // and a day struck off the calendar. As rings with a dot or a bar inside,
+  // open and closed were the clock at 85 and 89 percent, and each other.
+  // The setting sun sits lower than the rising one: with the same sun and
+  // only the arrow turned over, the two overlapped by 84 percent. The arrows
+  // have shafts, the rising one's head at the top of the box and the setting
+  // one's just over its sun: a bare chevron over the small setting sun read
+  // as an hourglass at 16px, and one shaft for both was 72 percent alike.
+  'market-open': ring(8, 8, 2) + 'M8 2 8 3M2 8 3 8M13 8 14 8M3 3 4 4M13 3 12 4M2 13h12',
+  'market-pre': 'M2 13h12M5 13a3 3 0 0 1 6 0M8 7V2M5 5l3-3 3 3',
+  'market-post': 'M2 13h12M6 13a2 2 0 0 1 4 0M8 3v5M5 5l3 3 3-3',
+  'market-closed': 'M8 2A4 4 0 1 0 12 6 4 4 0 0 1 8 2zM2 13h12',
+  'market-holiday': 'M2 4h12v10H2zM6 2v3M10 2v3M6 8l4 4M10 8l-4 4',
+
+  // ── replay ──────────────────────────────────────────────────────────────
+  // The solid media set, filled through CHROME_ICON_FILLED. The pause bars
+  // are three pixels wide rather than four so the stop square beside them
+  // is not the same block of ink (69 percent at four).
+  replay: 'M8 3v10L2 8zM14 3v10L8 8z',
+  play: 'M5 3v10l8-5z',
+  pause: 'M4 3h1v10H4zM11 3h1v10h-1z',
+  stop: 'M4 4h8v8H4z',
+  'step-forward': 'M3 3v10l6-5zM12 3v10',
+  'step-back': 'M13 3v10L7 8zM4 3v10',
+  record: dot(8, 8, 4),
+
+  // ── the price scale ─────────────────────────────────────────────────────
+  'scale-auto': 'M8 2v12M5 5l3-3 3 3M5 11l3 3 3-3',
+  'scale-log': 'M2 2v12h12M4 12C8 11 11 8 13 3',
+  'scale-percent': 'M13 3 3 13' + ring(4, 4, 2) + ring(12, 12, 2),
+
+  // ── layouts and files ───────────────────────────────────────────────────
+  // One menu, so drawn apart: save-as leaves out the disk's shutter for its
+  // plus (with it the two were 78 percent alike), and autosave is two arrows
+  // round rather than a third disk. Recent is the one arrow turned back, with
+  // hands; refresh is the one arrow forward.
+  folder: 'M2 3h4l2 2h6v8H2z',
+  save: 'M2 2h9l3 3v9H2zM5 2v4h5V2M5 14v-4h6v4',
+  'save-as': 'M9 14H2V2h9l3 3v4M12 10v4M10 12h4',
+  autosave: 'M3 8A5 5 0 0 1 12 5M12 2v3H9M13 8A5 5 0 0 1 4 11M4 14v-3h3',
+  rename: 'M9 5H2v6h7M12 3v10M10 3h4M10 13h4',
+  recent: 'M6 12A5 5 0 1 0 4 8M6 6 4 8 2 6M9 6v2h2',
+  template: 'M2 2h12v4H2zM2 9h5v5H2zM10 9h4M10 12h4',
+  keyboard: 'M2 3h12v10H2z' + pip(5, 6) + pip(8, 6) + pip(11, 6) + 'M5 10h6',
+
+  // ── status ──────────────────────────────────────────────────────────────
+  bell: 'M4 11V7a4 4 0 0 1 8 0v4M2 11h12M7 14h2',
+  'bell-off': 'M4 11V7a4 4 0 0 1 8 0v4M2 11h12M7 14h2M2 2l12 12',
+  pin: 'M5 2h6M6 2v5l-2 3h8l-2-3V2M8 10v4',
+  'pin-filled': 'M5 2h6M6 2h4v5l2 3H4l2-3zM8 10v4',
+  // Three outlines, so the level reads before the mark inside does. An
+  // octagon for the error rasterised as a circle at 16px, 93 percent info.
+  info: ring(8, 8, 6) + pip(8, 5) + 'M8 8v3',
+  warning: 'M8 2l6 12H2zM8 7v1' + pip(8, 11),
+  error: 'M8 2l6 6-6 6-6-6zM8 5v2' + pip(8, 10),
+  sun: ring(8, 8, 2) + 'M8 2 8 3M8 13 8 14M2 8 3 8M13 8 14 8M3 3 4 4M12 12 13 13M13 3 12 4M3 13 4 12',
+  moon: 'M12 11A5 5 0 1 1 5 4a7 7 0 0 0 7 7z',
+
+  // ── drawing and text ────────────────────────────────────────────────────
+  eraser: 'M2 10 8 4l6 6-4 4H6zM5 7l6 6',
+  measure: 'M2 5h12v6H2zM5 5v3M8 5v2M11 5v3',
+  fill: 'M8 2l4 6a4 4 0 1 1-8 0z',
+  bold: 'M4 2h5a3 3 0 0 1 0 6H4zM4 8h6a3 3 0 0 1 0 6H4z',
+  italic: 'M7 2h6M3 14h6M10 2 6 14',
+
+  // ── panels ──────────────────────────────────────────────────────────────
+  watchlist: pip(3, 4) + pip(3, 8) + pip(3, 12) + 'M6 4h8M6 8h8M6 12h8',
+  news: 'M4 12V3h10v10H3a1 1 0 0 1-1-1V6h2M7 6h4M7 9h4',
+  account: CHROME_HEAD + 'M3 14a5 4 0 0 1 10 0',
+  compare: 'M2 7 6 3 10 6 14 2M2 14 6 10 10 12 14 8',
+  indicators: 'M4 14V5a2 2 0 0 1 2-2h1M2 7h4M9 8l5 6M14 8l-5 6',
+
+  // ── trading ─────────────────────────────────────────────────────────────
+  // Buy and sell are one solid triangle turned over, since the direction is
+  // the difference. Closing a position is leaving it: a box with a cross in
+  // it was the square frame of save and grid again. A bracket is the entry
+  // with its target above and its stop below, the three levels on one stem,
+  // and the depth of market is the ladder traders call it. Each was drawn
+  // before as short bars off a stem, and each read as a letter at 16px.
+  buy: 'M8 3l6 9H2z',
+  sell: 'M8 13 2 4h12z',
+  'close-position': 'M9 2H2v12h7M6 8h8M11 5l3 3-3 3',
+  reverse: 'M5 13V3M2 6l3-3 3 3M11 3v10M8 10l3 3 3-3',
+  bracket: 'M2 8h12M4 3h8M4 13h8M8 3v10',
+  'dom-ladder': 'M4 2v12M12 2v12M4 5h8M4 8h8M4 11h8',
+
+  // ── settings tabs and menu marks ────────────────────────────────────────
+  // The pictures the widget drew for itself outside the registry, so its
+  // settings tabs, stacking order and line style control can read from here
+  // and be held to the same checks. The solid line style is `minus`, which
+  // is the same drawing. Dashes are two, four pixels apart and set in from
+  // the ends: with one pixel between them the round caps closed the gaps (the
+  // dashed line was `minus` at 86 percent), and three short dashes with two
+  // between them were the dotted line's dots, a little longer.
+  legend: 'M2 4h8M2 8h12M2 12h9',
+  axes: 'M3 2v11h11M3 6h2M3 10h2M7 13v-2M11 13v-2',
+  panels: 'M2 3h12v10H2zM2 8h12M7 3v10',
+  trading: 'M2 11l4-4 3 2 5-5M11 4h3v3M2 14h12',
+  brush: 'M14 2 9 7M9 7 7 5M9 7l-2 4-4 2 2-4z',
+  'above-series': 'M3 3h10M8 14V7M5 10l3-3 3 3',
+  'behind-series': 'M3 13h10M8 2v7M5 6l3 3 3-3',
+  fit: 'M2 8h12M5 5 2 8l3 3M11 5l3 3-3 3',
+  coordinates: 'M3 2v11h11' + pip(10, 6) + 'M3 6h4M10 13v-4',
+  'line-dashed': 'M3 8h2M11 8h2',
+  'line-dotted': pip(2, 8) + pip(6, 8) + pip(10, 8) + pip(14, 8),
+  'line-mixed': 'M2 5h12M3 11h2M11 11h2',
+
+  // ── chart types and transforms ──────────────────────────────────────────
+  // One per registered chart type and per transform, read through
+  // `chartTypeIcon`. A chart-type menu lists them together, so each family
+  // is told apart by what its renderer does differently. Candles: a hollow
+  // and a solid body; two hollow; widths that vary; bodies that open halfway
+  // up the one before, with no lower wick. Bars: ticks for open and close,
+  // or a bare range. Lines: plain, with markers, stepped, and the long
+  // verticals and short shoulders of a kagi line. Blocks: bricks corner to
+  // corner, bars of one height stepping, boxes of any height, columns on a
+  // base, a histogram about zero. A solid body is two units wide, which the
+  // line fills; a hollow one is four, with its wicks stopping at it.
+  'chart-candlestick': 'M5 2 5 5M3 5h4v6H3zM5 11 5 14M12 3 12 13M11 5h2v6h-2z',
+  'chart-hollow-candle': 'M5 2 5 4M3 4h4v5H3zM5 9 5 12M11 4 11 7M9 7h4v5H9zM11 12 11 14',
+  'chart-volume-candle': 'M4 3 4 13M3 5h2v5H3zM8 4h6v7H8zM11 2 11 4M11 11 11 14',
+  'chart-heikin-ashi': 'M3 8h4v6H3zM5 6 5 8M9 4h4v7H9zM11 2 11 4',
+  'chart-bar': 'M5 2 5 14M2 5 5 5M5 11 8 11M11 3 11 12M8 9 11 9M11 5 14 5',
+  'chart-high-low': 'M4 3 4 11M8 5 8 14M12 2 12 9',
+  'chart-line': 'M2 12 6 6 9 10 14 3',
+  'chart-line-markers': 'M2 10 5 5 10 11 14 4' + CHROME_MARKERS,
+  'chart-step': 'M2 12h3V8h4v3h3V4h2',
+  'chart-area': 'M2 14V10l4-5 3 3 5-6v12z',
+  'chart-hlc-area': 'M2 6 6 4 10 6 14 3V9l-4 3-4-2-4 2z',
+  'chart-baseline': 'M2 8h12M2 12 6 4 10 12 14 5',
+  'chart-column': 'M3 14 3 9M6 14 6 5M9 14 9 8M12 14 12 3',
+  'chart-histogram': 'M2 8h12M4 8 4 4M7 8 7 2M10 8 10 12M13 8 13 14',
+  'chart-point-figure': 'M2 2 6 6M6 2 2 6M2 8 6 12M6 8 2 12' + ring(11, 5, 2) + ring(11, 11, 2),
+  'chart-kagi': 'M3 13V5h4v6h3V3h3v7',
+  'chart-renko': 'M2 10 6 10 6 14 2 14zM6 6 10 6 10 10 6 10zM10 2 14 2 14 6 10 6z',
+  'chart-range-bars': 'M3 9 4 9 4 14 3 14zM7 6 8 6 8 11 7 11zM11 3 12 3 12 8 11 8z',
+  'chart-line-break': 'M2 9 6 9 6 14 2 14zM6 4 10 4 10 9 6 9zM10 7 14 7 14 11 10 11z',
 };
 
 /**
  * The fills of the chrome glyphs' marks, as `DRAWING_TOOL_ACCENTS` is for the
  * tools: each mark is outlined in the glyph's path, and this paints it solid.
  * At 16px a ring of a 2px line is mostly line already, so the fill matters
- * most for the slider knobs.
+ * most for the rings of radius 2: the slider knobs, a head, a line's markers.
  */
 export const CHROME_ICON_ACCENTS: Readonly<Record<string, string>> = {
   magnet: CHROME_MAGNET_CAPS,
   eye: CHROME_PUPIL,
   settings: CHROME_KNOBS,
   camera: CHROME_LENS,
+  'drawing-sync': CHROME_ENDS,
+  account: CHROME_HEAD,
+  'chart-line-markers': CHROME_MARKERS,
 };
 
 /**
@@ -516,19 +731,113 @@ export const CHROME_ICON_ACCENTS: Readonly<Record<string, string>> = {
  * attributes, so the fill is applied by the wrapper (`chromeIconSvg` does it,
  * a host with its own wrapper reads this set) and the registry stays pure.
  */
-export const CHROME_ICON_FILLED: ReadonlySet<string> = new Set(['star-filled']);
+export const CHROME_ICON_FILLED: ReadonlySet<string> = new Set([
+  // A second state of an outline glyph.
+  'star-filled', 'pin-filled',
+  // Media controls, read as solid shapes by convention.
+  'replay', 'play', 'stop', 'step-forward', 'step-back', 'record',
+  // Solid marks: a direction, and the moon of the theme and the market.
+  'buy', 'sell', 'moon', 'market-closed',
+]);
 
 /** The chrome glyph for an id, or `undefined` when there is none. */
 export function chromeIcon(id: string): string | undefined {
-  return CHROME_ICONS[id];
+  return own(CHROME_ICONS, id);
 }
 
 /** The filled accent for a chrome glyph, or `undefined` when it has none. */
 export function chromeIconAccent(id: string): string | undefined {
-  return CHROME_ICON_ACCENTS[id];
+  return own(CHROME_ICON_ACCENTS, id);
 }
 
 /** Every id the chrome tier covers. */
 export function chromeIconIds(): string[] {
   return Object.keys(CHROME_ICONS);
+}
+
+/**
+ * The chrome glyph for a chart type or a transform, by its id: a registered
+ * type (`candlestick`, `point-figure`) or one of the transforms that render
+ * as candles (`heikin-ashi`, `renko`, `range-bars`, `line-break`). It is the
+ * `chart-<id>` entry of `CHROME_ICONS`, so `chromeIconSvg('chart-' + id)`
+ * draws the same picture. `undefined` for a type a host registered itself,
+ * which has no glyph until the host draws one.
+ */
+export function chartTypeIcon(type: string): string | undefined {
+  return own(CHROME_ICONS, `chart-${type}`);
+}
+
+/** One chart's place in a layout glyph: a cell, and how many rows and columns it spans. */
+export interface LayoutIconSlot {
+  readonly row: number;
+  readonly column: number;
+  /** Default 1. */
+  readonly rowSpan?: number;
+  /** Default 1. */
+  readonly columnSpan?: number;
+}
+
+/** The most rows or columns a 16px tile shows with a pixel of clear between its lines. */
+const LAYOUT_MAX = 4;
+
+/**
+ * A chrome glyph for a grid of charts: the frame, split into `rows` by
+ * `columns` cells, with the dividers inside a spanning slot left out, so a
+ * chart that spans two cells reads as one pane. Cells no slot claims are
+ * drawn as their own panes. Without `slots`, every cell is one chart.
+ *
+ * Derived rather than drawn per layout, so a host's layout picker gets a
+ * tile for every layout it offers, uneven ones included, without an entry in
+ * this registry for each. The path is on the chrome grid and to its rules
+ * (whole units, the 2..14 live area, no presentation attributes), and draws
+ * through the chrome attribute bag like any `CHROME_ICONS` value.
+ *
+ * One to four a side: twelve units split four ways leaves a pixel of clear
+ * between two lines of the 2px stroke, and five would close it up. Throws a
+ * `RangeError` for anything else, and for a slot outside the grid or over
+ * another. A chart grid takes up to eight a side, so a caller that draws the
+ * current layout falls back to the `layout` glyph past four.
+ */
+export function layoutIconPath(rows: number, columns: number, slots?: readonly LayoutIconSlot[]): string {
+  const count = (n: number): boolean => Number.isInteger(n) && n >= 1 && n <= LAYOUT_MAX;
+  if (!count(rows) || !count(columns)) {
+    throw new RangeError(`openalgo-charts: a layout glyph takes 1..${LAYOUT_MAX} rows and columns, not ${rows}x${columns}`);
+  }
+  // Each cell's owner: its slot's index, or a negative id of its own when no
+  // slot claims it. A divider is drawn wherever two neighbours differ.
+  const owner = Array.from({ length: rows * columns }, (_, i) => -1 - i);
+  (slots ?? []).forEach((s, k) => {
+    const rs = s.rowSpan ?? 1;
+    const cs = s.columnSpan ?? 1;
+    if (!(Number.isInteger(s.row) && Number.isInteger(s.column) && Number.isInteger(rs) && Number.isInteger(cs)
+      && s.row >= 0 && s.column >= 0 && rs >= 1 && cs >= 1 && s.row + rs <= rows && s.column + cs <= columns)) {
+      throw new RangeError(`openalgo-charts: layout slot ${k} is outside a ${rows}x${columns} grid`);
+    }
+    for (let r = s.row; r < s.row + rs; r++) {
+      for (let c = s.column; c < s.column + cs; c++) {
+        if (owner[r * columns + c] >= 0) throw new RangeError(`openalgo-charts: layout slot ${k} overlaps slot ${owner[r * columns + c]}`);
+        owner[r * columns + c] = k;
+      }
+    }
+  });
+  // Twelve units divide evenly by one to four, so every line is whole.
+  const at = (i: number, n: number): number => 2 + (12 / n) * i;
+  let d = 'M2 2h12v12H2z';
+  // A divider runs along each inner grid line, broken where a slot spans it.
+  const lines = (outer: number, inner: number, split: (o: number, i: number) => boolean,
+    seg: (o: number, from: number, to: number) => string): void => {
+    for (let o = 1; o < outer; o++) {
+      let from = -1;
+      for (let i = 0; i <= inner; i++) {
+        const cut = i < inner && split(o, i);
+        if (cut && from < 0) from = i;
+        if (!cut && from >= 0) { d += seg(o, from, i); from = -1; }
+      }
+    }
+  };
+  lines(columns, rows, (c, r) => owner[r * columns + c - 1] !== owner[r * columns + c],
+    (c, from, to) => `M${at(c, columns)} ${at(from, rows)} ${at(c, columns)} ${at(to, rows)}`);
+  lines(rows, columns, (r, c) => owner[(r - 1) * columns + c] !== owner[r * columns + c],
+    (r, from, to) => `M${at(from, columns)} ${at(r, rows)} ${at(to, columns)} ${at(r, rows)}`);
+  return d;
 }

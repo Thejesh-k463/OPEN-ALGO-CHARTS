@@ -7,7 +7,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { Bar } from '../src/index';
 import { createWidget, type Widget, type WidgetOptions } from '../src/widget/index';
 import { valueAcross } from '../src/widget/drawing-toolbar';
-import { LINE_WIDTH_FIELD } from '../src/draw/index';
+import { chromeIconSvg, LINE_WIDTH_FIELD } from '../src/draw/index';
 import {
   ensureWindowGlobal, fakeContainer, fakeWidgetDocument, fire, fireKey,
   type FakeDocument, type FakeElement,
@@ -127,6 +127,20 @@ describe('drawing toolbar', () => {
     expect(control(root, 'width').textContent).toBe('2 px');
     expect(control(root, 'lock').getAttribute('aria-pressed')).toBe('false');
     expect(valueAcross([w.draw.get(a.id)!, w.draw.get(b.id)!], LINE_WIDTH_FIELD, '#fff')).not.toBe(2);
+  });
+
+  it('pictures the line style with the registry glyph, mixed included, and beside each style in its menu', () => {
+    const { w, root } = make();
+    const glyph = (el: FakeElement | undefined): string | undefined => el?.querySelector('.oac-glyph')?.innerHTML;
+    const a = line(w, { lineStyle: 'dashed' });
+    const b = line(w, { lineStyle: 'solid' }, 30, 60);
+    w.draw.select(a.id);
+    expect(glyph(control(root, 'style'))).toBe(chromeIconSvg('line-dashed'));
+    w.draw.select([a.id, b.id]);
+    expect(glyph(control(root, 'style'))).toBe(chromeIconSvg('line-mixed'));
+    control(root, 'style').click();
+    expect(['Solid', 'Dashed', 'Dotted'].map((label) => glyph(menuRow(root, label))))
+      .toEqual(['minus', 'line-dashed', 'line-dotted'].map((id) => chromeIconSvg(id)));
   });
 
   it('writes a width, a style, a colour and a lock to the whole selection as one step each', () => {
@@ -311,6 +325,57 @@ describe('drawing toolbar', () => {
     expect(railless.root.querySelector('.oac-drawbar')).toBeNull();
     const asked = make({ rail: false, drawingToolbar: true });
     expect(asked.root.querySelector('.oac-drawbar')).not.toBeNull();
+  });
+
+  it('names Delete by the chord in force, moved or unbound', () => {
+    const { w, root } = make();
+    const d = line(w);
+    w.draw.select(d.id);
+    expect(control(root, 'delete').title).toBe('Delete (Del)');
+    w.context.keymap.rebind('delete', 'Shift+Delete');
+    w.draw.select(null);
+    w.draw.select(d.id);
+    expect(control(root, 'delete').title).toBe('Delete (Shift+Del)');
+    w.context.keymap.rebind('delete', null);
+    w.draw.select(null);
+    w.draw.select(d.id);
+    expect(control(root, 'delete').title).toBe('Delete');
+  });
+
+  it('keeps one name on the lock and lets the pressed state say it is locked', () => {
+    const { w, root } = make();
+    const d = line(w);
+    w.draw.update(d.id, { locked: true });
+    w.draw.select(d.id);
+    expect(control(root, 'lock').getAttribute('aria-label')).toBe('Lock');
+    expect(control(root, 'lock').getAttribute('aria-pressed')).toBe('true');
+    expect(control(root, 'lock').title).toBe('Lock');
+    const fixed = w.draw.add({ tool: 'trend-line', paneIndex: 0, style: {}, locked: true, policy: { editable: false },
+      points: [{ time: bars[10].time, price: bars[10].low }, { time: bars[40].time, price: bars[40].low }] });
+    w.draw.select(fixed.id);
+    expect(control(root, 'lock').getAttribute('aria-label')).toBe('Lock');
+    expect(control(root, 'lock').title).toBe('Lock (read-only)');
+  });
+
+  it('marks action rows as plain menu items and only choices as radio items', () => {
+    const { w, root } = make();
+    w.draw.select(line(w).id);
+    control(root, 'more').click();
+    const rows = root.querySelectorAll('.oac-menu__row');
+    expect(rows.length).toBeGreaterThan(3);
+    for (const row of rows) {
+      expect(row.getAttribute('role'), row.textContent).toBe('menuitem');
+      expect(row.getAttribute('aria-checked'), row.textContent).toBeNull();
+    }
+    // The chord beside Duplicate is shown, not read into its name; the row says it as its shortcut.
+    const duplicate = menuRow(root, 'Duplicate');
+    expect(duplicate.querySelector('.oac-menu__key')!.getAttribute('aria-hidden')).toBe('true');
+    expect(duplicate.getAttribute('aria-keyshortcuts')).toMatch(/^(Control|Meta)\+D$/);
+    w.context.overlays.closeAll();
+    control(root, 'width').click();
+    const widths = root.querySelectorAll('.oac-menu__row');
+    expect(widths.every((row) => row.getAttribute('role') === 'menuitemradio')).toBe(true);
+    expect(widths.filter((row) => row.getAttribute('aria-checked') === 'true')).toHaveLength(1);
   });
 
   it('is gone with the widget', () => {

@@ -2,6 +2,295 @@
 
 All notable changes to OpenAlgo Charts.
 
+## 2.5.10
+
+2026-09-30
+
+Persistence, saved layouts and the chart grid. The widget keeps its saved state
+in IndexedDB by default and says when it has landed (`widget.ready`), saves and
+reopens named layouts and indicator templates over a workspace store, and lets
+a user move any shortcut from the ? panel. A bottom bar under the chart carries
+preset ranges sized in trading sessions, Go to, the market status from the
+instrument's calendar, a clock with a timezone menu and the scale toggles.
+Calendars know pre-open, post-close and extended hours, and a chart can shade
+them. The chart grid lays out one to sixteen charts with a grid bar, maximize
+and swap, named link groups that can share the chart type and drawings, and
+one picture of the whole grid. The widget draws every glyph from one icon
+registry, loads the UI a plain widget never opens on first use, and a label
+pass makes every control say what it is, what state it is in and what it does.
+What a host can see change: widget persistence is asynchronous by default, Go
+to moved to the bottom bar, the phone layout follows the container's size, the
+widget ships its first-use parts as hashed files beside the tier, and some
+strings a host may match on are reworded. See the upgrade notes.
+
+### Added
+
+- **Widget persistence in IndexedDB.** With `persist` and no `storage`, the
+  widget keeps its layout, drawings, preferences and chords in IndexedDB. It is
+  built on its defaults, kept out of sight and asks the feed for nothing until
+  the store has answered; then the saved state is applied, the first load goes
+  out for the saved instrument only, and `widget.ready` settles.
+  `createIndexedDbWidgetStorage` and `AsyncStorageLike` (entries by prefix,
+  writes that return promises, an optional journal and `subscribe`) let a host
+  pass an asynchronous store of its own, and `WidgetStorage` keeps synchronous
+  reads over a copy in memory and writes behind, in order. The first visit
+  copies the `oac-widget:<namespace>:` keys an earlier release left in
+  localStorage, once. Writes still pending when the page goes away are
+  journaled and replayed at the next load, and each tab follows the writes
+  other tabs land, so a tab opened earlier does not write over drawings made in
+  another. A page without IndexedDB stays on localStorage, and
+  `storage: localStorage` keeps the 2.5.9 behaviour call for call.
+- **Saved layouts and indicator templates.** `WidgetOptions.workspaces` takes a
+  `WorkspaceStore`, as a type only, so the widget never loads the workspace
+  bundle itself. With one, the widget holds a layouts controller over itself
+  (`widget.layouts`, `widget.openLayouts()`) and reopens the layout that was
+  active when the page last closed. The top bar's Layouts button names the held
+  layout and marks unsaved changes, a failed autosave or a conflict. Its menu
+  (`openLayoutsMenu`) saves, saves as, renames and deletes, lists recent
+  layouts, turns autosave on and off, asks before unsaved changes are dropped,
+  and settles another window's save with Reload list, Save as a copy or
+  Overwrite. The indicator picker saves the chart's studies as a template and
+  applies one by Replace or Append as one undo step (`applyIndicatorTemplate`,
+  `saveIndicatorTemplate`). `createLayoutsController(store, target)` and
+  `widgetLayoutTarget(widget)` serve a host's own control; autosave and opening
+  wait while a target is suspended, as a chart is during a replay.
+- **Shortcuts editor.** The ? panel changes any chord the widget owns: Change
+  records the next chord, a chord another binding holds is named with Cancel or
+  Replace, and Reset and Reset all bring the defaults back. Commands have stable
+  names (`undo`, `tool:trend-line`, `chart:fitContent`), chords the browser
+  keeps are refused, and Escape, Enter, Backspace, the arrows and ? stay fixed.
+  The keymap gains `rebind`, `reset`, `resetAll`, `overrides`,
+  `applyOverrides`, `conflictsFor`, `chord` and `onChange`. With `persist` the
+  chords are saved under `KEYMAP_KEY`, a chart grid shares them across its
+  charts, and `shortcutsEditor: false` keeps the panel a list.
+  `ShortcutManager.onChange` lets the time navigator's hints follow a rebind.
+- **Bottom bar.** A strip between the chart and the status line: preset ranges
+  (1D, 5D, 1M, 3M, 6M, YTD, 1Y, 5Y, All) and Go to on the left; the market
+  status, a clock in the chart's zone that opens a searchable timezone menu, and
+  the auto, logarithmic and percent toggles on the right. A range is sized in
+  trading sessions, not days of 24 hours: with a session calendar one NSE day at
+  one minute is the 375 bars from the 09:15 open, and weekends and closed dates
+  are skipped. New options `bottombar` (on by default), `ranges`,
+  `sessionCalendar` and `sessionShading` (on by default); `widget.setRange` and
+  `widget.range`; and `mountBottombar`, `BOTTOMBAR_HEIGHT`, `BOTTOMBAR_CSS`,
+  `DEFAULT_RANGES`, `rangeWindow` and `rangeInterval` for a host's own bar. A
+  zone picked anywhere is saved with the layout.
+- **Market phases and session shading.** `InstrumentCalendar` takes optional
+  `preMarketMinutes`, `postMarketMinutes` and `extendedHours`. `Instrument` and
+  `SessionCalendar` gain `phaseAt`, `phaseSpans` and `marketStatusAt`, which say
+  whether an instant is pre-open, regular, post-close, extended hours, closed or
+  a holiday in the calendar's IANA zone, and free functions `marketStatusAt`
+  and `calendarMarketPhase` read any source that has phase spans.
+  `SessionShade` and `attachSessionShading(chart, options)` wash pre-open,
+  post-close and extended-hours bars in the price pane. The engine shades
+  nothing until a host attaches it, so its default render is unchanged.
+- **The chart grid to sixteen charts.** `CHART_GRID_LAYOUTS` holds 26 layouts,
+  every uniform grid to four by four and ten uneven ones with a large chart,
+  named through `CHART_GRID_LAYOUT_NAMES`. The grid bar (`toolbar: true`, with
+  `presets` listing the picker's layouts) carries the layout picker, maximize,
+  the link menu, the capture menu and, with `workspaces`, a Layouts control over
+  saved desks. A chart maximizes and restores as a view that is not saved, and
+  two charts swap when one's bar background is dragged onto the other;
+  Alt+Enter, Escape, and Alt+Shift or Ctrl (Cmd)+Shift with an arrow do the same
+  from the keyboard. Up to sixteen named link groups each carry their own
+  channels, saved as `sync.groups` and `pane.linkGroup`. `takeScreenshot` and
+  `downloadScreenshot` compose every chart at its place, and
+  `WidgetOptions.captureRows` adds rows to a chart's capture menu. The grid
+  keeps its desk in IndexedDB by default and settles `grid.ready` once it is
+  applied, and `bottombar: true` mounts one bottom bar for the active chart.
+- **Link channels for the chart type and drawings.** A link group can follow
+  the chart style (`chartType`, through `setChartType`, a `'chartType'` event
+  and `onChartType`) and decide which charts share drawings (`drawings`,
+  through each member's `LinkDrawingsAdapter` over the draw tier's
+  `DrawingLinkGroup`, so no drawing code enters the base bundle). Both are off
+  by default. The workspace schema saves them: `WorkspacePayload.sync` is a
+  `WorkspaceSync` with optional `appearance`, `chartType`, `drawings`,
+  `whenMissing` and up to sixteen named `groups` (`WorkspaceLinkGroup`), and
+  `WorkspacePane.linkGroup` names a chart's group. A workspace saved by 2.5.9
+  reads and writes back byte for byte.
+- **Workspace revisions.** Every catalog change takes an optional
+  `expectedRevision` (`WorkspaceOperationOptions`) and rejects with
+  `WorkspaceConflictError`, before anything is written, when another tab moved
+  the catalog. `WorkspaceRepository.subscribe` hears every commit in order,
+  `WorkspaceStore` is the contract a layouts control holds,
+  `createMemoryWorkspaceStorage` keeps the atomic compare-and-write in memory,
+  and the optional `captureIndicatorTemplate` and `planIndicatorTemplateState`
+  members let a store offer templates.
+- **Chrome icons.** The registry grows from 29 glyphs to 110, with a
+  `chart-<id>` glyph for each of the 13 chart types and six transforms
+  (`chartTypeIcon(type)`) and `layoutIconPath(rows, columns, slots)` for a
+  layout tile. The widget draws every picture it shows from it: `MenuRow.icon`,
+  the chart type menu and button, and a theme button that shows a sun or a moon.
+- **Hover labels on the canvas's own controls.** A study legend's eye, gear and
+  cross, and the close box on an order or position line (the chart's own
+  trading layer and the trade tier's lines), raise the widget's tip at the
+  pointer: "Hide RSI", "Settings for RSI", "Remove RSI", "Cancel order",
+  "Close position".
+- `TipSpec.label`, an accessible name for when it must say more than the title;
+  `ChartObjectsOptions.drawingName(tool)`, which names drawing rows by the draw
+  registry's display name (the widget passes it); and `ShortcutEvent.code`, the
+  physical key `matchDrawingShortcut` reads under Alt when macOS Option types a
+  symbol. New widget message keys for all of the above.
+
+### Changed
+
+- **Widget persistence is asynchronous by default** (see Added). A host that
+  drives a persisting widget right after `createWidget` awaits `widget.ready`
+  first; a host that passes a synchronous store sees no change.
+- **The widget loads UI a plain widget never opens on first use**: the
+  shortcuts editor, the Layouts menu, the indicator templates list, the chart
+  data dialog, the grid bar and its menus, and the IndexedDB store. Each of the
+  seven is a file beside the tier named by a content hash
+  (`openalgo-charts.widget.<part>-<hash>.mjs`) and fetched once with `import()`;
+  a press while it loads opens it once, and a part that cannot load says so. A
+  host serving `dist/` itself serves a tier file and its parts from one release,
+  and a `script-src` allows their directory. `openLayoutsMenu` resolves with the
+  menu once it is open.
+- **Go to moved to the bottom bar.** With `bottombar: false` it stays in the top
+  bar and the status line keeps the market status.
+- **Auto mobile mode follows the container's size**, not any coarse pointer: a
+  container up to 640 CSS px wide is compact, and a coarse pointer widens that
+  to 960 px only while the container is under 600 px tall. Tablets and touch
+  laptops keep the toolbar and the drawing rail. A hidden or zero-size
+  container, or a focused field, holds the current layout.
+- **The widget says active, not armed**, in the rail, the shortcuts panel and
+  the alert list. The alert state value `'armed'` is data and stays.
+- `matchDrawingShortcut` under Alt: a plain ASCII letter in `e.key` still
+  decides the tool, and `e.code` is read only when `e.key` is not a letter, so
+  Option chords fire on macOS and a non-QWERTY layout keeps its 2.5.9
+  behaviour.
+- **Wording a host may match on.** Trading capability reasons are in words
+  ("Placing orders is not supported", "Stop-loss orders are not supported",
+  "Live trading is not supported") where they named ids. The `DEFAULT_KEYMAP`
+  labels of `resetScale` and `fitContent` are "Reset view" and "Fit all bars".
+  `williams-vix-fix` is named "Williams VIX Fix" and `roc` "Rate of Change",
+  with their ids unchanged. `chartSettingsSchema` says "Linear" for the linear
+  scale mode and "Auto-fit to the data" for autoscale. The unknown indicator and
+  missing transform tier errors use a comma where they had an em dash, the
+  footprint and Buy/Sell quantity placeholders draw "-", and the chart's
+  shortcut hints say Cmd on macOS.
+- **Widget labels.** A toggle keeps one name ("Lock", "Hide", "Lock drawing",
+  "Pin to rail") and its pressed or checked state says on or off. Action menu
+  rows are `menuitem`, only choices stay `menuitemradio`, and a row's chord is
+  its `aria-keyshortcuts` rather than part of its name. Two listed objects of
+  one name are numbered the same way in Objects, the alert editor and its list,
+  study settings and the CSV dialog ("Relative Strength Index (2)"), counted
+  among the listed objects of that name, where the alert editor numbered every
+  study ("2: RSI") and every drawing ("Trend Line (3)"). Alert rows name a
+  drawing level, a study plot and a price as the editor does, on the scale
+  each belongs to. `renderForm` groups the rows under a heading in a
+  `div.oac-form__group` with `role="group"` and gives a field's help text as its
+  `aria-description`. Level editor rows are named by their level ("Level
+  0.618 enabled", "Remove level 0.618"), indicator input buttons by their
+  input ("Search {label}", "Pick {label} on the chart"), a pinned rail tool
+  as "{name} (pinned)" and an interval pill by the text it shows; the Layouts
+  button keeps its status in its name; the Objects add-to-selection button
+  and the grid's Maximize are plain buttons, with no pressed state; and the
+  chart data dialog lists a hidden study as "{name}, hidden" and names no
+  study by its instance id. A failure reads "unknown error" rather than
+  "[object Object]", a count of one is singular, and the phone bar says
+  Indicators and names its theme action "Switch to the light theme" or
+  "Switch to the dark theme".
+- The maximize, restore, check and calendar glyphs are redrawn.
+
+### Deprecated
+
+- Widget message keys the widget no longer shows stay in `WidgetBuiltinMessage`
+  until 3.0.0, so a host catalog still type-checks: the armed wording, "Dark"
+  and "Light", the expiry keys that end in " UTC", and the keys the label pass
+  renamed. COMPATIBILITY.md lists each with the key to translate instead.
+
+### Fixed
+
+- **The status line follows the latest bar.** Under each widget and in every
+  grid cell it showed the previous instrument's prices after `setSymbol`,
+  `setInterval`, a linked symbol change or a live tick, until the chart was
+  hovered. It now follows the latest bar while the pointer is away, and reads it
+  without copying the series.
+- **Marker labels on neighbouring bars no longer overlap.** A marker with text is
+  laid out in lanes per side, pushed just past an earlier label it would cover,
+  and moves at most five of its own heights.
+- A touch at the centre of a rail group button, which the browser moves onto
+  its chevron, picks the tool instead of opening the list.
+- A host command whose undo or redo restores the chart keeps its undo step.
+- The context menu, the drawing properties dialog and the drawing toolbar name
+  the chord in force, so a moved or unbound command shows what really fires it.
+- Icon lookups read only a registry's own entries, so an inherited name such as
+  `toString` is never drawn as path data.
+- The reference host's rail follows the light theme, and its replay bar names
+  the chart once.
+
+### Performance
+
+- **Marker lanes** read at most two windows of 256 marks before the first one
+  drawn and measure text only for the marks a paint lays out: ten thousand
+  labels over twenty thousand bars paint in 2.0 to 4.2 ms.
+- **The widget tier file carries what a plain widget uses.** Moving the seven
+  first-use parts out took 9.94 kB (Brotli) off it; the parts measure 18.19 kB
+  on their own and are fetched only when used.
+- **Measured against 2.5.9** on the release bench (five runs of each build in one
+  session, `benchmarks/releases.json`, the website's Benchmarks page): frames are
+  on par. On Canvas 2D a full zoom-out takes about 7 percent longer at 50,000
+  bars and 9 percent at 200,000 (21.3 to 22.7 ms and 57.6 to 62.7 ms, each the
+  lowest p95 of its five runs); pans are the same, a ten-study tick at 200,000
+  bars takes about 3 percent longer (152.5 to 157.6 ms), and WebGL2 frames are
+  within 4 percent.
+
+### Website
+
+- One framework guide gives plain JavaScript, React, Next.js, Vue 3, Angular and
+  Svelte the same depth; the old Vue page moves the reader to its section.
+- The home page opens in light, holds its charts to a column and gains
+  sections; the API reference fits phone widths, and CI checks it; every example
+  draws a seeded random walk.
+- A code of conduct, and the security contact.
+- Docs for everything above, and upgrade notes for 2.5.10.
+
+### Tests
+
+- 11118 unit tests across 469 files and 683 reference host tests across 64
+  files pass, and the browser suite passes 1967 cases in three browser
+  engines. Of the 13 skipped, 12 are checks an engine cannot run and one is a
+  reference host case whose fixture server did not answer under the full run
+  (it passes when run alone). Against 2.5.9, render parity finds no differing
+  pixel. New guards fail on a control with no name or a leaked value in
+  the widget chrome and the reference host (`tests/e2e/labels.spec.ts`), a
+  dash, arrow or emoji in anything a reader sees, a message key nothing shows,
+  a chrome icon id the registry lacks, a doc comment stranded off its
+  declaration, and a first-use part that opens twice or not at all.
+
+Saved layouts, drawings and workspace documents from 2.5.9 load unchanged, and
+no runtime dependencies or package tiers were added.
+
+Sizes, measured on this release and against 2.5.9 (Brotli, decimal kB): base
+engine 131.68 to 134.69, base plus trade 148.36 to 151.38, indicators 40.38 to
+40.43, draw 55.61 to 57.98, profile 14.96 to 14.97, widget 99.64 to 121.36,
+workspace 11.33 to 11.53, widget terminal 327.32 to 354.46 and every tier
+together 381.78 to 409.13; the transform, WebGL2 and trade tiers are unchanged.
+The widget's seven first-use parts, a new row, measure 18.19 together and are
+fetched only when used. The chart-only import grows from 84.82 to 85.73 KiB
+(932 bytes).
+
+Where the growth goes. In the base engine (3,013 bytes) the marker lanes cost
+845 bytes, and 919 of the chart-only import's 932: a fix every chart with text
+markers needs. The session phases, the market status and session shading, and
+the link channels for the chart type and drawings make up most of the rest and
+cost nothing in a chart-only import, where a chart that never asks for them
+shakes them out. The draw tier's growth is almost all the chrome icon registry,
+from 29 glyphs to 110 and a glyph per chart type, and the workspace tier's is
+the named link groups in its schema. The widget tier grew by the features it
+adds, each measured on its own branch so the figures overlap slightly once
+merged: the chart grid's layouts, bar, groups and capture 8.48 kB, the Layouts menu and
+indicator templates 6.78 kB, the bottom bar 5.84 kB, the shortcuts editor
+4.11 kB, the IndexedDB store 2.98 kB and the layouts controller 1.45 kB. The
+lean pass then moved 9.94 kB of it into the first-use parts: the Layouts menu
+2.99 kB, the grid bar, its menus and saved desks 2.77 kB, the shortcuts editor
+1.69 kB, the templates list 1.14 kB, the IndexedDB store 0.84 kB and the chart
+data dialog 0.69 kB, less 0.18 kB for opening each part once and only while it
+is still wanted. The label fixes add 982 bytes to the widget. Each budget is the
+smallest two-decimal value that passes, the transform, profile and WebGL2 rows
+included, which until now kept round budgets.
+
 ## 2.5.9
 
 2026-09-28

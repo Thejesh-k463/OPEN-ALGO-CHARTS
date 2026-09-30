@@ -56,7 +56,7 @@ import type { ChartState, RestoreReport, ChartRestoreOptions } from '../model/ch
 import type { SeriesStyle } from '../render/series-style';
 import type { Bar } from '../model/bar';
 import type { CrosshairMode } from '../input/crosshair';
-import { ShortcutManager } from '../input/shortcuts';
+import { ShortcutManager, detectMac } from '../input/shortcuts';
 import { TradingController, DEFAULT_TRADING_COLORS, type TradingColors, type TradingSettings } from './trading-controller';
 import { beginPickResolved, cancelPick, type PickKind, type PickOptions, type PickHandle, type PickPoint } from '../input/pick';
 import type { IPrimitive, PrimitiveAnchor, PrimitivePlacement } from '../primitives/primitive';
@@ -452,12 +452,12 @@ export class Chart {
     this._patchNavigation(options.navigation ?? {});
     const nav = options.timeNavigator ?? true;
     if (nav !== false) {
-      this._timeNav = new TimeNavigator(
-        { ...(nav === true ? {} : nav), hints: this._navHints(nav === true ? undefined : nav) },
-        this._now,
-      );
+      const own = nav === true ? undefined : nav;
+      this._timeNav = new TimeNavigator({ ...own, hints: this._navHints(own) }, this._now);
       this._timeNavButtons = [...this._timeNav.options().buttons];
       this._syncNavigatorPolicy();
+      // Hints read from the keymap follow a rebind; hints the host passed stay. A shared manager is let go on destroy.
+      if (own?.hints === undefined && this._shortcuts !== null) this.on('destroy', this._shortcuts.onChange(() => this._timeNav?.setOptions({ hints: this._navHints() })));
     }
 
     // Respect a position set via CSS (absolute/relative/fixed); only force
@@ -2564,7 +2564,7 @@ export function createChart(container: HTMLElement, options: ChartOptions = {}):
 
 /**
  * Render a shortcut combo for a tooltip: physical key codes turned into the
- * symbols a user recognises (`Equal` -> `+`, `ArrowDown` -> `↓`).
+ * symbols a user recognises (`Equal` -> `+`, `Mod` -> `Cmd` on a Mac).
  */
 function prettyCombo(combo: string): string {
   const KEYS: Record<string, string> = {
@@ -2572,6 +2572,6 @@ function prettyCombo(combo: string): string {
     ArrowLeft: '<', ArrowRight: '>', ArrowUp: '^', ArrowDown: 'v',
   };
   return combo.split('+').map((p) => p.trim())
-    .map((p) => (p === 'Mod' ? 'Ctrl' : KEYS[p] ?? p.replace(/^(Key|Digit)/, '')))
+    .map((p) => (p === 'Mod' ? (detectMac() ? 'Cmd' : 'Ctrl') : KEYS[p] ?? p.replace(/^(Key|Digit)/, '')))
     .join(' + ');
 }

@@ -89,6 +89,7 @@ jobs:
           node scripts/check-data-loading-website.mjs
           node scripts/check-objects-website.mjs
           node scripts/check-drawing-demo.mjs
+          node scripts/check-site-design.mjs
           OAC_WEBSITE_BROWSERS=chromium node scripts/check-analysis-website.mjs
           OAC_WEBSITE_BROWSERS=chromium node scripts/check-alert-drag-website.mjs
           OAC_WEBSITE_BROWSERS=chromium node scripts/check-table-website.mjs

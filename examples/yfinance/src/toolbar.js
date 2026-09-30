@@ -1,4 +1,4 @@
-import { el, esc, currentTheme, toggleTheme } from './ui.js';
+import { el, esc, currentTheme, toggleTheme, plural } from './ui.js';
 import { attachTip, hideTip } from './hover.js';
 import { cycleMagnet, magnetMode, focusChart, syncNavigationControls } from './rail.js';
 import { INTERVALS, intervalLabel, intervalName, periodsFor, clampPeriod, foldedInterval } from './intervals.js';
@@ -86,7 +86,8 @@ export const TOOLBAR_ICON = {
   // One frame divided: the layout, not the group.
   split: '<rect x="2.5" y="4" width="15" height="12" rx="1.6"/><path d="M10 4v12"/>',
   // The frame divided both ways: the grid view with rows as well as columns.
-  grid: '<rect x="2.5" y="4" width="15" height="12" rx="1.6"/><path d="M10 4v12M2.5 10h15"/>',
+  // Its own key: a second `grid` took the grid lines' icon from the Grid button.
+  gridView: '<rect x="2.5" y="4" width="15" height="12" rx="1.6"/><path d="M10 4v12M2.5 10h15"/>',
   // A stack of stored rows with a tick: something held, and held valid.
   cache: '<ellipse cx="10" cy="5.4" rx="6.2" ry="2.4"/><path d="M3.8 5.4v4.6c0 1.3 2.8 2.4 6.2 2.4s6.2-1.1 6.2-2.4V5.4"/><path d="M3.8 10v4.6c0 1.3 2.8 2.4 6.2 2.4"/><path d="M13 15l1.8 1.8L18 13"/>',
   // The mirror of `download`: a layout file going the other way.
@@ -101,11 +102,11 @@ export const CHART_TYPES = [
   { group: 'Time-indexed' },
   { v: 'candlestick', label: 'Candles', icon: 'candles' },
   { v: 'hollow-candle', label: 'Hollow candles', icon: 'candles' },
-  { v: 'bar', label: 'Bars (OHLC)', icon: 'bars' },
-  { v: 'high-low', label: 'High-Low', icon: 'bars' },
+  { v: 'bar', label: 'Bars', icon: 'bars' },
+  { v: 'high-low', label: 'High-low', icon: 'bars' },
   { v: 'volume-candle', label: 'Volume candles', icon: 'candles' },
   { v: 'line', label: 'Line', icon: 'line' },
-  { v: 'line-markers', label: 'Line + markers', icon: 'line' },
+  { v: 'line-markers', label: 'Line with markers', icon: 'line' },
   { v: 'step', label: 'Step line', icon: 'line' },
   { v: 'area', label: 'Area', icon: 'area' },
   { v: 'hlc-area', label: 'HLC area', icon: 'area' },
@@ -115,7 +116,7 @@ export const CHART_TYPES = [
   { v: 't:renko', label: 'Renko', icon: 'renko' },
   { v: 't:range', label: 'Range bars', icon: 'renko' },
   { v: 't:line-break', label: 'Line break', icon: 'renko' },
-  { v: 't:point-figure', label: 'Point & Figure', icon: 'pnf' },
+  { v: 't:point-figure', label: 'Point and figure', icon: 'pnf' },
   { v: 't:kagi', label: 'Kagi', icon: 'line' },
 ];
 
@@ -324,6 +325,7 @@ export function renderToolbar() {
     b.textContent = intervalLabel(iv);
     b.title = intervalName(iv);
     b.className = request.interval === iv ? 'is-on' : '';
+    b.setAttribute('aria-pressed', String(request.interval === iv));
     b.addEventListener('click', () => changeRequest(target, { interval: iv }));
     ig.appendChild(b);
   }
@@ -347,7 +349,7 @@ export function renderToolbar() {
   const wire = foldedInterval(request.interval)?.foldFrom || request.interval;
   const extendedServed = extendedSessionAvailable(request.symbol, wire);
   const sessionButton = tbtn('<span>' + esc(sessionLabel(session)) + '</span>' + ticon('chevron'), 'Trading session',
-    extendedServed ? 'regular or extended hours' : 'extended hours are served only for intraday bars of US listed stocks');
+    extendedServed ? 'Regular or extended hours' : 'Extended hours are served only for intraday bars of US listed stocks');
   sessionButton.id = 'session-menu';
   sessionButton.setAttribute('aria-haspopup', 'menu');
   if (session === 'extended') sessionButton.classList.add('is-on');
@@ -360,7 +362,7 @@ export function renderToolbar() {
   bar.appendChild(sessionButton);
   // Go to a date or range, loading a longer period when the date is older
   // than the one on screen.
-  const goTo = tbtn('<span>Go to</span>', 'Go to a date or range', 'loads older history when it is needed');
+  const goTo = tbtn('<span>Go to</span>', 'Go to a date or range', 'Loads older history when it is needed');
   goTo.id = 'goto';
   goTo.setAttribute('aria-haspopup', 'dialog');
   goTo.disabled = !target?.current() || Boolean(pane === 2 ? app.loading2 || app.loadFailed2 : app.loading || app.loadFailed);
@@ -469,7 +471,7 @@ export function renderToolbar() {
   if (app.cache) {
     const s = app.cache.stats();
     const cc = tbtn(ticon('cache') + '<span>' + s.hits + '/' + (s.hits + s.misses) + '</span>',
-      `Bar cache: ${s.hits} warm of ${s.hits + s.misses} loads, ${s.entries} series held`);
+      `Bar cache: ${s.hits} warm of ${plural(s.hits + s.misses, 'load')}, ${s.entries} series held`);
     if (s.hits > 0) cc.classList.add('is-on');
     cc.addEventListener('click', () => openCacheMenu(cc));
     bar.appendChild(cc);
@@ -502,7 +504,7 @@ export function renderToolbar() {
   // The magnet is the rail's three-way mode (off, weak, strong); this button
   // cycles it, so the shell and the rail can never disagree.
   const mg = iconBtn('magnet', 'Magnet: ' + magnetMode(), () => { cycleMagnet(); renderToolbar(); },
-    'snaps anchors to O/H/L/C; off, weak, strong');
+    'Snaps anchors to a bar or study value: off, weak, strong');
   if (magnetMode() !== 'off') mg.classList.add('is-on');
   bar.appendChild(mg);
   bar.appendChild(iconBtn('camera', 'Save PNG', () => downloadSnapshot(target)));
@@ -519,12 +521,12 @@ export function renderToolbar() {
   // user had no way to reach them, which also stranded the Trading tab's
   // entry and exit colours with nothing on the chart to recolour.
   bar.appendChild(divider());
-  const buy = tbtn('<b>Buy</b>', 'Place a Buy OCO bracket: entry, target and stop', pane === 2 ? 'Trading simulation is available on chart 1' : undefined);
+  const buy = tbtn('<b>Buy</b>', 'Place a Buy OCO bracket: entry, target and stop', pane === 2 ? 'Trading is available on Chart 1' : undefined);
   buy.disabled = pane === 2;
   buy.classList.add('tbtn--buy');
   buy.addEventListener('click', () => { if (pane === 1 && currentTarget(target)) el('buy').click(); });
   bar.appendChild(buy);
-  const sell = tbtn('<b>Sell</b>', 'Place a Sell OCO bracket: entry, target and stop', pane === 2 ? 'Trading simulation is available on chart 1' : undefined);
+  const sell = tbtn('<b>Sell</b>', 'Place a Sell OCO bracket: entry, target and stop', pane === 2 ? 'Trading is available on Chart 1' : undefined);
   sell.disabled = pane === 2;
   sell.classList.add('tbtn--sell');
   sell.addEventListener('click', () => { if (pane === 1 && currentTarget(target)) el('sell').click(); });
@@ -532,7 +534,7 @@ export function renderToolbar() {
   // The sandbox broker: the trade tier's account, preview and native close
   // contract against a simulated provider, beside the page's own simulation.
   const account = tbtn('<span>Account</span>', 'Sandbox broker account',
-    pane === 2 ? 'The sandbox broker trades chart 1' : 'figures, preview, durations, native close and reverse');
+    pane === 2 ? 'The sandbox broker trades Chart 1' : 'Figures, preview, durations, native close and reverse');
   account.id = 'account';
   account.disabled = pane === 2;
   account.setAttribute('aria-haspopup', 'dialog');
@@ -569,6 +571,10 @@ export function tbtn(html, title, sub) {
   // Styled label rather than `title`: half of these buttons are a bare
   // glyph, and the native box arrives a second late in the wrong theme.
   attachTip(b, { title, sub, side: 'bottom' });
+  // A button that shows words (a symbol, a range, a chart type) is named by
+  // them too: the tip's title alone would hide the value on it.
+  const shown = b.textContent.trim();
+  if (shown !== '' && !title.toLowerCase().includes(shown.toLowerCase())) b.setAttribute('aria-label', `${title}, ${shown}`);
   return b;
 }
 export function iconBtn(icon, title, onClick, sub) {

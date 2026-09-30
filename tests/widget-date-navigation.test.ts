@@ -345,11 +345,13 @@ describe('widget go-to flow', () => {
 });
 
 describe('widget go-to panel', () => {
-  it('opens from the top bar, places a date and closes', async () => {
+  it('opens from the bottom bar, places a date and closes', async () => {
     const requests: BarsRequest[] = [];
     const { widget, root } = make({ feed: rangeFeed(requests) });
     await flush();
-    const open = root.querySelector('.oac-topbar__goto')!;
+    // The control moved: the top bar carries none while the bottom bar does.
+    expect(root.querySelector('.oac-topbar__goto')).toBeNull();
+    const open = root.querySelector('.oac-bottombar__goto')!;
     expect(open.textContent).toBe('Go to');
     open.click();
     const panel = root.querySelector('.oac-goto')!;
@@ -364,6 +366,16 @@ describe('widget go-to panel', () => {
     expect(root.querySelector('.oac-goto')).toBeNull();
     expect(centreTime(widget)).toBe(at(2023, 10, 16, 9, 15));
     expect(root.querySelector('.oac-statusline')?.textContent).toContain('Showing');
+  });
+
+  it('keeps Go to in the top bar when the bottom bar is off', async () => {
+    const { root } = make({ feed: rangeFeed([]), bottombar: false });
+    await flush();
+    expect(root.querySelector('.oac-bottombar')).toBeNull();
+    const open = root.querySelector('.oac-topbar__goto')!;
+    expect(open.textContent).toBe('Go to');
+    open.click();
+    expect(root.querySelector('.oac-goto')).not.toBeNull();
   });
 
   it('keeps the panel open with the reason when there is nothing to show', async () => {
@@ -477,7 +489,7 @@ describe('widget go-to panel', () => {
     const off = registerInterval({ code: 'T50', bucketing: { mode: 'ticks', count: 50 } });
     try {
       const { widget, root } = make({ interval: 'T50' });
-      const open = root.querySelector('.oac-topbar__goto')!;
+      const open = root.querySelector('.oac-bottombar__goto')!;
       expect(open.getAttribute('aria-disabled')).toBe('true');
       open.click();
       expect(root.querySelector('.oac-goto')).toBeNull();

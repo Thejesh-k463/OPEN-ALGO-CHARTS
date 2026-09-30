@@ -27,18 +27,27 @@ interface Glyph { id: string; svg: string; px: number }
 type Tier = 'tools' | 'chrome';
 type Rendering = 'markup' | 'path';
 interface Measured {
-  pairs: { a: string; b: string; iou: number }[];
+  /** Each pair's overlap, and the count of pixels inked in one and not the other. */
+  pairs: { a: string; b: string; iou: number; diff: number }[];
   crisp: number;
   n: number;
+  /**
+   * The glyphs that inked no pixel. A blank glyph overlaps nothing, so it
+   * passes every overlap ceiling while showing an empty button; the chrome
+   * marks drawn as strokes of no length (an i's dot, a grip) are the ones
+   * an engine could drop.
+   */
+  blank: string[];
 }
 
 declare global {
   interface Window {
     __iconFixture: {
-      icons: Record<Tier | 'toolsPath' | 'chromePath', Glyph[]>;
+      icons: Record<Tier | 'toolsPath' | 'chromePath' | 'layouts', Glyph[]>;
       widget: Widget;
       lineId: string;
       mountIndicatorSettings: (ctx: Widget['context'], anchor?: HTMLElement, opts?: { instanceId?: string; tab?: 'inputs' | 'style' }) => unknown;
+      showSheet: () => number;
     };
   }
 }
@@ -50,7 +59,7 @@ const CEILING = 0.85;
  * One control in two states, drawn alike on purpose: the second state is the
  * first with a mark added. Nothing else may pass the ceiling.
  */
-const STATE_PAIRS = new Set(['star~star-filled', 'eye~eye-off', 'link~unlink']);
+const STATE_PAIRS = new Set(['star~star-filled', 'eye~eye-off', 'link~unlink', 'pin~pin-filled']);
 
 /** Every pair among one family's ids. */
 const allPairs = (ids: readonly string[]): [string, string][] =>
@@ -83,16 +92,42 @@ const SIBLINGS: Record<Tier, [string, string][]> = {
     ['fib-speed-resistance-fan', 'gann-square'], ['fib-wedge', 'fib-speed-resistance-arcs'],
     ['fib-wedge', 'fib-fan'], ['fib-circles', 'circle'],
   ],
-  chrome: [['lock', 'unlock'], ['cursor', 'plus'], ['trash', 'paste']],
+  chrome: [
+    ['lock', 'unlock'], ['cursor', 'plus'], ['trash', 'paste'],
+    // The families 2.5.10 added, each the members of one menu or bar: the
+    // replay controls, the corner controls of a grid, the market session,
+    // the scale modes, the three levels, the layout menu, the trading
+    // actions, the line styles, the link channels, the capture menu and the
+    // text styles. The chart types share one menu, so all of them are held.
+    ...allPairs(['replay', 'play', 'pause', 'stop', 'step-forward', 'step-back']),
+    ['fullscreen', 'fullscreen-exit'], ['maximize', 'restore'], ['maximize', 'fullscreen'], ['restore', 'fullscreen-exit'],
+    ...allPairs(['market-open', 'market-pre', 'market-post', 'market-closed', 'market-holiday']),
+    ...allPairs(['scale-auto', 'scale-log', 'scale-percent']),
+    ...allPairs(['info', 'warning', 'error']),
+    ...allPairs(['folder', 'save', 'save-as', 'autosave', 'rename', 'recent', 'template']),
+    ...allPairs(['buy', 'sell', 'close-position', 'reverse', 'bracket', 'dom-ladder']),
+    ...allPairs(['minus', 'line-dashed', 'line-dotted', 'line-mixed']),
+    ...allPairs(['link', 'link-group', 'drawing-sync', 'crosshair', 'time-range', 'palette']),
+    ['grid', 'layout'], ['camera', 'capture-grid'], ['download', 'capture-grid'], ['grid', 'capture-grid'],
+    ...allPairs(['chevron-up', 'chevron-down', 'chevron-left', 'chevron-right']),
+    ...allPairs(['text', 'bold', 'italic']),
+    ['clock', 'recent'], ['refresh', 'recent'], ['refresh', 'autosave'], ['more', 'grip'], ['sun', 'moon'],
+    ...allPairs(['candlestick', 'hollow-candle', 'volume-candle', 'heikin-ashi', 'bar', 'high-low', 'line',
+      'line-markers', 'step', 'area', 'hlc-area', 'baseline', 'column', 'histogram', 'point-figure', 'kagi',
+      'renko', 'range-bars', 'line-break'].map((t) => `chart-${t}`)),
+  ],
 };
 const SIBLING_CEILING = 0.7;
 
 /**
  * Share of a tier's inked pixels that are solid at native size, as the
- * builders draw them. Measured at 0.61 for the tools and 0.62 for chrome in
- * all three engines; a floor far under that lets a real loss through. The
- * tools measured 0.59 until the pitchforks, drawn on the diagonal at 0.22
- * to 0.24, were redrawn upright in 2.5.9.
+ * builders draw them. Measured at 0.61 for the tools in all three engines,
+ * and for chrome at 0.62 in Chromium and Firefox and 0.65 in WebKit; a
+ * floor far under that lets a real loss through. The tools measured 0.59
+ * until the pitchforks, drawn on the diagonal at 0.22 to 0.24, were redrawn
+ * upright in 2.5.9. Chrome held its figure through 2.5.10, which grew it
+ * from 29 glyphs to 129: rings, arrows and letters are soft at any size,
+ * so the new glyphs were drawn square where their picture allowed it.
  */
 const CRISP_FLOOR: Record<Tier, number> = { tools: 0.6, chrome: 0.6 };
 
@@ -107,9 +142,14 @@ async function mount(page: Page, theme: 'dark' | 'light' = 'dark'): Promise<stri
 
 /** Rasterise one tier, drawn one way, in the page and compare every pair. */
 function measure(page: Page, tier: Tier, rendering: Rendering = 'markup'): Promise<Measured> {
+  return rasterise(page, rendering === 'markup' ? tier : `${tier}Path`);
+}
+
+/** Rasterise one list of the fixture's glyphs and compare every pair in it. */
+function rasterise(page: Page, which: 'tools' | 'chrome' | 'toolsPath' | 'chromePath' | 'layouts'): Promise<Measured> {
   return page.evaluate(async (which) => {
     const list = window.__iconFixture.icons[which];
-    const rows: { id: string; mask: Uint8Array; crisp: number }[] = [];
+    const rows: { id: string; mask: Uint8Array; crisp: number; lit: number }[] = [];
     for (const g of list) {
       // Black on transparent, so alpha alone is the ink.
       const img = new Image();
@@ -129,9 +169,9 @@ function measure(page: Page, tier: Tier, rendering: Rendering = 'markup'): Promi
         mask[i] = a > 0.3 ? 1 : 0;
         if (a > 0.05) { lit++; if (a >= 0.9) solid++; }
       }
-      rows.push({ id: g.id, mask, crisp: lit === 0 ? 0 : solid / lit });
+      rows.push({ id: g.id, mask, crisp: lit === 0 ? 0 : solid / lit, lit });
     }
-    const pairs: { a: string; b: string; iou: number }[] = [];
+    const pairs: { a: string; b: string; iou: number; diff: number }[] = [];
     for (let i = 0; i < rows.length; i++) {
       for (let j = i + 1; j < rows.length; j++) {
         let inter = 0;
@@ -139,11 +179,14 @@ function measure(page: Page, tier: Tier, rendering: Rendering = 'markup'): Promi
         const A = rows[i].mask;
         const B = rows[j].mask;
         for (let k = 0; k < A.length; k++) { inter += A[k] & B[k]; union += A[k] | B[k]; }
-        pairs.push({ a: rows[i].id, b: rows[j].id, iou: union === 0 ? 0 : inter / union });
+        pairs.push({ a: rows[i].id, b: rows[j].id, iou: union === 0 ? 0 : inter / union, diff: union - inter });
       }
     }
-    return { pairs, crisp: rows.reduce((s, r) => s + r.crisp, 0) / rows.length, n: rows.length };
-  }, rendering === 'markup' ? tier : (`${tier}Path` as const));
+    return {
+      pairs, crisp: rows.reduce((s, r) => s + r.crisp, 0) / rows.length, n: rows.length,
+      blank: rows.filter((r) => r.lit === 0).map((r) => r.id),
+    };
+  }, which);
 }
 
 const key = (a: string, b: string): string => `${a}~${b}`;
@@ -153,6 +196,7 @@ for (const [tier, rendering] of [['tools', 'markup'], ['chrome', 'markup'], ['to
     const errors = await mount(page);
     const m = await measure(page, tier, rendering);
     expect(m.n).toBeGreaterThan(20);
+    expect(m.blank, 'glyphs that ink no pixel').toEqual([]);
     const close = m.pairs
       .filter((p) => p.iou >= CEILING && !STATE_PAIRS.has(key(p.a, p.b)) && !STATE_PAIRS.has(key(p.b, p.a)))
       .map((p) => `${key(p.a, p.b)} ${p.iou.toFixed(2)}`);
@@ -182,6 +226,38 @@ for (const tier of ['tools', 'chrome'] as const) {
     expect(m.crisp).toBeGreaterThan(CRISP_FLOOR[tier]);
   });
 }
+
+test('every two layout tiles differ by a divider, and every tile is crisp', async ({ page }, info) => {
+  // The tiles share their frame by design, so their overlap is high whatever
+  // they show: a picker tells them apart by the dividers they do not share.
+  // Each pair has to differ by at least a short divider, three units of the
+  // 2px line, and the lines all sit on whole units, so nearly every inked
+  // pixel is solid.
+  const errors = await mount(page);
+  const m = await rasterise(page, 'layouts');
+  expect(m.n).toBeGreaterThan(10);
+  expect(m.blank, 'tiles that ink no pixel').toEqual([]);
+  const nearest = [...m.pairs].sort((p, q) => p.diff - q.diff);
+  await info.attach('layouts-nearest.txt', {
+    body: nearest.slice(0, 10).map((p) => `${key(p.a, p.b)} ${p.diff}px ${p.iou.toFixed(3)}`).join('\n') + `\ncrisp ${m.crisp.toFixed(3)}`,
+    contentType: 'text/plain',
+  });
+  expect(nearest.filter((p) => p.diff < 6).map((p) => `${key(p.a, p.b)} ${p.diff}px`)).toEqual([]);
+  expect(m.crisp).toBeGreaterThan(0.9);
+  expect(errors).toEqual([]);
+});
+
+test('the chrome set and the layout tiles, as a sheet on both themes', async ({ page }, info) => {
+  // Not an assertion on the drawing: a picture of the whole set in each
+  // engine, to look at, beside the glyphs in place below.
+  for (const theme of ['dark', 'light'] as const) {
+    const errors = await mount(page, theme);
+    const n = await page.evaluate(() => window.__iconFixture.showSheet());
+    expect(n).toBeGreaterThan(100);
+    await page.locator('#sheet').screenshot({ path: info.outputPath(`chrome-sheet-${theme}.png`) });
+    expect(errors).toEqual([]);
+  }
+});
 
 test('the widget shows the glyphs as the tier ships them, in the rail, a flyout and menus', async ({ page }, info) => {
   for (const theme of ['dark', 'light'] as const) {
@@ -236,14 +312,37 @@ test('the widget shows the glyphs as the tier ships them, in the rail, a flyout 
     await menu.screenshot({ path: info.outputPath(`drawing-menu-${theme}.png`) });
     await page.keyboard.press('Escape');
 
-    // The widget's own glyphs sit in the settings tab rails beside registry
-    // ones, at the same width; the price tab and the style brush were drawn
-    // for the old line and have to read at this one.
+    // The chart-type menu: a glyph beside every type, each the registry's
+    // chart-<id> at its native size and line, and none blank; the type
+    // button and the theme button carry theirs too.
+    await page.locator('.oac-topbar__type').click();
+    const typeMenu = page.getByRole('menu', { name: 'Chart type' });
+    await expect(typeMenu).toBeVisible();
+    const rows = await typeMenu.locator('.oac-menu__row').evaluateAll((els) => els.map((row) => {
+      const svg = row.querySelector('.oac-glyph--chrome > svg');
+      const box = svg?.getBoundingClientRect();
+      return { label: row.textContent, d: svg?.querySelector('path')?.getAttribute('d') ?? '',
+        size: box === undefined ? '' : `${box.width}x${box.height}`, stroke: svg === null ? '' : getComputedStyle(svg!).strokeWidth };
+    }));
+    expect(rows.length).toBeGreaterThan(8);
+    for (const row of rows) expect(row, row.label ?? '').toMatchObject({ size: '16x16', stroke: '2px', d: expect.stringMatching(/^M/) });
+    expect(new Set(rows.map((row) => row.d)).size).toBe(rows.length);
+    await typeMenu.screenshot({ path: info.outputPath(`chart-type-menu-${theme}.png`) });
+    await page.keyboard.press('Escape');
+    for (const button of ['.oac-topbar__type', '.oac-topbar__theme']) {
+      const box = await page.locator(`${button} .oac-glyph--chrome > svg`).boundingBox();
+      expect(box, button).toMatchObject({ width: 16, height: 16 });
+    }
+
+    // Every settings tab carries a registry glyph at the same width as the
+    // rest of the chrome; the price tab and the style brush moved into the
+    // registry from widget files, where no width or grid check saw them.
     const tabGlyphs = async (name: string): Promise<void> => {
       const tabs = page.locator('.oac-tabs').last();
       await expect(tabs).toBeVisible();
       const strokes = await tabs.locator('.oac-glyph--chrome > svg').evaluateAll((svgs) => svgs.map((s) => getComputedStyle(s).strokeWidth));
       expect(strokes.length).toBeGreaterThan(1);
+      expect(strokes.length, 'a glyph on every tab').toBe(await tabs.locator('[role="tab"]').count());
       expect(new Set(strokes)).toEqual(new Set(['2px']));
       await tabs.screenshot({ path: info.outputPath(`${name}-tabs-${theme}.png`) });
       await page.keyboard.press('Escape');

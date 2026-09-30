@@ -75,8 +75,8 @@ test('the right-click menu puts the price pane below a study, with its trading l
   await page.screenshot({ path: info.outputPath('host-price-pane-bottom.png') });
 
   // A chart-type switch rebuilds the chart from its saved state.
-  await page.getByRole('button', { name: 'Chart type', exact: true }).click();
-  await page.getByRole('button', { name: 'Line', exact: true }).click();
+  await page.getByRole('button', { name: /^Chart type, / }).click();
+  await page.getByRole('menuitemradio', { name: 'Line', exact: true }).click();
   await page.waitForFunction(() => (window as any).__oac.app.chart.primarySeriesInfo()?.type === 'line');
   await paint(page);
   expect(await placement(page)).toMatchObject({ primary: 1, symbolRow: 1, price: 1, rsi: [0], orders: [1] });

@@ -10,3 +10,4 @@ export type { LinkDataLayer, LinkMissingPolicy } from './align';
 export { LinkCrosshair, LINK_CROSSHAIR_ALPHA } from './crosshair';
 export { filterLinkAppearance } from './appearance';
 export type { LinkAppearanceAdapter, LinkAppearanceValues } from './appearance';
+export type { LinkDrawingsAdapter } from './drawings';

@@ -4,6 +4,7 @@ description: Markers, event badges, price lines, custom chart types, and the IPr
 ---
 
 import RunnableExample from '../../components/RunnableExample'
+import { STOCK_BARS_SOURCE } from '../../components/synthetic-market'
 import { Callout } from 'nextra/components'
 
 # Primitives & plugins
@@ -52,6 +53,34 @@ markers.setMarkers([
 
 chart.timeScale.fitContent(bars.length);
 return chart;`} caption="Label plates: the tail points at the anchor price, the body clears it." />
+
+Markers that carry text above or below the bar, or on a pane edge, take **lanes**. A label
+is wider than a bar, so on a whipsaw the signals on neighbouring bars would land on each
+other: each one moves outward just past any earlier label on its side that it overlaps,
+and a label that overlaps nothing stays exactly where it was. A label moves at most five
+of its own heights, so where labels outnumber the room, as at a wide zoom, the rest
+overlap on their bars instead of stacking out of the pane. Labels hold their lanes while
+the chart pans. A mark at a price or in the bar keeps its place.
+
+<RunnableExample height={340} code={`${STOCK_BARS_SOURCE}
+const chart = lib.createChart(el);
+const bars = stockBars(1700000000, 160, 300, 1480, 17, 0.003);
+const series = chart.addSeries('candlestick');
+series.setData(bars);
+
+// A fast crossover on simulated prices whipsaws, so signals land on neighbouring bars.
+const mean = (i, n) => bars.slice(i - n + 1, i + 1).reduce((sum, bar) => sum + bar.close, 0) / n;
+const signals = [];
+for (let i = 5; i < bars.length; i++) {
+  const now = mean(i, 2) - mean(i, 5), before = mean(i - 1, 2) - mean(i - 1, 5);
+  if (now > 0 && before <= 0) signals.push({ time: bars[i].time, position: 'belowBar', shape: 'labelUp', size: 'small', color: '#2962ff', text: 'Buy' });
+  if (now < 0 && before >= 0) signals.push({ time: bars[i].time, position: 'aboveBar', shape: 'labelDown', size: 'small', color: '#ef5350', text: 'Sell' });
+}
+series.createMarkers().setMarkers(signals);
+// Headroom above and below the bars for labels stacked in outer lanes.
+chart.setPriceScaleOptions({ marginTop: 0.2, marginBottom: 0.2 });
+chart.timeScale.fitContent(bars.length);
+return chart;`} caption="Simulated prices. Crossover signals on neighbouring bars take lanes instead of covering each other." />
 
 `drawLabel(ctx, up, cx, anchorY, text, color, fontPx)` is exported if you want the same
 plate inside a custom primitive. Coordinates are bitmap px. Multiply media px by `dpr`

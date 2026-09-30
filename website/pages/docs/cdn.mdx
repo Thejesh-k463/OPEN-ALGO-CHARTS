@@ -22,7 +22,7 @@ Save this as `chart.html` and open it. No npm, no bundler, no server.
     <div id="chart" style="width:100vw;height:100vh"></div>
 
     <script type="module">
-      import { createChart } from 'https://unpkg.com/openalgo-charts@2.5.9/dist/openalgo-charts.mjs';
+      import { createChart } from 'https://unpkg.com/openalgo-charts@2.5.10/dist/openalgo-charts.mjs';
 
       const chart = createChart(document.getElementById('chart'), {
         timezone: 'Asia/Kolkata',
@@ -47,17 +47,22 @@ so the library needs no build step to be used.
 Use an exact version in anything you leave running:
 
 ```html
-https://unpkg.com/openalgo-charts@2.5.9/dist/openalgo-charts.mjs
+https://unpkg.com/openalgo-charts@2.5.10/dist/openalgo-charts.mjs
 ```
 
 The unversioned URL always resolves to the newest release. That is convenient for
 a scratch file and a liability for a page you are not watching, because a future
 release changes what your page loads without you touching it.
 
+The widget needs the exact version even in a scratch file. It fetches a few of its
+panels later, from files beside the tier file, and a tier file works only with the
+panels built with it. A range such as `@2`, or no version, can resolve the tier file and
+a panel to two different releases, and the panel then cannot load.
+
 jsDelivr serves the identical files if you prefer it:
 
 ```html
-https://cdn.jsdelivr.net/npm/openalgo-charts@2.5.9/dist/openalgo-charts.mjs
+https://cdn.jsdelivr.net/npm/openalgo-charts@2.5.10/dist/openalgo-charts.mjs
 ```
 
 ## Adding indicators and drawing tools
@@ -69,7 +74,7 @@ registers itself into the engine you already loaded.
 
 ```html
 <script type="module">
-  const CDN = 'https://unpkg.com/openalgo-charts@2.5.9/dist';
+  const CDN = 'https://unpkg.com/openalgo-charts@2.5.10/dist';
 
   const { createChart, registeredIndicators } = await import(`${CDN}/openalgo-charts.mjs`);
   const { registerBuiltinIndicators } = await import(`${CDN}/openalgo-charts.indicators.mjs`);
@@ -112,7 +117,7 @@ terminal is still one file:
 
 ```html
 <script type="module">
-  const CDN = 'https://unpkg.com/openalgo-charts@2.5.9/dist';
+  const CDN = 'https://unpkg.com/openalgo-charts@2.5.10/dist';
   const { createChart, OpenAlgoDataFeed } = await import(`${CDN}/openalgo-charts.mjs`);
   const { registerBuiltinIndicators } = await import(`${CDN}/openalgo-charts.indicators.mjs`);
   registerBuiltinIndicators();
@@ -146,7 +151,7 @@ If you cannot use `<script type="module">` at all, there is a classic script tha
 defines a `OpenAlgoCharts` global:
 
 ```html
-<script src="https://unpkg.com/openalgo-charts@2.5.9/dist/openalgo-charts.standalone.js"></script>
+<script src="https://unpkg.com/openalgo-charts@2.5.10/dist/openalgo-charts.standalone.js"></script>
 <script>
   const chart = OpenAlgoCharts.createChart(document.getElementById('chart'));
   chart.addSeries('candlestick').setData(bars);
@@ -166,6 +171,10 @@ steps that do not apply here:
 - **There is no separate stylesheet to load.** The engine draws on canvas. The
   optional widget tier supplies interface controls and injects its scoped styles;
   custom hosts supply their own interface. There is no `openalgo-charts.css` file.
+- **There is nothing else to list for the widget.** A few of its panels load from
+  files beside `openalgo-charts.widget.mjs` the first time a user opens them. They
+  resolve against the tier's own URL, so the CDN path you import from serves them,
+  provided it pins the exact version.
 - **There is no separate CDN deployment.** unpkg and jsDelivr mirror npm. A
   release is on both the moment it is published; there is no account to create
   and no upload step.
@@ -173,9 +182,9 @@ steps that do not apply here:
 ## Checking a version is live
 
 ```sh
-curl -sI https://unpkg.com/openalgo-charts@2.5.9/dist/openalgo-charts.mjs | head -1
+curl -sI https://unpkg.com/openalgo-charts@2.5.10/dist/openalgo-charts.mjs | head -1
 npm view openalgo-charts version
 ```
 
 Browse everything a release contains at
-[`unpkg.com/openalgo-charts@2.5.9/dist/`](https://unpkg.com/browse/openalgo-charts@2.5.9/dist/).
+[`unpkg.com/openalgo-charts@2.5.10/dist/`](https://unpkg.com/browse/openalgo-charts@2.5.10/dist/).

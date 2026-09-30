@@ -24,7 +24,10 @@ async function loadExample(page: Page) {
   const response = await page.request.get('/website/pages/examples.mdx');
   expect(response.ok()).toBe(true);
   const markdown = await response.text();
-  const code = markdown.split('## Requested snapshots from a deferred provider')[1].split('code={`')[1].split('`} />')[0];
+  let code = markdown.split('## Requested snapshots from a deferred provider')[1].split('code={`')[1].split('`} />')[0];
+  // The site's template splices the shared bar generator in; do the same here.
+  const market = await (await page.request.get('/website/components/synthetic-market.ts')).text();
+  code = code.replace('${STOCK_BARS_SOURCE}', market.split('STOCK_BARS_SOURCE = `')[1].split('`;')[0]);
   await page.setViewportSize({ width: 960, height: 470 });
   await page.route('**/requested-provider.html', route => route.fulfill({ contentType: 'text/html', body:
     '<!doctype html><html><head><style>html,body{margin:0;background:#101010}#example{width:960px;height:460px}</style></head><body><div id="example"></div></body></html>' }));

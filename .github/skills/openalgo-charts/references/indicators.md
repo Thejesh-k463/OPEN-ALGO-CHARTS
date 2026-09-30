@@ -112,7 +112,7 @@ import 'openalgo-charts/indicators'; // side effect: registers all 105 built-ins
 | `connors-rsi` | Connors RSI | pane | `crsi` | `lenrsi` 3, `lenupdown` 2, `lenroc` 100 |
 | `know-sure-thing` | Know Sure Thing | pane | `kst`, `signal` | `roclen1` 10, `roclen2` 15, `roclen3` 20, `roclen4` 30, `smalen1` 10, `smalen2` 10, `smalen3` 10, `smalen4` 15, `siglen` 9 |
 | `momentum` | Momentum | pane | `mom` | `len` 10, `source` `'close'` |
-| `roc` | Rate Of Change | pane | `roc` | `length` 9, `source` `'close'` |
+| `roc` | Rate of Change | pane | `roc` | `length` 9, `source` `'close'` |
 | `ppo` | Percentage Price Oscillator | pane | `hist`, `ppo`, `signal` | `source` `'close'`, `fastLength` 12, `slowLength` 26, `signalLength` 9, `oscType` `'EMA'`, `sigType` `'EMA'` |
 | `trix` | TRIX | pane | `trix` | `length` 18 |
 | `tsi` | True Strength Index | pane | `tsi`, `signal` | `long` 25, `short` 13, `signal` 13 |
@@ -134,7 +134,7 @@ import 'openalgo-charts/indicators'; // side effect: registers all 105 built-ins
 |---|---|---|---|---|
 | `bollinger` | Bollinger Bands | onchart | `upper`, `basis`, `lower` | `length` 20, `stdDev` 2, `source` `'close'` |
 | `atr` | ATR | pane | `atr` | `period` 14 |
-| `williams-vix-fix` | William VIX FIX | pane | `wvf`, `rangeHigh`, `rangeLow`, `upperBand` | `pd` 22, `bbl` 20, `mult` 2, `lb` 50, `ph` 0.85, `pl` 1.01, `hp` `false`, `sd` `false` |
+| `williams-vix-fix` | Williams VIX Fix | pane | `wvf`, `rangeHigh`, `rangeLow`, `upperBand` | `pd` 22, `bbl` 20, `mult` 2, `lb` 50, `ph` 0.85, `pl` 1.01, `hp` `false`, `sd` `false` |
 | `envelope` | Envelope | onchart | `upper`, `basis`, `lower` | `length` 20, `percent` 10, `source` `'close'`, `exponential` `false` |
 | `donchian` | Donchian Channels | onchart | `upper`, `basis`, `lower` | `length` 20, `offset` 0 |
 | `bollinger-percent-b` | Bollinger Bands %b | pane | `percentB` | `length` 20, `source` `'close'`, `mult` 2 |

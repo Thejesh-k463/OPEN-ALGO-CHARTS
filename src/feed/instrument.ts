@@ -2,12 +2,27 @@ import type { Chart } from '../core/chart';
 import { tryResolveInterval } from './intervals';
 import { isValidTimezone, parseSessionSpec, utcSecondsToZonedParts, zonedWallClockToUtcSeconds, type SessionSpec } from './time';
 import { TickSchedule, type TickBand } from './tick-schedule';
+import { partitionPhases, statusOf, type MarketStatus, type PhaseWindow, type SessionPhase, type SessionPhaseSpan } from './market-status';
 
 export interface InstrumentCalendar {
   /** HHMM-HHMM[:days], with opening weekdays 1 (Sunday) through 7. */
   readonly sessions: readonly string[];
   /** Local opening dates replace weekly sessions. An empty list closes that date. */
   readonly exceptions?: Readonly<Record<string, readonly string[]>>;
+  /**
+   * Whole minutes of pre-open trading before each trading date's first
+   * regular opening, 0 to 1439. Counted from the opening, so a shortened day,
+   * a special session and a closed date move it with them.
+   */
+  readonly preMarketMinutes?: number;
+  /** Whole minutes of post-close trading after each trading date's last regular close, 0 to 1439. */
+  readonly postMarketMinutes?: number;
+  /**
+   * Extended hours of their own, such as an overnight session, written like
+   * `sessions`. They open on their own days, except on a date the exceptions
+   * close.
+   */
+  readonly extendedHours?: readonly string[];
 }
 
 /** Host-supplied market rules, separate from observations and saved user preferences. */
@@ -70,9 +85,9 @@ function strings(value: unknown, limit: number, f: Fail = fail): string[] {
   if (!Array.isArray(value) || value.length > limit) return f('invalid list');
   return value.map(item => text(item, 'invalid list item', f));
 }
-function sessions(value: unknown, f: Fail): readonly string[] {
+function sessions(value: unknown, f: Fail, label = 'invalid session'): readonly string[] {
   const result = strings(value, 16, f);
-  if (result.some(item => !parseSessionSpec(item))) return f('invalid session');
+  if (result.some(item => !parseSessionSpec(item))) return f(label);
   return Object.freeze(result);
 }
 function dateString(date: Date): string { return date.toISOString().slice(0, 10); }
@@ -99,6 +114,23 @@ function exceptionsOf(calendar: Record<string, unknown>, f: Fail): Readonly<Reco
     for (const [key, value] of Object.entries(values)) { date(key, f); exceptions[key] = sessions(value, f); }
   }
   return Object.freeze(exceptions);
+}
+type ExtendedHours = Pick<InstrumentCalendar, 'preMarketMinutes' | 'postMarketMinutes' | 'extendedHours'>;
+/**
+ * A calendar's extended hours, checked after every field that existed before
+ * them so an input with an older fault still reports that fault first. Absent
+ * fields stay absent, so a calendar without them keeps its old shape.
+ */
+function extendedOf(calendar: Record<string, unknown>, f: Fail): ExtendedHours {
+  const out: { -readonly [K in keyof ExtendedHours]: ExtendedHours[K] } = {};
+  for (const key of ['preMarketMinutes', 'postMarketMinutes'] as const) {
+    const value = calendar[key];
+    if (value === undefined) continue;
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value >= 1440) return f(`${key} must be whole minutes under a day`);
+    out[key] = value;
+  }
+  if (calendar.extendedHours !== undefined) out.extendedHours = sessions(calendar.extendedHours, f, 'invalid extended hours');
+  return out;
 }
 function metadata(input: unknown): InstrumentMetadata {
   // The order of these checks decides which fault a host sees when an input
@@ -128,7 +160,7 @@ function metadata(input: unknown): InstrumentMetadata {
     symbol: text(raw.symbol, 'symbol'), exchange: text(raw.exchange, 'exchange'), timezone,
     priceTick, pricePrecision: precision, quantityStep: positive(raw.quantityStep, 'quantity step'),
     intervals: Object.freeze(intervals),
-    calendar: Object.freeze({ sessions: sessions(calendar.sessions, fail), exceptions }),
+    calendar: Object.freeze({ sessions: sessions(calendar.sessions, fail), exceptions, ...extendedOf(calendar, fail) }),
     // A boolean by the check above; said again for a checker without strict
     // null checks (the docs site's), which does not carry that narrowing here.
     ...(raw.hasOpenInterest === undefined ? {} : { hasOpenInterest: raw.hasOpenInterest as boolean }),
@@ -154,16 +186,28 @@ function boundary(day: Date, minute: number, timezone: string, f: Fail): number 
  * asked about.
  */
 const LOOKAHEAD_DAYS = 370;
+/**
+ * The longest range `phaseSpans` lays out. Its cost grows with the dates in
+ * it, and a reader showing phases at bar level never needs more.
+ */
+const MAX_PHASE_RANGE = 400 * 86400;
 
 /** Compiled windows and the reads over them, shared by an instrument and a bare calendar. */
 class SessionHours {
   private readonly _sessions: readonly SessionSpec[];
   private readonly _exceptions: ReadonlyMap<string, readonly SessionSpec[]>;
+  private readonly _extended: readonly SessionSpec[];
+  /** Pre-open and post-close lengths, in seconds. */
+  private readonly _pre: number;
+  private readonly _post: number;
 
   public constructor(private readonly _zone: string, calendar: InstrumentCalendar, private readonly _fail: Fail) {
     this._sessions = calendar.sessions.map(item => parseSessionSpec(item)!);
     this._exceptions = new Map(Object.entries(calendar.exceptions ?? {})
       .map(([key, value]) => [key, value.map(item => parseSessionSpec(item)!)]));
+    this._extended = (calendar.extendedHours ?? []).map(item => parseSessionSpec(item)!);
+    this._pre = (calendar.preMarketMinutes ?? 0) * 60;
+    this._post = (calendar.postMarketMinutes ?? 0) * 60;
   }
 
   /**
@@ -172,9 +216,9 @@ class SessionHours {
    * others are skipped before their boundaries are resolved: one of them may
    * fall in a daylight-saving gap that has nothing to do with the instant.
    */
-  private _windows(day: Date, overnightOnly: boolean): InstrumentSession[] {
+  private _windows(day: Date, overnightOnly: boolean, specs?: readonly SessionSpec[]): InstrumentSession[] {
     const out: InstrumentSession[] = [], key = dateString(day);
-    for (const spec of this._exceptions.get(key) ?? this._sessions) {
+    for (const spec of specs ?? this._exceptions.get(key) ?? this._sessions) {
       if (spec.days && !spec.days.includes(day.getUTCDay() + 1)) continue;
       if (overnightOnly && spec.end > spec.start) continue;
       out.push({
@@ -221,6 +265,46 @@ class SessionHours {
     }
     return null;
   }
+
+  /**
+   * One local date's hours, with their precedence: the regular windows opening
+   * on it, the pre-open and post-close around them, its own extended hours,
+   * and the whole date when it is a holiday.
+   */
+  private _layOut(day: Date, out: PhaseWindow[]): void {
+    const regular = this._windows(day, false);
+    for (const w of regular) out.push({ rank: 0, start: w.open, end: w.close });
+    if (regular.length > 0) {
+      const open = Math.min(...regular.map(w => w.open)), close = Math.max(...regular.map(w => w.close));
+      if (this._pre > 0) out.push({ rank: 1, start: open - this._pre, end: open });
+      if (this._post > 0) out.push({ rank: 2, start: close, end: close + this._post });
+    }
+    if (this._exceptions.get(dateString(day))?.length !== 0) {
+      for (const w of this._windows(day, false, this._extended)) out.push({ rank: 3, start: w.open, end: w.close });
+      return;
+    }
+    // Closed by an exception. A holiday only where the weekly hours would have
+    // opened; an exception closing a weekend changes nothing a reader can see.
+    const weekday = day.getUTCDay() + 1;
+    if (!this._sessions.some(spec => !spec.days || spec.days.includes(weekday))) return;
+    // Midnight, not a session boundary: a zone that skips it still has a date,
+    // so this takes the nearest instant instead of refusing.
+    const midnight = (d: Date): number => zonedWallClockToUtcSeconds(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(), 0, 0, 0, this._zone);
+    out.push({ rank: 4, start: midnight(day), end: midnight(new Date(day.getTime() + 86400000)) });
+  }
+
+  public spans(from: number, to: number): SessionPhaseSpan[] {
+    const day = this._day(from), last = this._day(to)(0);
+    if (!(to > from) || to - from > MAX_PHASE_RANGE) return this._fail('phase range must be ascending and at most 400 days');
+    // Two dates back and one ahead: a window opening two dates before `from`
+    // can still be in its post-close hours, and a pre-open can begin on the
+    // date before the opening it leads to.
+    const out: PhaseWindow[] = [], days = Math.round((last.getTime() - day(0).getTime()) / 86400000);
+    for (let offset = -2; offset <= days + 1; offset++) this._layOut(day(offset), out);
+    return partitionPhases(from, to, out);
+  }
+
+  public phaseAt(utcSeconds: number): SessionPhase { return this.spans(utcSeconds, utcSeconds + 1)[0].phase; }
 }
 
 /**
@@ -240,7 +324,7 @@ export class SessionCalendar {
     const f = failWith('session calendar'), raw = record(input, f);
     this.timezone = zone(raw.timezone, f);
     const exceptions = exceptionsOf(raw, f);
-    this.calendar = Object.freeze({ sessions: sessions(raw.sessions, f), exceptions });
+    this.calendar = Object.freeze({ sessions: sessions(raw.sessions, f), exceptions, ...extendedOf(raw, f) });
     this._hours = new SessionHours(this.timezone, this.calendar, f);
   }
 
@@ -252,6 +336,20 @@ export class SessionCalendar {
    * most about a year ahead. Null when nothing opens in that time.
    */
   public sessionFrom(utcSeconds: number): InstrumentSession | null { return this._hours.from(utcSeconds); }
+
+  /** The part of the trading day an instant falls in. */
+  public phaseAt(utcSeconds: number): SessionPhase { return this._hours.phaseAt(utcSeconds); }
+
+  /**
+   * The phases from one instant to another, as consecutive spans clipped to
+   * the range, which may be at most 400 days long.
+   */
+  public phaseSpans(fromUtcSeconds: number, toUtcSeconds: number): readonly SessionPhaseSpan[] {
+    return this._hours.spans(fromUtcSeconds, toUtcSeconds);
+  }
+
+  /** The market status at an instant: pass `Date.now() / 1000` for now. */
+  public marketStatusAt(utcSeconds: number): MarketStatus { return statusOf(this, utcSeconds); }
 
   /**
    * Lay the chart's time axis past the last bar out in these hours, and
@@ -317,6 +415,20 @@ export class Instrument {
    * most about a year ahead. Null when nothing opens in that time.
    */
   public sessionFrom(utcSeconds: number): InstrumentSession | null { return this._hours.from(utcSeconds); }
+
+  /** The part of the trading day an instant falls in. */
+  public phaseAt(utcSeconds: number): SessionPhase { return this._hours.phaseAt(utcSeconds); }
+
+  /**
+   * The phases from one instant to another, as consecutive spans clipped to
+   * the range, which may be at most 400 days long.
+   */
+  public phaseSpans(fromUtcSeconds: number, toUtcSeconds: number): readonly SessionPhaseSpan[] {
+    return this._hours.spans(fromUtcSeconds, toUtcSeconds);
+  }
+
+  /** The market status at an instant: pass `Date.now() / 1000` for now. */
+  public marketStatusAt(utcSeconds: number): MarketStatus { return statusOf(this, utcSeconds); }
 
   /** The host clears old bars and owns source loading; only metadata is applied here. */
   public applyTo(chart: Chart, interval: string): void {

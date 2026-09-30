@@ -72,13 +72,20 @@ function validateAllTargets() {
 }
 
 function syncScopeControls() {
-  const label = app.replayScope === 'all' ? 'All charts' : `Chart ${app.replayTarget?.pane || 1}`;
-  for (const id of ['rp-pick-scope', 'rp-scope']) {
+  const all = app.replayScope === 'all';
+  // The pick prompt has no owner label, so its toggle names the chart. The
+  // transport bar already names it in #rp-owner, and a toggle saying the same
+  // thing beside it read as "Chart 1 Chart 1": there it names the scope.
+  const labels = {
+    'rp-pick-scope': all ? 'All charts' : `Chart ${app.replayTarget?.pane || 1}`,
+    'rp-scope': all ? 'All charts' : 'This chart',
+  };
+  for (const [id, label] of Object.entries(labels)) {
     const button = el(id);
     if (!button) continue;
     button.textContent = label;
+    // Named for the scope in force, so no pressed state says it a second time.
     button.setAttribute('aria-label', 'Replay scope: ' + label);
-    button.setAttribute('aria-pressed', String(app.replayScope === 'all'));
     button.disabled = Boolean(app.replayLoading);
   }
 }

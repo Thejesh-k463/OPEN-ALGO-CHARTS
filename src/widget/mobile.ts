@@ -1,6 +1,6 @@
 import { widgetText } from './localization';
-import { registeredDrawingTools } from 'openalgo-charts/draw';
-import { h, editableIds, historyPress, historyReady, type WidgetContext } from './context';
+import { chartTypeIcon, chromeIconSvg, registeredDrawingTools } from 'openalgo-charts/draw';
+import { h, glyph, editableIds, historyPress, historyReady, type WidgetContext } from './context';
 import type { RailHandle } from './rail';
 import {
   chartTypeChoices, chartTypeLabel, intervalLabel,
@@ -8,8 +8,44 @@ import {
 } from './topbar';
 import { mountSymbolPicker, type SymbolPickerHandle } from './symbol-picker';
 import { timeBuckets } from './date-navigator';
+import { SCALE_TOGGLES, type BottombarControls } from './bottombar';
 
 export type MobileMode = 'auto' | 'always' | 'never';
+
+/** A container at most this many CSS px wide gets the compact controls, whatever the pointer. */
+export const MOBILE_MAX_WIDTH = 640;
+/**
+ * The widest container a phone on its side gives the widget (the largest
+ * phones are about 930 CSS px wide in landscape). Up to this width a coarse
+ * pointer in a short container keeps the compact controls, so turning a phone
+ * does not swap its chrome.
+ */
+export const PHONE_LANDSCAPE_MAX_WIDTH = 960;
+/**
+ * A coarse-pointer container at least this tall is a tablet, not a phone on
+ * its side. Phones in landscape leave the page about 430 px or less, and a
+ * tablet in landscape keeps about 690 px or more after the browser's bars, so
+ * the cut sits between them. Height only splits the two while the width is
+ * ambiguous: past {@link PHONE_LANDSCAPE_MAX_WIDTH} no phone is involved.
+ */
+export const TABLET_MIN_HEIGHT = 600;
+
+/**
+ * Whether the widget shows its compact controls for a container of the given
+ * size. `auto` decides by the container, never the window, so a narrow chart
+ * in a wide dashboard is compact too. A fine pointer switches at
+ * {@link MOBILE_MAX_WIDTH}. A coarse pointer alone does not make a phone: a
+ * tablet in either orientation, or a touch laptop, has room for the toolbar
+ * and the drawing rail, which put every tool one tap away, where the compact
+ * layout keeps them a sheet away. Only a phone on its side (wide but short)
+ * widens the cutoff. An unmeasured container (width 0) is not compact.
+ */
+export function resolveMobileMode(mode: MobileMode, width: number, height: number, coarsePointer: boolean): boolean {
+  if (mode !== 'auto') return mode === 'always';
+  if (!(width > 0)) return false;
+  if (width <= MOBILE_MAX_WIDTH) return true;
+  return coarsePointer && width <= PHONE_LANDSCAPE_MAX_WIDTH && height > 0 && height < TABLET_MIN_HEIGHT;
+}
 
 export interface MobileOptions {
   mode?: MobileMode;
@@ -34,9 +70,17 @@ export interface MobileOptions {
   onNews?(anchor: HTMLElement): void | boolean;
   onCapture?(anchor: HTMLElement): void;
   onGoTo?(anchor: HTMLElement): void | boolean;
+  /** Open the Layouts menu, centred. Omitted without a store. Since 2.5.10. */
+  onLayouts?(anchor: HTMLElement): void | boolean;
   onProperties(anchor: HTMLElement): boolean;
   settingsAvailable(): boolean;
   indicatorsAvailable(): boolean;
+  /**
+   * The bottom bar's controls. The phone layout hides the bar, so the More
+   * sheet lists them instead: the market status and the clock, the preset
+   * ranges, the price scale toggles and the timezone.
+   */
+  bottombar?: BottombarControls;
 }
 
 export interface MobileHandle {
@@ -56,7 +100,13 @@ interface ActionIdentity {
   tool?: string;
   interval?: string;
   chartType?: string;
+  range?: string;
+  scale?: string;
+  zone?: string;
 }
+
+/** The data attributes an action's identity is read from, so a repaint can put focus back on the same control. */
+const IDENTITY_KEYS = ['tool', 'interval', 'chartType', 'range', 'scale', 'zone'] as const;
 
 /** Mount the narrow widget controls against the same chart and controllers as the desktop chrome. */
 export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHandle {
@@ -100,20 +150,15 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
     const button = element.closest('[data-mobile-action]') as HTMLElement | null;
     const action = button?.dataset.mobileAction;
     if (button === null || action === undefined) return null;
-    return {
-      action,
-      ...(button.dataset.tool === undefined ? {} : { tool: button.dataset.tool }),
-      ...(button.dataset.interval === undefined ? {} : { interval: button.dataset.interval }),
-      ...(button.dataset.chartType === undefined ? {} : { chartType: button.dataset.chartType }),
-    };
+    const identity: ActionIdentity = { action };
+    for (const key of IDENTITY_KEYS) if (button.dataset[key] !== undefined) identity[key] = button.dataset[key];
+    return identity;
   };
 
   const findIdentity = (host: HTMLElement, identity: ActionIdentity): HTMLElement | null => {
     const candidates = Array.from(host.querySelectorAll('[data-mobile-action]')) as HTMLElement[];
     return candidates.find((button) => button.dataset.mobileAction === identity.action
-      && button.dataset.tool === identity.tool
-      && button.dataset.interval === identity.interval
-      && button.dataset.chartType === identity.chartType) ?? null;
+      && IDENTITY_KEYS.every(key => button.dataset[key] === identity[key])) ?? null;
   };
 
   const closeSheet = (): void => {
@@ -247,7 +292,7 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
             makeAction('cancel', widgetText(ctx, 'Cancel'), () => { ctx.draw.cancel(); refresh(); }),
             ...historyActions(),
             makeAction('magnet', widgetText(ctx, 'Magnet: {mode}', { mode: widgetText(ctx, `schema.magnet.${opts.rail?.magnetMode() ?? 'off'}`, {}, opts.rail?.magnetMode() ?? 'off') }), () => { opts.rail?.cycleMagnet(); refresh(); }),
-            makeAction('stay', widgetText(ctx, 'Stay: {mode}', { mode: opts.rail?.stayMode() ? widgetText(ctx, 'on') : widgetText(ctx, 'off') }), () => {
+            makeAction('stay', widgetText(ctx, 'Keep tool active: {mode}', { mode: opts.rail?.stayMode() ? widgetText(ctx, 'on') : widgetText(ctx, 'off') }), () => {
               if (opts.rail !== null) opts.rail.setStayMode(!opts.rail.stayMode());
               refresh();
             }),
@@ -271,7 +316,7 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
     bar.appendChild(drawButton);
   }
   if (opts.topbar && opts.indicators) {
-    studiesButton = makeAction('studies', widgetText(ctx, 'Studies'), (anchor) => { opts.onIndicators(anchor); });
+    studiesButton = makeAction('studies', widgetText(ctx, 'Indicators'), (anchor) => { opts.onIndicators(anchor); });
     bar.appendChild(studiesButton);
   }
   if (opts.topbar) {
@@ -279,12 +324,17 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
     if (opts.onDataWindow) bar.appendChild(makeAction('data-window', widgetText(ctx, 'schema.ui.dataWindow', {}, 'Data'), (anchor) => { opts.onDataWindow?.(anchor); }));
     bar.appendChild(makeAction('more', widgetText(ctx, 'More'), (anchor) => {
       openSheet(widgetText(ctx, 'More'), anchor, (body, close) => {
-        // First: a step taken on a narrow screen needs a way back that does not depend on a tool being armed.
+        const bottom = opts.bottombar;
+        // The bar's readout first, since the sheet stands in for the hidden bar.
+        if (bottom !== undefined) body.appendChild(statusNote(bottom));
+        // Then: a step taken on a narrow screen needs a way back that does not depend on a tool being active.
         body.append(...historyActions());
         if (opts.onCapture) body.appendChild(makeAction('capture', widgetText(ctx, 'Capture'), () => {
           close();
           opts.onCapture?.(anchor);
         }));
+        // Layouts: the same menu as the top bar's button.
+        if (opts.onLayouts) body.appendChild(makeAction('layouts', widgetText(ctx, 'schema.ui.layouts.title', {}, 'Layouts'), () => { close(); opts.onLayouts?.(anchor); }));
         for (const [key, label, handler] of [['watchlist', 'Watchlist', opts.onWatchlist], ['news', 'News', opts.onNews]] as const) {
           if (handler) body.appendChild(makeAction(key, widgetText(ctx, `schema.ui.dock.${key}`, {}, label), () => { close(); handler(anchor); }));
         }
@@ -300,7 +350,8 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
           goTo.setAttribute('aria-disabled', String(timeBuckets(opts.state().interval) === null));
           body.appendChild(goTo);
         }
-        const theme = makeAction('theme', opts.state().theme === 'dark' ? widgetText(ctx, 'Light theme') : widgetText(ctx, 'Dark theme'), () => {
+        // An action, as the top bar's theme button words it: "Light theme" read as the state.
+        const theme = makeAction('theme', opts.state().theme === 'dark' ? widgetText(ctx, 'Switch to the light theme') : widgetText(ctx, 'Switch to the dark theme'), () => {
           opts.onTheme();
           close();
         });
@@ -320,6 +371,7 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
           branding.textContent = link.label;
           body.appendChild(branding);
         }
+        if (bottom !== undefined) barRows(body, bottom, anchor, close);
         const heading = h(doc, 'div', 'oac-head');
         heading.textContent = widgetText(ctx, 'Chart type');
         body.appendChild(heading);
@@ -328,6 +380,8 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
             opts.onChartType(id);
             close();
           });
+          // The same glyph as the desktop menu, beside the words a phone keeps.
+          if (chartTypeIcon(id) !== undefined) button.prepend(glyph(doc, chromeIconSvg(`chart-${id}`), 'chrome'));
           button.dataset.chartType = id;
           button.setAttribute('aria-pressed', String(opts.state().chartType === id));
           body.appendChild(button);
@@ -337,6 +391,80 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
   }
   if (bar.children.length > 0) footer.appendChild(bar);
   if (footer.children.length > 0) root.appendChild(footer);
+
+  /** The market status and the clock, read when the sheet paints. */
+  function statusNote(controls: BottombarControls): HTMLElement {
+    const note = h(doc, 'p', 'oac-mobile-sheet__note');
+    const reading = controls.marketStatus();
+    if (reading !== null) {
+      const state = h(doc, 'b');
+      state.textContent = reading.label;
+      note.append(state, doc.createTextNode(reading.detail === '' ? ' \u00b7 ' : ` ${reading.detail} \u00b7 `));
+    }
+    note.appendChild(doc.createTextNode(controls.clock()));
+    return note;
+  }
+
+  /** The bar's ranges, scale toggles and zone as sheet rows. */
+  function barRows(body: HTMLElement, controls: BottombarControls, anchor: HTMLElement, close: () => void): void {
+    const head = (text: string): void => {
+      const heading = h(doc, 'div', 'oac-head');
+      heading.textContent = text;
+      body.appendChild(heading);
+    };
+    /** A row of short choices across the sheet, so nine ranges take two rows rather than five. */
+    const row = (cls: string, text: string): HTMLElement => {
+      head(text);
+      const group = h(doc, 'div', cls, { role: 'group', 'aria-label': text });
+      body.appendChild(group);
+      return group;
+    };
+    const ranges = controls.ranges();
+    if (ranges.length > 0) {
+      const group = row('oac-mobile-sheet__ranges', widgetText(ctx, 'schema.ui.bottombar.ranges', {}, 'Range'));
+      const current = controls.range();
+      for (const range of ranges) {
+        const button = makeAction('range', widgetText(ctx, `schema.ui.range.${range.id}`, {}, range.label), () => {
+          controls.setRange(range.id);
+          close();
+        });
+        button.dataset.range = range.id;
+        button.setAttribute('aria-pressed', String(current === range.id));
+        group.appendChild(button);
+      }
+    }
+    const scales = row('oac-mobile-sheet__scales', widgetText(ctx, 'schema.ui.bottombar.scale', {}, 'Price scale'));
+    const scale = controls.scale();
+    // Words, not the bar's glyphs: a phone has no hover to explain a glyph.
+    for (const toggle of SCALE_TOGGLES) {
+      const button = makeAction('scale', widgetText(ctx, toggle.key, {}, toggle.label), () => {
+        controls.toggleScale(toggle.id);
+        refresh();
+      });
+      button.dataset.scale = toggle.id;
+      button.setAttribute('aria-pressed', String(scale !== null && scale[toggle.id]));
+      button.setAttribute('aria-disabled', String(scale === null));
+      scales.appendChild(button);
+    }
+    head(widgetText(ctx, 'schema.ui.bottombar.timezones', {}, 'Timezone'));
+    const zone = makeAction('timezone', controls.timezone(), () => {
+      openSheet(widgetText(ctx, 'schema.ui.bottombar.timezones', {}, 'Timezone'), anchor, (list, done) => {
+        const current = controls.timezone();
+        for (const name of controls.timezones()) {
+          const choice = makeAction('pick-zone', name, () => {
+            controls.setTimezone(name);
+            done();
+          });
+          choice.dataset.zone = name;
+          choice.setAttribute('aria-pressed', String(name === current));
+          list.appendChild(choice);
+        }
+      });
+    });
+    zone.setAttribute('aria-label', widgetText(ctx, 'schema.ui.bottombar.timezone', { zone: controls.timezone() }, 'Timezone: {zone}'));
+    zone.setAttribute('aria-haspopup', 'dialog');
+    body.appendChild(zone);
+  }
 
   function refresh(): void {
     if (destroyed) return;
@@ -352,7 +480,7 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
       const fixed = String(editableIds(ctx.draw, ids).length === 0);
       if (ids.length > 0 && lockButton !== null) {
         const locked = ids.every((id) => ctx.draw.get(id)?.locked === true);
-        lockButton.textContent = locked ? widgetText(ctx, 'Unlock') : widgetText(ctx, 'Lock');
+        // One name; the pressed state says locked.
         lockButton.setAttribute('aria-pressed', String(locked));
         lockButton.setAttribute('aria-disabled', fixed);
       }
@@ -363,10 +491,27 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
   }
 
   const pointerQuery = mode === 'auto' ? doc.defaultView?.matchMedia?.('(pointer: coarse)') ?? null : null;
-  const width = (): number => opts.container.getBoundingClientRect().width || opts.container.clientWidth;
-  const applyMode = (): void => {
-    const next = mode === 'always' || (mode === 'auto' && (width() <= 640 || pointerQuery?.matches === true));
-    if (modeApplied && next === mobile) return;
+  // Any form field counts: a focused checkbox only delays a switch until blur,
+  // and naming the keyboard-raising input types costs the tier bytes.
+  const typing = (el: Element | null): boolean => el !== null && ctx.root.contains(el)
+    && (/^(INPUT|TEXTAREA)$/.test(el.tagName) || (el as HTMLElement).isContentEditable === true);
+  // Set when a switch waits for a text field to lose focus.
+  let held = false;
+  const apply = (whileTyping: boolean): void => {
+    const rect = opts.container.getBoundingClientRect();
+    const width = rect.width || opts.container.clientWidth;
+    const height = rect.height || opts.container.clientHeight;
+    // A container hidden or collapsed after it was measured reports 0 in one
+    // dimension or both. Keep what it had rather than close an open sheet
+    // over a size nobody can see.
+    if (modeApplied && !(width * height > 0)) return;
+    const next = resolveMobileMode(mode, width, height, pointerQuery?.matches === true);
+    if (modeApplied && next === mobile) { held = false; return; }
+    // An on-screen keyboard can shorten the container past the tablet
+    // height; switching then would hide the field being typed in and
+    // dismiss the keyboard. The switch waits for the field to lose focus.
+    if (modeApplied && !whileTyping && typing(doc.activeElement)) { held = true; return; }
+    held = false;
     modeApplied = true;
     mobile = next;
     ctx.root.classList.toggle('is-mobile', mobile);
@@ -374,9 +519,17 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
     root.hidden = !mobile;
     if (!mobile) { closeSheet(); clearSearch(); }
   };
+  const applyMode = (): void => apply(false);
 
   const Observer = (doc.defaultView as (Window & typeof globalThis) | null)?.ResizeObserver;
   let observer: ResizeObserver | null = null;
+  if (mode === 'auto') {
+    const onFocusOut = (event: Event): void => {
+      if (held && !typing((event as FocusEvent).relatedTarget as Element | null)) apply(true);
+    };
+    ctx.root.addEventListener('focusout', onFocusOut);
+    offs.push(() => ctx.root.removeEventListener('focusout', onFocusOut));
+  }
   if (mode === 'auto' && Observer !== undefined) {
     observer = new Observer(applyMode);
     observer.observe(opts.container);
@@ -405,6 +558,8 @@ export function mountMobile(ctx: WidgetContext, opts: MobileOptions): MobileHand
   offs.push(ctx.bus.on('interval', refresh));
   offs.push(ctx.bus.on('theme', refresh));
   offs.push(ctx.chart.on('branding:changed', refresh));
+  // A range, a zone or a scale changed from anywhere, or the market moved on.
+  if (opts.bottombar !== undefined) offs.push(opts.bottombar.subscribe(refresh));
   applyMode();
   refresh();
 

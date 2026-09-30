@@ -268,7 +268,7 @@ test('reference host go-to widens its period and places the date', async ({ page
   await page.locator('.menu button', { hasText: '5y' }).click();
   await page.waitForFunction(() => (window as any).__oac.app.req.period === '5y' && !(window as any).__oac.app.loading);
   const target = await daysBack(page, 6 * 366);
-  await page.getByRole('button', { name: 'Go to a date or range' }).click();
+  await page.locator('.host-bottombar .oac-bottombar__goto').click();
   const panel = page.locator('.oac-goto');
   await expect(panel).toBeVisible();
   await expect(panel.locator('input[type=time]')).toHaveCount(2);
@@ -307,7 +307,7 @@ test('reference host reports short history in the panel it reopens after the reb
   });
   await page.waitForFunction(() => (window as any).__oac.app.req.interval === '1h' && !(window as any).__oac.app.loading);
   const target = await daysBack(page, 3 * 366);
-  await page.getByRole('button', { name: 'Go to a date or range' }).click();
+  await page.locator('.host-bottombar .oac-bottombar__goto').click();
   let panel = page.locator('.oac-goto');
   await panel.locator('input[type=date]').first().fill(target);
   await panel.locator('input[type=time]').first().fill('');
@@ -331,7 +331,7 @@ test('reference host drops a go-to request on a wheel zoom while the longer peri
   // already loaded comes from the bar cache with no request, so nothing would
   // be on the wire to hold and the load would finish before any zoom.
   const target = await daysBack(page, 6 * 366);
-  await page.getByRole('button', { name: 'Go to a date or range' }).click();
+  await page.locator('.host-bottombar .oac-bottombar__goto').click();
   const panel = page.locator('.oac-goto');
   await panel.locator('input[type=date]').first().fill(target);
   await panel.getByRole('button', { name: 'Go', exact: true }).click();

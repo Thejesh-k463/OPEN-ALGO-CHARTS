@@ -2,6 +2,19 @@ import { test, expect, type Page } from '@playwright/test';
 import type { Chart, IndicatorApi, IndicatorRequestState, ReplayController, SeriesApi } from '../../src/index';
 import type { Tier2Context, Tier2Descriptor, Tier2Point } from '../../src/indicators/external';
 import type * as Charts from '../../src/index';
+import type { StockBar } from '../../website/components/synthetic-market';
+import { readFileSync } from 'node:fs';
+
+// The generator is built from its source string, as the page below builds it,
+// rather than imported: website/ declares no module type, so under Node 20 the
+// test loader reads that file as CommonJS and a named import of it fails to
+// link, which stops the whole suite before a single test is listed.
+const STOCK_BARS_SOURCE = readFileSync(new URL('../../website/components/synthetic-market.ts', import.meta.url), 'utf8')
+  .split('STOCK_BARS_SOURCE = `')[1].split('`;')[0];
+const stockBars = new Function(`${STOCK_BARS_SOURCE}\nreturn stockBars;`)() as (
+  startTime: number, count: number, intervalSec: number, startPrice: number, seed: number,
+  volatility?: number, baseVolume?: number,
+) => StockBar[];
 
 type Request = Tier2Context & { asOf?: number; requestState?: Readonly<IndicatorRequestState> };
 type Descriptor = Tier2Descriptor & { supportsReplay?: boolean };
@@ -15,6 +28,12 @@ declare global {
   }
 }
 const START = 1700000000;
+// The example's provider series, the same seeded walk it draws, and a value as
+// the provider builds it: the walk, the provider's offset, the history revision
+// and, on the last point only, the same-candle revision, added in that order.
+const EXTERNAL = stockBars(START, 12, 60, 20, 11, 0.03).map(bar => bar.close);
+const provided = (offset: number, history: number, tail = 0): number[] =>
+  EXTERNAL.map((value, i) => value + offset + history + (i === 11 ? tail : 0));
 
 async function paint(page: Page) {
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
@@ -25,7 +44,10 @@ async function loadExample(page: Page, options = { live: false, supportsReplay: 
   page.on('pageerror', error => errors.push(error.message));
   const response = await page.request.get('/website/pages/examples.mdx');
   expect(response.ok()).toBe(true);
-  const code = (await response.text()).split('## External points with live revisions')[1].split('code={`')[1].split('`} />')[0];
+  let code = (await response.text()).split('## External points with live revisions')[1].split('code={`')[1].split('`} />')[0];
+  // The site's template splices the shared bar generator in; do the same here.
+  const market = await (await page.request.get('/website/components/synthetic-market.ts')).text();
+  code = code.replace('${STOCK_BARS_SOURCE}', market.split('STOCK_BARS_SOURCE = `')[1].split('`;')[0]);
   await page.setViewportSize({ width: 960, height: 470 });
   await page.route('**/external-lifecycle.html', route => route.fulfill({ contentType: 'text/html', body:
     '<!doctype html><html><head><style>html,body{margin:0;background:#101010}#example{width:960px;height:460px}</style></head><body><div id="example"></div></body></html>' }));
@@ -96,7 +118,7 @@ test('external example refreshes fixed-time values and replaces provider ownersh
   await release(page);
   let state = await inspect(page);
   expect(state.status).toBe('ready');
-  expect(state.values).toEqual(Array.from({ length: 12 }, (_, i) => 20 + i * 2));
+  expect(state.values).toEqual(provided(0, 0));
   expect(state.ink).toBeGreaterThan(12);
   const times = state.sourceTimes, firstCount = state.requests.length;
   await page.screenshot({ path: info.outputPath('external-initial.png') });
@@ -106,7 +128,7 @@ test('external example refreshes fixed-time values and replaces provider ownersh
   expect((await inspect(page)).requests.length).toBe(firstCount + 1);
   await release(page);
   state = await inspect(page);
-  expect(state.values.slice(-1)).toEqual([47]);
+  expect(state.values.slice(-1)).toEqual(provided(0, 0, 5).slice(-1));
   expect(state.sourceTimes).toEqual(times);
   expect(state.ink).toBeGreaterThan(12);
   await page.screenshot({ path: info.outputPath('external-same-time.png') });
@@ -114,7 +136,7 @@ test('external example refreshes fixed-time values and replaces provider ownersh
   await page.getByRole('button', { name: 'Revise history', exact: true }).click();
   await release(page);
   state = await inspect(page);
-  expect(state.values).toEqual(Array.from({ length: 12 }, (_, i) => 30 + i * 2 + (i === 11 ? 5 : 0)));
+  expect(state.values).toEqual(provided(0, 10, 5));
   expect(state.requests.slice(-1)[0]).toMatchObject({ from: START, to: START + 660 });
   await page.screenshot({ path: info.outputPath('external-history-revision.png') });
 
@@ -133,7 +155,7 @@ test('external example refreshes fixed-time values and replaces provider ownersh
   expect(state.requests[obsolete].aborted).toBe(true);
   expect(state.values).toEqual(new Array(12).fill(null));
   await release(page);
-  const replacement = Array.from({ length: 12 }, (_, i) => 120 + i * 2);
+  const replacement = provided(100, 0);
   expect((await inspect(page)).values).toEqual(replacement);
   await page.evaluate(() => { for (const complete of window.__externalLifecycle.control.held.splice(0)) complete(); });
   await paint(page);
@@ -156,7 +178,7 @@ test('external replay opt-in fetches historical versions and restores live value
   await release(page);
   await page.getByRole('button', { name: 'Revise history', exact: true }).click();
   await release(page);
-  expect((await inspect(page)).values[0]).toBe(30);
+  expect((await inspect(page)).values[0]).toBe(provided(0, 10)[0]);
   await page.evaluate(async start => {
     const url = '/dist/openalgo-charts.all.mjs', lib = await import(url) as Library;
     const state = window.__externalLifecycle;
@@ -166,7 +188,7 @@ test('external replay opt-in fetches historical versions and restores live value
   let state = await inspect(page, 5);
   expect(state).toMatchObject({ starts: 1, stops: 1 });
   expect(state.requests.slice(-1)[0].asOf).toBe(START + 360);
-  expect(state.values).toEqual([20, 22, 24, 26, 28, 30]);
+  expect(state.values).toEqual(provided(0, 0).slice(0, 6));
   expect(state.ink).toBeGreaterThan(12);
   await page.screenshot({ path: info.outputPath('external-replay-before-revision.png') });
 
@@ -178,7 +200,9 @@ test('external replay opt-in fetches historical versions and restores live value
   await settleReplay(page);
   state = await inspect(page, 10);
   expect(state.requests.slice(-1)[0]).toMatchObject({ from: START, to: START + 600, asOf: START + 660 });
-  expect(state.values).toEqual([30, 32, 34, 36, 36, 40, 42, 44, 46, 48, 50]);
+  // The point the provider left out holds the one before it.
+  const revised = provided(0, 10);
+  expect(state.values).toEqual([...revised.slice(0, 4), revised[3], ...revised.slice(5, 11)]);
   expect(state.ink).toBeGreaterThan(12);
   await page.screenshot({ path: info.outputPath('external-replay-after-revision.png') });
 
@@ -188,11 +212,11 @@ test('external replay opt-in fetches historical versions and restores live value
     state.replay!.seekTime(start + 360);
   }, START);
   await settleReplay(page);
-  expect((await inspect(page, 5)).values).toEqual([20, 22, 24, 26, 28, 30]);
+  expect((await inspect(page, 5)).values).toEqual(provided(0, 0).slice(0, 6));
   await page.evaluate(() => window.__externalLifecycle.replay!.stop());
   await settleReplay(page);
   state = await inspect(page);
-  expect(state.values).toEqual(Array.from({ length: 12 }, (_, i) => 30 + i * 2));
+  expect(state.values).toEqual(provided(0, 10));
   expect(state.requests.slice(-1)[0].asOf).toBeNull();
   expect(state.starts).toBeGreaterThanOrEqual(2);
   expect(state.starts - state.stops).toBe(1);
@@ -225,8 +249,8 @@ test('live external sources refresh explicitly and stop subscriptions at replay 
   await page.getByRole('button', { name: 'Revise history', exact: true }).click();
   await release(page);
   let state = await inspect(page);
-  expect(state.values[0]).toBe(30);
-  expect(state.values.slice(-1)).toEqual([57]);
+  expect(state.values[0]).toBe(provided(0, 10)[0]);
+  expect(state.values.slice(-1)).toEqual(provided(0, 10, 5).slice(-1));
   expect(state.requests.slice(-1)[0]).toMatchObject({ from: START, to: START + 660 });
   await page.screenshot({ path: info.outputPath('external-live-refresh.png') });
 

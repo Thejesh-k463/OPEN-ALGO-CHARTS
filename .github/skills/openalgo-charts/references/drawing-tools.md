@@ -218,14 +218,53 @@ the raw path data may do the same, and loses only the fill if it does not.
 | `ICON_VIEWBOX` | `'0 0 24 24'` |
 | `ICON_STROKE` | `2` |
 | `ICON_ATTRS` | The whole attribute bag for the `<svg>` (an `IconAttrs`) |
-| `CHROME_ICONS` | `Record<string, string>` of chrome id (undo, redo, lock, trash, magnet, ...) to `d` attribute, on a 16 grid |
-| `chromeIcon(id)` / `chromeIconIds()` | One chrome glyph or `undefined`; every chrome id |
-| `CHROME_ICON_ACCENTS` / `chromeIconAccent(id)` | The chrome fills (the eye's pupil, the camera lens, slider knobs, pole caps), each also outlined in its glyph's path |
+| `CHROME_ICONS` | `Record<string, string>` of chrome id to `d` attribute, on a 16 grid: the buttons, bars, menus and dialogs around a chart (the ids are listed below), and a glyph per chart type under `chart-<id>` |
+| `chromeIcon(id)` / `chromeIconIds()` | One chrome glyph or `undefined`; every chrome id, the `chart-` ones included |
+| `CHROME_ICON_ACCENTS` / `chromeIconAccent(id)` | The chrome fills (the eye's pupil, the camera lens, slider knobs, pole caps, a drawing's anchors, a head, a line's markers), each also outlined in its glyph's path |
 | `CHROME_ICON_VIEWBOX` / `CHROME_ICON_STROKE` / `CHROME_ICON_ATTRS` | `'0 0 16 16'`, `2` (1.5 through 2.5.5; pass `{ stroke: 1.5 }` to keep the old weight), the attribute bag |
-| `CHROME_ICON_FILLED` | The chrome ids painted solid rather than stroked (`chromeIconSvg` consults it; a host wrapping raw path data must too) |
+| `CHROME_ICON_FILLED` | The chrome ids painted solid rather than stroked: `star-filled`, `pin-filled`, the media controls (`replay`, `play`, `stop`, `step-forward`, `step-back`, `record`), `buy`, `sell`, `moon` and `market-closed` (`chromeIconSvg` consults it; a host wrapping raw path data must too) |
+| `chartTypeIcon(type)` | The chrome glyph for a chart type or a transform (`candlestick`, `point-figure`, `heikin-ashi`, `renko`, `range-bars`, `line-break`, ...): the `chart-<type>` entry of `CHROME_ICONS`, so `chromeIconSvg('chart-' + type)` draws it. `undefined` for a type a host registered itself |
+| `layoutIconPath(rows, columns, slots?)` | A chrome `d` for a grid of charts: the frame split into `rows` by `columns`, one to four each, with no divider inside a slot that spans cells (a `LayoutIconSlot[]`: `row`, `column`, optional `rowSpan` and `columnSpan`). Cells no slot claims are panes of their own. Throws a `RangeError` for more than four a side, a slot outside the grid, or two slots that overlap. A chart grid itself takes up to eight a side, so a button that shows the current layout draws `layout` past four |
 | `iconSvg(id, opts?)` / `chromeIconSvg(id, opts?)` | A complete inline `<svg>` string in `currentColor`, the accent included; `size` in px or `'1em'` (an `IconSvgOptions`). Throws on an unknown id |
 | `iconSprite(ids?)` / `iconUse(id, opts?)` | One hidden symbol sheet (ids `oac-icon-<id>`, `ICON_SYMBOL_PREFIX`) and the per-glyph `<use>`; symbols carry no stroke weight, so it inherits from the frame, and an accent carries only `fill="currentColor" stroke="none"` |
 | `toolCursor(id, opts?)` | A CSS `cursor` value carrying the glyph over a contrasting halo, its accent filled; `size` 1..128 (default 20), `hotspot` (default the centre), `color`, `halo`, `fallback` (a `ToolCursorOptions`) |
+
+The chrome ids a host may code against, besides the chart types, are
+(the 29 of the first row since 2.5.9, the rest since 2.5.10):
+
+| Group | Ids |
+|---|---|
+| Shipped through 2.5.9 | `cursor` `magnet` `lock` `unlock` `eye` `eye-off` `star` `star-filled` `trash` `settings` `undo` `redo` `copy` `paste` `duplicate` `front` `back` `text` `chevron-down` `chevron-right` `close` `plus` `minus` `search` `grid` `link` `unlink` `camera` `download` |
+| Capture and navigation | `capture-grid` `chevron-up` `chevron-left` `check` `more` `grip` `refresh` `swap` |
+| A grid of charts | `layout` `maximize` `restore` `fullscreen` `fullscreen-exit` `link-group` `drawing-sync` `crosshair` `time-range` `palette` |
+| Time and the session | `calendar` `clock` `globe` `market-open` `market-pre` `market-post` `market-closed` `market-holiday` |
+| Replay | `replay` `play` `pause` `stop` `step-forward` `step-back` `record` |
+| Price scale | `scale-auto` `scale-log` `scale-percent` |
+| Layouts and files | `folder` `save` `save-as` `autosave` `rename` `recent` `template` `keyboard` |
+| Status | `bell` `bell-off` `pin` `pin-filled` `info` `warning` `error` `sun` `moon` |
+| Drawing and text | `eraser` `measure` `fill` `bold` `italic` |
+| Panels | `watchlist` `news` `account` `compare` `indicators` |
+| Trading | `buy` `sell` `close-position` `reverse` `bracket` `dom-ladder` |
+| Settings tabs and menu marks | `legend` `axes` `panels` `trading` `brush` `above-series` `behind-series` `fit` `coordinates` `line-dashed` `line-dotted` `line-mixed` (the solid line style is `minus`) |
+| Chart types (read with `chartTypeIcon`) | `chart-candlestick` `chart-hollow-candle` `chart-volume-candle` `chart-heikin-ashi` `chart-bar` `chart-high-low` `chart-line` `chart-line-markers` `chart-step` `chart-area` `chart-hlc-area` `chart-baseline` `chart-column` `chart-histogram` `chart-point-figure` `chart-kagi` `chart-renko` `chart-range-bars` `chart-line-break` |
+
+```ts
+import { chartTypeIcon, chromeIconSvg, layoutIconPath, CHROME_ICON_ATTRS } from 'openalgo-charts/draw';
+
+// A chart-type menu row: the glyph when the type has one, an empty slot otherwise.
+const glyph = chartTypeIcon(type) !== undefined ? chromeIconSvg(`chart-${type}`) : '';
+
+// A layout picker tile: one tall chart beside two.
+const d = layoutIconPath(2, 2, [{ row: 0, column: 0, rowSpan: 2 }, { row: 0, column: 1 }, { row: 1, column: 1 }]);
+<svg {...CHROME_ICON_ATTRS} width={16} height={16}><path d={d} /></svg>
+```
+
+The widget tier draws every picture it shows from this set (since 2.5.10): the
+chart-type menu, the type button and the phone layout's sheet show
+`chart-<type>`, the theme button `sun` or `moon`, and the settings tabs, the
+stacking rows, the drawing toolbar's line styles, the menu tick and the level
+editor's remove cross the ids above. None is hand-drawn in a widget file, so
+the grid, overlap and crispness checks on this registry cover the widget too.
 
 The path data is data, not DOM: the host still builds its own rail and
 flyouts. The string builders derive from that one set, so the rail, a flyout
@@ -255,8 +294,15 @@ rejects two glyphs that are the same drawing written differently.
 `tests/e2e/icon-raster.spec.ts` rasterises both tiers in Chromium, Firefox and
 WebKit, as the builders draw them and as bare path data, and fails when two
 glyphs overlap at an intersection over union of 0.85 or more (only the star,
-eye and link state pairs may), when a named sibling pair reaches 0.7, or when a
-tier stops being crisp. A glyph added to either registry has to pass both.
+eye, link and pin state pairs may), when a named sibling pair reaches 0.7, or
+when a tier stops being crisp. The siblings are the members of one menu or bar:
+the replay controls, the market session, the scale modes, the three levels,
+the layout menu, the trading actions, the line styles, the link channels, and
+every chart type against every other. The layout tiles share their frame by
+design, so they are held to a different rule: every two differ by at least a
+short divider's pixels, and each is crisp. A glyph added to either registry has
+to pass both files, and a chrome id added or removed changes the published id
+list in the unit test, since hosts name these ids in their own code.
 
 ## Tool catalogue
 
@@ -629,7 +675,7 @@ drawingShortcuts();      // { 'trend-line': 'Alt+T', 'horizontal-line': 'Alt+H',
 matchDrawingShortcut(e); // tool id, or null
 ```
 
-**The library installs no key listener.** Only the host knows whether the chart has focus, a dialog is open, or the user is typing in a field. `matchDrawingShortcut` is pure and takes any `{ key, altKey?, ctrlKey?, metaKey?, shiftKey? }`.
+**The library installs no key listener.** Only the host knows whether the chart has focus, a dialog is open, or the user is typing in a field. `matchDrawingShortcut` is pure and takes any `{ key, code?, altKey?, ctrlKey?, metaKey?, shiftKey? }`. Pass the event itself, with its `code`: under Alt, when `e.key` is not a letter, the letter is read from `code`, since macOS Option turns `e.key` into a symbol (Option+T is a dagger). A letter in `e.key` still wins, so a non-QWERTY layout keeps its own letters. Since 2.5.10.
 
 Editing chords are the same shape: `keyToDrawingAction(e, { hasSelection, hasTarget, editingText, placing? })` returns a `DrawingKeyAction` (`{ type: 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'delete' | 'cancel' | 'finish' | 'popAnchor' }` or `{ type: 'nudge', dx, dy }`) or `null`. With `placing: true` (pass `draw.activeTool() !== null`), a bare Escape, Enter or Backspace maps to `cancel`, `finish` or `popAnchor` before anything else is considered, so Backspace never deletes the selection while an anchor is being placed; `hasTarget` is `draw.hovered() !== null`. Ctrl/Cmd+Z undoes, Ctrl+Shift+Z or Ctrl+Y redoes, Ctrl+C / X / D need a selection or a hovered target, Ctrl+V always pastes, Delete / Backspace need a selection or target, and the arrows nudge the selection by `NUDGE_STEP_PX` (1) or `NUDGE_STEP_SHIFT_PX` (10) with Shift. `editingText`, any Alt, or an extra Shift on a chord returns `null`. `DrawingKeyEvent` and `DrawingKeyContext` type the two arguments. The host maps each action to the matching controller call: `duplicate(selection())`, `removeMany(selection())`, `nudge(selection(), dx, dy)`.
 

@@ -2,7 +2,7 @@ import { widgetText } from '../localization';
 import { alertSettingsSchema, dataVariantKey, getBarCondition, utcSecondsToZonedParts, zoneOffsetSeconds, zonedWallClockToUtcSeconds, type Alert, type AlertCondition, type AlertInput, type AlertPatch, type AlertSource, type DataVariant } from 'openalgo-charts';
 import { dataVariantLabel } from '../data-status';
 import type { WidgetContext } from '../context';
-import { button, controlsFromInputs, dialogFrame, el, openPanel, renderForm, type FormHandle, type PanelHandle } from '../form';
+import { button, controlsFromInputs, dialogFrame, el, openPanel, renderForm, type FormControl, type FormHandle, type PanelHandle } from '../form';
 import { alertSourceFields } from './alert-source';
 
 export interface AlertEditorOptions {
@@ -191,6 +191,9 @@ export function mountAlertEditor(ctx: WidgetContext, anchor?: HTMLElement, opts:
       const reason = unavailable();
       if (reason) throw new Error(reason);
       draft = { ...draft, ...form.values() };
+      // A blank name leaves the trigger toast, the row and its buttons saying nothing.
+      const title = String(draft.title ?? '').trim();
+      if (title === '') throw new Error(widgetText(ctx, 'Enter a name'));
       const condition = draft.condition as AlertCondition;
       const range = condition === 'enteringRange' || condition === 'leavingRange';
       const selected = alertSourceFields(ctx, draft).source;
@@ -200,7 +203,7 @@ export function mountAlertEditor(ctx: WidgetContext, anchor?: HTMLElement, opts:
           ? { ...selected, value: draft.value as number, upperValue: range ? draft.upperValue as number : undefined }
           : selected;
       const patch: AlertPatch = {
-        source: nextSource, condition, title: String(draft.title ?? ''), message: String(draft.message ?? '') || undefined,
+        source: nextSource, condition, title, message: String(draft.message ?? '') || undefined,
         policy: draft.policy as AlertInput['policy'], repeat: draft.repeat as AlertInput['repeat'],
         cooldownSeconds: draft.cooldownSeconds as number,
       };
@@ -248,18 +251,31 @@ export function mountAlertsPanel(ctx: WidgetContext, anchor?: HTMLElement, opts:
   frame.body.append(list, empty);
   frame.lead.appendChild(count);
   frame.actions.appendChild(create);
-  const stateNames = { armed: widgetText(ctx, 'Armed'), triggered: widgetText(ctx, 'Triggered'), expired: widgetText(ctx, 'Expired'), disabled: widgetText(ctx, 'Disabled') };
+  const stateNames = { armed: widgetText(ctx, 'Active'), triggered: widgetText(ctx, 'Triggered'), expired: widgetText(ctx, 'Expired'), disabled: widgetText(ctx, 'Disabled') };
+  /** What the editor lists for a source id: a drawing, its level, a study plot. */
+  const listed = (controls: readonly FormControl[], key: string, value: unknown): string | undefined =>
+    controls.find(control => control.key === key)?.options?.find(option => option.value === value)?.label;
   function sourceText(alert: Alert): string {
     const source = alert.source;
-    if (source.kind === 'price') return source.upperPrice === undefined ? widgetText(ctx, 'Price {price}', { price: source.price }) : widgetText(ctx, 'Price {price} to {upper}', { price: source.price, upper: source.upperPrice });
+    if (source.kind === 'price') {
+      // As the pane's axis prints it, the way the menu that set it did.
+      const price = (value: number): string => ctx.chart.panes()[ctx.chart.primaryPaneIndex()]?.readoutScale().format(value) ?? String(value);
+      return source.upperPrice === undefined ? widgetText(ctx, 'Price {price}', { price: price(source.price) }) : widgetText(ctx, 'Price {price} to {upper}', { price: price(source.price), upper: price(source.upperPrice) });
+    }
     if (source.kind === 'barCondition') return getBarCondition(source.id)?.title ?? widgetText(ctx, 'Unavailable candle condition');
     if (source.kind === 'drawing') {
-      const selection = alertSourceFields(ctx, { ...source, inputInstanceId: source.input?.instanceId, inputPlotKey: source.input?.plotKey });
-      const drawing = selection.controls.find(control => control.key === 'drawingId')?.options?.find(option => option.value === source.drawingId)?.label;
-      return `${drawing ?? widgetText(ctx, 'Unavailable drawing')} / ${source.level ?? widgetText(ctx, 'Default level')}`;
+      const { controls } = alertSourceFields(ctx, { ...source, inputInstanceId: source.input?.instanceId, inputPlotKey: source.input?.plotKey });
+      return `${listed(controls, 'drawingId', source.drawingId) ?? widgetText(ctx, 'Unavailable drawing')} / ${listed(controls, 'level', source.level) ?? source.level ?? widgetText(ctx, 'Default level')}`;
     }
     const instance = ctx.chart.indicators().find(item => item.id === source.instanceId);
-    return widgetText(ctx, source.upperValue === undefined ? '{name} / {plot}: {value}' : '{name} / {plot}: {value} to {upper}', { name: instance?.name ?? widgetText(ctx, 'Unavailable study'), plot: source.plotKey, value: source.value, upper: source.upperValue ?? '' });
+    const { controls } = alertSourceFields(ctx, { kind: 'indicator', instanceId: source.instanceId, plotKey: source.plotKey, value: source.value });
+    const plot = listed(controls, 'plotKey', source.plotKey) ?? source.plotKey;
+    // On the study's own scale, as the price branch prints on the pane's.
+    const scale = instance?.series(source.plotKey)?.priceScale();
+    const value = (v: number): string => scale?.format(v) ?? String(v);
+    return widgetText(ctx, source.upperValue === undefined ? '{name} / {plot}: {value}' : '{name} / {plot}: {value} to {upper}', {
+      name: listed(controls, 'instanceId', source.instanceId) ?? widgetText(ctx, 'Unavailable study'), plot,
+      value: value(source.value), upper: source.upperValue === undefined ? '' : value(source.upperValue) });
   }
   function render(): void {
     if (closed || rendering) return;
