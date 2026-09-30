@@ -60,11 +60,13 @@ function pageText(file: string, html: string): { line: number; text: string }[] 
   const lineAt = (index: number): number => html.slice(0, index).split('\n').length;
   const blank = (s: string): string => s.replace(/[^\n]/g, ' ');
   // Scripts go through the parser; comments are blanked so line numbers hold.
-  const markup = html.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gi, (whole, body: string, at: number) => {
+  // An end tag may carry space or attributes before its `>` (`</script >`), which
+  // the browser still honours, so the patterns accept them.
+  const markup = html.replace(/<script\b[^>]*>([\s\S]*?)<\/script[^>]*>/gi, (whole, body: string, at: number) => {
     const offset = lineAt(at + whole.indexOf(body)) - 1;
     for (const found of literals(`${file}.js`, body)) out.push({ line: found.line + offset, text: found.text });
     return blank(whole);
-  }).replace(/<!--[\s\S]*?-->/g, blank).replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, blank);
+  }).replace(/<!--[\s\S]*?-->/g, blank).replace(/<style\b[^>]*>[\s\S]*?<\/style[^>]*>/gi, blank);
   markup.split('\n').forEach((text, index) => { if (text.trim() !== '') out.push({ line: index + 1, text }); });
   return out;
 }
