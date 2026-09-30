@@ -414,6 +414,7 @@ export type WidgetBuiltinMessage =
   | "text stays text"
   | "{count} alert"
   | "{count} alerts"
+  | "{count} bar"
   | "{count} bars"
   | "{count} drawings"
   | "{count} instances on the chart"

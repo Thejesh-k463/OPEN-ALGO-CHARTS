@@ -143,8 +143,8 @@ export function openLayoutPicker(host: GridBarHost, anchor: HTMLElement): () => 
    * pointer or the focus, and the current layout otherwise. A tooltip would
    * cover the next row of tiles; screen readers hear each tile's own label.
    */
-  const describe = (id: ChartGridLayoutId): string =>
-    widgetText(txt(host), '{name}, {count} charts', { name: layoutName(txt(host), id), count: CHART_GRID_LAYOUTS[id].slots.length });
+  const describe = (id: ChartGridLayoutId): string => CHART_GRID_LAYOUTS[id].slots.length === 1 ? layoutName(txt(host), id)
+    : widgetText(txt(host), '{name}, {count} charts', { name: layoutName(txt(host), id), count: CHART_GRID_LAYOUTS[id].slots.length });
   const caption = h(doc, 'div', 'oac-grid__picker-caption', { 'aria-hidden': 'true' });
   const rest = (): void => { caption.textContent = current !== null && isChartGridLayout(current) ? describe(current) : ''; };
   for (const [count, ids] of byCount) {

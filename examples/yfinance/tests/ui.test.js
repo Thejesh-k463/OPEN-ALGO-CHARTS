@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { fmt, fmtVol, esc, round2, rupee, onEscape, inTextField, UP, DOWN } from '../src/ui.js';
+import { fmt, fmtVol, esc, round2, rupee, onEscape, inTextField, UP, DOWN, plural } from '../src/ui.js';
 
 describe('formatting helpers', () => {
   it('fmt writes two decimals with thousands separators', () => {
@@ -52,5 +52,13 @@ describe('keyboard helpers', () => {
     expect(inTextField({ target: { tagName: 'TEXTAREA' } })).toBe(true);
     expect(inTextField({ target: { tagName: 'SELECT' } })).toBe(true);
     expect(inTextField({ target: { tagName: 'DIV' } })).toBe(false);
+  });
+});
+
+describe('plural', () => {
+  it('counts one in the singular and any other number in the plural', () => {
+    expect(plural(1, 'indicator')).toBe('1 indicator');
+    expect(plural(0, 'indicator')).toBe('0 indicators');
+    expect(plural(2, 'series descriptor')).toBe('2 series descriptors');
   });
 });

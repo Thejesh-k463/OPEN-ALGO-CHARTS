@@ -1,4 +1,4 @@
-import { el, esc, currentTheme, toggleTheme } from './ui.js';
+import { el, esc, currentTheme, toggleTheme, plural } from './ui.js';
 import { attachTip, hideTip } from './hover.js';
 import { cycleMagnet, magnetMode, focusChart, syncNavigationControls } from './rail.js';
 import { INTERVALS, intervalLabel, intervalName, periodsFor, clampPeriod, foldedInterval } from './intervals.js';
@@ -469,7 +469,7 @@ export function renderToolbar() {
   if (app.cache) {
     const s = app.cache.stats();
     const cc = tbtn(ticon('cache') + '<span>' + s.hits + '/' + (s.hits + s.misses) + '</span>',
-      `Bar cache: ${s.hits} warm of ${s.hits + s.misses} loads, ${s.entries} series held`);
+      `Bar cache: ${s.hits} warm of ${plural(s.hits + s.misses, 'load')}, ${s.entries} series held`);
     if (s.hits > 0) cc.classList.add('is-on');
     cc.addEventListener('click', () => openCacheMenu(cc));
     bar.appendChild(cc);

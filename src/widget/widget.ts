@@ -1162,7 +1162,7 @@ class WidgetImpl implements Widget {
         this._bus.emit('data', { symbol, interval, bars: 0, error: state.error.message });
       }
     } else if (state.status === 'ready' || state.status === 'empty') {
-      this.context.status(state.bars.length === 0 ? widgetText(this.context, 'No bars for {symbol} {interval}', { symbol, interval }) : widgetText(this.context, '{count} bars', { count: state.bars.length }));
+      this.context.status(state.bars.length === 0 ? widgetText(this.context, 'No bars for {symbol} {interval}', { symbol, interval }) : widgetText(this.context, state.bars.length === 1 ? '{count} bar' : '{count} bars', { count: state.bars.length }));
       this._bus.emit('data', { symbol, interval, bars: state.bars.length });
     }
   }

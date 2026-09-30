@@ -21,7 +21,7 @@ export type ChartGridMessage =
   | 'New group' | 'Rename group' | 'Group name' | 'Save' | 'Cancel' | 'Links in {group}'
   | 'Crosshair' | 'Time range' | 'Symbol' | 'Interval' | 'Chart type' | 'Appearance' | 'Drawings'
   | 'Nearest bar' | 'where a chart has no bar at that time' | 'same instrument only'
-  | 'Share this chart\'s drawings' | 'Shared {count} drawings' | 'No drawing here can be shared'
+  | 'Share this chart\'s drawings' | 'Shared {count} drawing' | 'Shared {count} drawings' | 'No drawing here can be shared'
   | 'Link this chart to a group first' | 'Switch Drawings on first'
   | 'Capture every chart' | 'Every chart' | 'Download PNG of every chart' | 'Copy image of every chart'
   | 'Saved a PNG of every chart' | 'Every chart copied' | 'The image could not be saved: {error}'

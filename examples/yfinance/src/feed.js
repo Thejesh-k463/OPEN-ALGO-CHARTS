@@ -460,7 +460,11 @@ export function currentStaleness(nowSec = Math.floor(Date.now() / 1000)) {
   return staleness(app.req.symbol, seen.wire, seen.time, nowSec, app.chartTimezone, sessionOf(app.req));
 }
 
-const overdueText = (sec) => (sec >= 3600 ? `${Math.floor(sec / 3600)} h ${Math.round((sec % 3600) / 60)} min` : `${Math.max(1, Math.round(sec / 60))} min`);
+// Minutes are rounded before the hours are split off, or 7190 s reads "1 h 60 min".
+export const overdueText = (sec) => {
+  const min = Math.max(1, Math.round(sec / 60));
+  return min >= 60 ? `${Math.floor(min / 60)} h ${min % 60} min` : `${min} min`;
+};
 
 let staleTimer = 0;
 let shellWatch = null;

@@ -995,7 +995,7 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
       },
       share: () => {
         const count = active === null ? 0 : grid.shareDrawings(active.id);
-        report(count > 0 ? widgetText(text, 'Shared {count} drawings', { count }) : widgetText(text, 'No drawing here can be shared'));
+        report(count > 0 ? widgetText(text, count === 1 ? 'Shared {count} drawing' : 'Shared {count} drawings', { count }) : widgetText(text, 'No drawing here can be shared'));
         return count;
       },
     },

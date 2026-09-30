@@ -106,6 +106,9 @@ describe('chart grid layout picker', () => {
     expect(caption()).toBe('Four by four, 16 charts');
     fire(menu(root)!.querySelectorAll('.oac-grid__tile').find(t => t.dataset.layout === 'corner-5')!, 'pointerenter');
     expect(caption()).toBe('Large corner, five around, 6 charts');
+    // One chart is not "One chart, 1 charts".
+    fire(menu(root)!.querySelectorAll('.oac-grid__tile').find(t => t.dataset.layout === '1x1')!, 'pointerenter');
+    expect(caption()).toBe('One chart');
     // A picture needs no floating tip over the next row: the caption and the tile's own label say it.
     expect(root.querySelector('.oac-tip')?.textContent ?? '').not.toContain('Large corner');
     expect(menu(root)!.querySelector('.oac-grid__picker-caption')!.getAttribute('aria-hidden')).toBe('true');
@@ -233,6 +236,15 @@ describe('chart grid link menu', () => {
     expect(row(root, 'Nearest bar').getAttribute('aria-disabled')).toBe('true');
     row(root, 'Drawings').click();
     expect(row(root, 'Share this chart\'s drawings').getAttribute('aria-disabled')).toBe('false');
+  });
+
+  it('counts one shared drawing in the singular', () => {
+    const { grid, root } = linked();
+    const active = grid.active();
+    active.widget.draw.add({ tool: 'horizontal-line', paneIndex: 0, style: {}, points: [{ time: 1, price: 100 }] });
+    row(root, 'Drawings').click();
+    row(root, 'Share this chart\'s drawings').click();
+    expect(root.querySelectorAll('.oac-toast').map(t => t.textContent)).toContain('Shared 1 drawing');
   });
 
   it('starts a group for the active chart, takes it out of every group and back', () => {
