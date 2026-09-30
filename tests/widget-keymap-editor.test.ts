@@ -5,7 +5,7 @@
  * the same storage, and the panel records a chord, names a conflict, refuses
  * what it must and resets. Everything runs against the fake DOM.
  */
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import type { Bar } from '../src/index';
 import {
   createWidget, openShortcutsPanel, contextMenuEntries, mountDrawingProperties, KEYMAP_KEY, STORAGE_PREFIX,
@@ -382,6 +382,20 @@ describe('the shortcuts panel as an editor', () => {
     expect(chordOf(m.root, 'chart:fitContent')).toBe(m.w.context.keymap.format('Alt+G'));
     reset(m.root, 'chart:fitContent').click();
     expect(m.w.chart.shortcuts?.handleKey('Alt+KeyF')).toBe('fitContent');
+  });
+
+  it('records a chart chord on macOS as the one it shows: Control or Cmd, both are Mod', () => {
+    vi.stubGlobal('navigator', { platform: 'MacIntel', userAgent: '' });
+    try {
+      const m = make();
+      expect(m.w.context.keymap.isMac).toBe(true);
+      const panel = open(m);
+      change(m.root, 'chart:fitContent').click();
+      fireKey(panel, 'g', { ctrlKey: true, code: 'KeyG' });
+      expect(chordOf(m.root, 'chart:fitContent')).toBe('Cmd+G');
+      // Cmd+G, the chord the row names, is what now fits the content.
+      expect(m.w.chart.shortcuts?.handleKey('Mod+KeyG')).toBe('fitContent');
+    } finally { vi.unstubAllGlobals(); }
   });
 
   it('resets a row, offers the choice when its default is taken, and resets all after a confirmation', () => {

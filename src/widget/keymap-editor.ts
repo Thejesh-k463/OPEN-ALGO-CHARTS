@@ -265,7 +265,11 @@ export function mountShortcutsPanel(ctx: WidgetContext, edit: boolean): () => vo
     if (/^(Shift\+)?[a-z0-9]$/.test(combo)) { say(widgetText(ctx, '{chord} types into the chart. Add {mod} or {alt}.', { chord, mod, alt })); return; }
     if (/^(Shift\+)?Space$/.test(combo)) { say(widgetText(ctx, '{chord} presses the focused control. Add {mod} or {alt}.', { chord, mod, alt })); return; }
     const chart = command.startsWith('chart:');
-    const code = chart ? eventToCombo(e, km.isMac) : '';
+    // The row shows the chord in this keymap's grammar, which folds Control
+    // and Cmd into Mod; the engine keeps them apart on macOS (and Windows
+    // keeps Meta), so fold them here too or Control+G is stored and Cmd+G shown.
+    const held = e.ctrlKey || e.metaKey;
+    const code = chart ? eventToCombo({ code: e.code, key: e.key, altKey: e.altKey, shiftKey: e.shiftKey, ctrlKey: !km.isMac && held, metaKey: km.isMac && held }, km.isMac) : '';
     if (chart && code === '') { say(widgetText(ctx, 'That key cannot be used here. Press another.')); return; }
     attempt(command, chart ? code : combo, chord, false, false);
   };

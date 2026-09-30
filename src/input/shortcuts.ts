@@ -63,7 +63,8 @@ const MODIFIER_KEYS = new Set([
   'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight', 'OSLeft', 'OSRight',
 ]);
 
-function detectMac(): boolean {
+/** Internal: the chart's key hints read it too. Not part of the package's API. */
+export function detectMac(): boolean {
   return typeof navigator !== 'undefined' && /mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent || '');
 }
 

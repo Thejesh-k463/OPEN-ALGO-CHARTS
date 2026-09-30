@@ -105,7 +105,8 @@ export function initSnapshot(a) {
     if (menu && !menu.hidden && !menu.contains(e.target)) closeSnapMenu();
   });
   document.addEventListener('keydown', (e) => {
-    if (!e.ctrlKey || e.key.toLowerCase() !== 's') return;
+    // The physical key: Ctrl+Option+S types no 's' on macOS.
+    if (!e.ctrlKey || e.code !== 'KeyS') return;
     if (e.altKey) { e.preventDefault(); downloadSnapshot(capturePaneTarget(app)); }
     else if (e.shiftKey) { e.preventDefault(); copySnapshot(capturePaneTarget(app)); }
   });

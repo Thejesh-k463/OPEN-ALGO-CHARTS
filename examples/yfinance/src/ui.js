@@ -23,6 +23,8 @@ export function fmtVol(v) {
 }
 
 export const UP = '#26a69a', DOWN = '#ef5350';
+/** The key the chords name: Cmd on a Mac, where the handlers take it and Control-click is a right click. */
+export const MOD = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || '') ? 'Cmd' : 'Ctrl';
 export const rupee = (n) => (n < 0 ? '-' : '+') + '₹' + Math.round(Math.abs(n)).toLocaleString('en-IN');
 
 /** Run `fn` on Escape. Listens on `window` unless a narrower target is given. */

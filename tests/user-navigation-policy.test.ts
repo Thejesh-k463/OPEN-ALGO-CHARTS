@@ -352,6 +352,14 @@ describe('independent user navigation', () => {
     expect(f.chart.navigationOptions()).toMatchObject({ panEnabled: false, zoomEnabled: false, mousePan: 'horizontal' });
   });
 
+  it('names the Mod key Cmd in a navigator hint on a Mac', () => {
+    const f = mount({ timeNavigator: true });
+    vi.stubGlobal('navigator', { platform: 'MacIntel', userAgent: '' });
+    expect(f.chart.shortcuts!.setBinding('zoomIn', 'Mod+Equal')).toBe(true);
+    const nav = f.chart.panes()[0].primitives().find(p => p instanceof TimeNavigator) as TimeNavigator;
+    expect(nav.options().hints.zoomIn).toBe('Cmd + +');
+  });
+
   it('keeps the navigator hints on the chords in force after a rebind, unless the host fixed them', () => {
     const navOf = (chart: Chart) => chart.panes()[0].primitives().find(p => p instanceof TimeNavigator) as TimeNavigator;
     const f = mount({ timeNavigator: true });

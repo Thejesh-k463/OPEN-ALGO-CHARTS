@@ -3,7 +3,7 @@ import { createChart, PaneLegend } from '/dist/openalgo-charts.mjs';
 import { attachAlerts, detachAlerts } from './alerts.js';
 import { attachInspection, detachInspection } from './inspection.js';
 import { DrawingController, DrawingLinkGroup } from '/dist/openalgo-charts.draw.mjs';
-import { el, fmt, fmtVol, UP, DOWN, chartTheme, chartMotionOptions, toast } from './ui.js';
+import { el, fmt, fmtVol, UP, DOWN, chartTheme, chartMotionOptions, toast, MOD } from './ui.js';
 import { clipboardPort } from './clipboard.js';
 import { armCursor, magnetMode, stayMode, syncMobileControls, observeMobileControls, focusChart } from './rail.js';
 import { fetchBars, fetchNote, feedErrorState } from './feed.js';
@@ -350,7 +350,7 @@ export function buildChart2({ keepView = true, typeChanged = false, state } = {}
   app.chart2.on('draw:select', ({ id }) => {
     const d = id ? app.draw2.get(id) : null;
     if (d && typeof app.draw2.copy === 'function') {
-      el('status').textContent = `chart 2: ${d.tool} selected · Ctrl+C copy · Ctrl+X cut · Ctrl+V paste`;
+      el('status').textContent = `chart 2: ${d.tool} selected · ${MOD}+C copy · ${MOD}+X cut · ${MOD}+V paste`;
     }
   });
   joinLink();

@@ -2,7 +2,7 @@ import {
   getDrawingTool, hasDrawingTool, drawingShortcuts, matchDrawingShortcut, keyToDrawingAction,
   iconSprite, toolCursor, DRAWING_TOOL_ICONS, BUILTIN_DRAWING_TOOLS,
 } from '/dist/openalgo-charts.draw.mjs';
-import { el, inTextField } from './ui.js';
+import { el, inTextField, MOD } from './ui.js';
 import {
   RAIL_FLYOUT_CSS, toolGlyph, chromeGlyph, attachRailTip, hideRailTip, refreshTipLabel,
   openFlyout, closeFlyout, flyoutOpen, flyoutEl, openRailMenu, closeRailMenu, railMenuOpen,
@@ -247,7 +247,7 @@ export function cycleMagnet() {
   setMagnetMode(next);
   const status = el('status');
   if (status) {
-    status.textContent = next === 'off' ? 'magnet off · hold Ctrl to snap while placing or dragging'
+    status.textContent = next === 'off' ? `magnet off · hold ${MOD} to snap while placing or dragging`
       : next === 'weak' ? 'magnet weak: snaps when a bar or study value is within a few pixels'
       : 'magnet strong: every anchor lands on the nearest bar or study value';
   }
@@ -458,7 +458,7 @@ function controlsBlock() {
       title: 'Magnet: ' + prefs.magnet,
       sub: (prefs.magnet === 'off' ? 'Click for weak: snaps when a bar or study value is within a few pixels'
         : prefs.magnet === 'weak' ? 'Click for strong: every anchor lands on the nearest bar or study value'
-        : 'Click to switch the magnet off') + '. Hold Ctrl for a strong snap while placing or dragging',
+        : 'Click to switch the magnet off') + `. Hold ${MOD} for a strong snap while placing or dragging`,
       side: 'right',
     }),
     onClick: cycleMagnet,
@@ -575,7 +575,7 @@ function controlsBlock() {
   ctl.undo = makeBtn({
     cls: 'rail__btn--chrome',
     glyph: chromeGlyph('undo'),
-    tip: () => ({ title: 'Undo', chord: 'Ctrl+Z', side: 'right' }),
+    tip: () => ({ title: 'Undo', chord: `${MOD}+Z`, side: 'right' }),
     // The main chart's whole timeline: a study or a pane, not only a drawing.
     onClick: () => { historyPress('undo', 1); refreshControls(); },
   });
@@ -583,7 +583,7 @@ function controlsBlock() {
   ctl.redo = makeBtn({
     cls: 'rail__btn--chrome',
     glyph: chromeGlyph('redo'),
-    tip: () => ({ title: 'Redo', chord: 'Ctrl+Y', side: 'right' }),
+    tip: () => ({ title: 'Redo', chord: `${MOD}+Y`, side: 'right' }),
     onClick: () => { historyPress('redo', 1); refreshControls(); },
   });
   box.appendChild(ctl.redo);

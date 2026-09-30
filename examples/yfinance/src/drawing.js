@@ -1,5 +1,5 @@
 import { DrawingController, BUILTIN_DRAWING_TOOLS, drawingShortcuts } from '/dist/openalgo-charts.draw.mjs';
-import { el, inTextField } from './ui.js';
+import { el, inTextField, MOD } from './ui.js';
 import { clipboardPort, activeDraw, canClip, clipboardAction } from './clipboard.js';
 import {
   buildRail, syncRail, syncMobileControls, observeMobileControls,
@@ -50,7 +50,7 @@ export function attachDrawing() {
   app.chart.on('draw:select', ({ id }) => {
     const d = id ? app.draw.get(id) : null;
     if (d && canClip()) {
-      el('status').textContent = `${d.tool} selected · Ctrl+C copy · Ctrl+X cut · Ctrl+V paste`;
+      el('status').textContent = `${d.tool} selected · ${MOD}+C copy · ${MOD}+X cut · ${MOD}+V paste`;
     }
   });
   for (const ev of ['draw:add', 'draw:remove', 'draw:update']) app.chart.on(ev, autosave);

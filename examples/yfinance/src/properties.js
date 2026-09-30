@@ -13,7 +13,7 @@ import {
   drawingSettingsSchema, readDrawingSettings, applyDrawingSettings, getDrawingTool, chromeIconSvg, CHROME_ICON_STROKE,
   formatRatio, gannLabel, cloneLevels, DEFAULT_FIB, INTERVAL_FIELDS,
 } from '/dist/openalgo-charts.draw.mjs';
-import { el, inTextField, toast } from './ui.js';
+import { el, inTextField, toast, MOD } from './ui.js';
 import { attachTip } from './hover.js';
 import { openTextEditor, EDITOR_CSS } from './text-editor.js';
 import { buildLevelEditor, LEVEL_CSS } from './level-editor.js';
@@ -786,7 +786,7 @@ export function mountPropertiesBar(app, anchorEl) {
     shownReadOnly = live.every(isReadOnly);
     if (shownReadOnly) {
       span('pb-note', bar).textContent = 'Read-only';
-      const copy = button(chrome('duplicate'), { title: 'Duplicate as your own drawing', chord: 'Ctrl+D', side: 'top' }, () => { app.draw.duplicate(ids.slice()); });
+      const copy = button(chrome('duplicate'), { title: 'Duplicate as your own drawing', chord: `${MOD}+D`, side: 'top' }, () => { app.draw.duplicate(ids.slice()); });
       copy.dataset.act = 'duplicate';
       return;
     }
@@ -971,7 +971,7 @@ export function mountPropertiesBar(app, anchorEl) {
       });
     });
 
-    const dup = button(chrome('duplicate'), { title: 'Duplicate', chord: 'Ctrl+D', side: 'top' }, () => { app.draw.duplicate(ids.slice()); });
+    const dup = button(chrome('duplicate'), { title: 'Duplicate', chord: `${MOD}+D`, side: 'top' }, () => { app.draw.duplicate(ids.slice()); });
     dup.dataset.act = 'duplicate';
     const del = button(chrome('trash'), { title: 'Delete', chord: 'Del', side: 'top' }, () => {
       if (typeof app.draw.removeMany === 'function') app.draw.removeMany(ids.slice());
