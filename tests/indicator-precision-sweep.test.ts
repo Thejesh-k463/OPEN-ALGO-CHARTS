@@ -2,7 +2,7 @@
  * The precision rule, checked against every registered indicator rather than
  * the two that were reported.
  *
- * "William VIX FIX reads 0.6 where it should read 0.61" was one symptom of a
+ * "Williams VIX Fix reads 0.6 where it should read 0.61" was one symptom of a
  * rule that was wrong for a whole class: the host pushes the instrument's tick
  * size down chart-wide, and it used to land on every pane, including panes
  * measuring things the instrument's tick says nothing about. An RSI is a

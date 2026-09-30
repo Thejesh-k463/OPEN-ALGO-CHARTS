@@ -564,7 +564,7 @@ export const ATR: IndicatorDescriptor = withTail({
  */
 export const WILLIAMS_VIX_FIX: IndicatorDescriptor = {
   id: 'williams-vix-fix',
-  name: 'William VIX FIX',
+  name: 'Williams VIX Fix',
   category: 'Volatility',
   placement: 'pane',
   inputs: [
