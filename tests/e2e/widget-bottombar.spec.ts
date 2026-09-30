@@ -227,11 +227,27 @@ test('on a narrow bar the ranges give way and scroll, never the status, the cloc
     const status = (await page.locator('.oac-bottombar__status').boundingBox())!;
     const clock = (await page.locator('.oac-bottombar__clock').boundingBox())!;
     expect(status.x + status.width).toBeLessThanOrEqual(clock.x);
-    // The last range is still reachable: the keyboard scrolls it into view.
-    await page.locator('.oac-bottombar__range[data-range="ALL"]').focus();
-    const all = (await page.locator('.oac-bottombar__range[data-range="ALL"]').boundingBox())!;
-    const ranges = (await page.locator('.oac-bottombar__ranges').boundingBox())!;
-    expect(all.x + all.width).toBeLessThanOrEqual(ranges.x + ranges.width + 0.5);
+    // The last range is still reachable: the keyboard scrolls the whole of it
+    // into view, from the start of the strip and from where the strip shows
+    // only part of it (which a browser's own focus scroll leaves as it is).
+    const all = page.locator('.oac-bottombar__range[data-range="ALL"]');
+    const strip = page.locator('.oac-bottombar__ranges');
+    for (const from of ['start', 'cut'] as const) {
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      const cut = await strip.evaluate((el, from) => {
+        const button = el.querySelector('[data-range="ALL"]') as HTMLElement;
+        el.scrollLeft = 0;
+        if (from === 'cut') el.scrollLeft += button.getBoundingClientRect().right - button.offsetWidth / 2 - el.getBoundingClientRect().right;
+        const b = button.getBoundingClientRect(), s = el.getBoundingClientRect();
+        return b.left < s.right && b.right > s.right + 0.5;
+      }, from);
+      if (width === 560 && from === 'cut') expect(cut, 'the strip cuts the last range in part').toBe(true);
+      await all.focus();
+      const box = (await all.boundingBox())!;
+      const ranges = (await strip.boundingBox())!;
+      expect(box.x + box.width, `from ${from}`).toBeLessThanOrEqual(ranges.x + ranges.width + 0.5);
+      expect(box.x, `from ${from}`).toBeGreaterThanOrEqual(ranges.x - 0.5);
+    }
     await info.attach(`narrow bar ${width}`, { body: await page.screenshot(), contentType: 'image/png' });
     expect(errors).toEqual([]);
   }

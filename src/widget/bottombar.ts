@@ -357,6 +357,10 @@ export function mountBottombar(ctx: BottombarContext, host: HTMLElement, opts: B
       group.appendChild(b);
       rangeButtons.set(range.id, b);
     }
+    // Focus scrolls a button in only when none of it shows, so a range the
+    // narrow strip cuts in part would stay cut under the keyboard: the strip
+    // brings the whole of it in.
+    group.addEventListener('focusin', (e) => { (e.target as HTMLElement).scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); });
     host.appendChild(group);
   }
 
