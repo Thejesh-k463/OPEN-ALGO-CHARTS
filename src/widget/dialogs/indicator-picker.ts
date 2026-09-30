@@ -20,7 +20,7 @@ import type { WorkspaceStore } from 'openalgo-charts/workspace';
 import type { WidgetContext } from '../context';
 import { button, dialogFrame, el, openPanel, type PanelHandle } from '../form';
 import { templateStoreOf } from '../layouts-templates';
-import { lazyPart, partFailed, usePart } from '../lazy';
+import { lazyPart, partFailed, usePart, type PartSlot } from '../lazy';
 
 /** The templates list, fetched when it first opens. Internal. */
 export const templatesPart = lazyPart(() => import('../layouts-templates-menu'));
@@ -93,12 +93,12 @@ export function mountIndicatorPicker(
   let templatesMenu: PanelHandle | null = null;
   if (templates?.planIndicatorTemplateState !== undefined) {
     // The list loads on first use; a press while it loads opens it once, and none opens after the picker closed.
-    const slot = { waiting: false };
+    const slot: PartSlot = { waiting: null };
     const open = button(doc, { label: widgetText(ctx, 'Templates'), icon: 'template', onClick: () => {
       usePart(templatesPart, module => {
         templatesMenu?.close();
         templatesMenu = module.openTemplatesMenu(ctx, open, templates);
-      }, error => ctx.toast(partFailed(ctx, widgetText(ctx, 'Templates'), error), 'error'), () => handle.isOpen(), slot);
+      }, error => ctx.toast(partFailed(ctx, widgetText(ctx, 'Templates'), error), 'error'), () => handle.isOpen(), { slot, doc, from: open });
     } });
     open.dataset.action = 'templates';
     open.setAttribute('aria-haspopup', 'dialog');

@@ -180,7 +180,8 @@ website's Workspaces page for its state and conflict rules.
 Since 2.5.10 `createWidget(el, { workspaces })` builds that controller over the widget
 itself (`widget.layouts`) with a Layouts menu in the top bar and the More sheet
 (`widget.openLayouts()`, and `openLayoutsMenu(ctx, controller, anchor?)`, which resolves
-with the menu's handle once the menu has loaded), reopens the active
+with the menu's handle once the menu has loaded, and rejects when it cannot load or the
+widget was destroyed by then), reopens the active
 layout on load, and offers indicator templates in the picker when the store has
 `planIndicatorTemplateState` (`applyIndicatorTemplate`, `saveIndicatorTemplate`).
 `widgetLayoutTarget(widget)` is the widget's own target.
@@ -422,7 +423,9 @@ Policy, `script-src` must allow the tier's origin, as it already must for the ti
 itself; a part's rules join the widget's stylesheet and keep its nonce. A part that
 cannot load says so in a toast (the store, on the status line) each time it is asked
 for, and the rest of the widget goes on working; a browser keeps a failed module fetch
-until the page reloads.
+until the page reloads. While a part loads, a control pressed again asks once, the last
+control pressed is the one answered, and a user who has moved on by the time it arrives
+(a press elsewhere, Escape, or typing into another field) is not interrupted by it.
 
 ## Size
 

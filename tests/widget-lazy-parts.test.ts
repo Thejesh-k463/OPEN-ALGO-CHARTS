@@ -58,17 +58,21 @@ function holdBack<T>(part: LazyPart<T>) {
   const load = part.load;
   if (arrived === null) throw new Error('the setup fetches every declared part first');
   const waiting: Array<{ resolve(module: T): void; reject(error: unknown): void }> = [];
+  // One fetch shared by every caller while it is out, as lazyPart shares it.
+  let out: Promise<T> | null = null;
   part.now = null;
-  part.load = () => new Promise<T>((resolve, reject) => { waiting.push({ resolve, reject }); });
+  part.load = () => (out ??= new Promise<T>((resolve, reject) => { waiting.push({ resolve, reject }); }));
   restores.push(() => { part.now = arrived; part.load = load; });
   return {
     get loads() { return waiting.length; },
     arrive: async () => {
       part.now = arrived;
+      out = null;
       for (const w of waiting.splice(0)) w.resolve(arrived);
       await settle();
     },
     fail: async (error: Error) => {
+      out = null;
       for (const w of waiting.splice(0)) w.reject(error);
       await settle();
     },
@@ -135,18 +139,87 @@ describe('a part', () => {
   it('answers a slot once however often it is asked while loading, and nothing once its caller has gone', async () => {
     let arrive: (m: string) => void = () => {};
     const part = lazyPart(() => new Promise<string>(resolve => { arrive = resolve; }));
-    const slot = { waiting: false };
+    const doc = fakeWidgetDocument();
+    const ask = { slot: { waiting: null }, doc: doc as unknown as Document };
     const used: string[] = [];
-    usePart(part, m => used.push(m), () => {}, () => true, slot);
-    usePart(part, m => used.push(m), () => {}, () => true, slot);
-    expect(slot.waiting).toBe(true);
+    usePart(part, m => used.push(m), () => {}, () => true, ask);
+    usePart(part, m => used.push(m), () => {}, () => true, ask);
+    expect(ask.slot.waiting).not.toBeNull();
     let gone = false;
     usePart(part, m => used.push(`gone ${m}`), () => {}, () => !gone);
     gone = true;
     arrive('menu');
     await settle();
     expect(used).toEqual(['menu']);
-    expect(slot.waiting).toBe(false);
+    expect(ask.slot.waiting).toBeNull();
+  });
+
+  /** A part held until `arrive`, or failed by `fail`, and a page with two controls and a text field. */
+  function pending() {
+    let arrive: (m: string) => void = () => {};
+    let fail: (e: Error) => void = () => {};
+    const part = lazyPart(() => new Promise<string>((resolve, reject) => { arrive = resolve; fail = reject; }));
+    const doc = fakeWidgetDocument();
+    const add = (tag: string): FakeElement => doc.body.appendChild(doc.createElement(tag)) as FakeElement;
+    const first = add('button'), second = add('button'), field = add('input');
+    const slot = { waiting: null };
+    const used: string[] = [], told: string[] = [];
+    const ask = (name: string, from: FakeElement | null): void => usePart(part, m => used.push(`${name} ${m}`),
+      e => told.push(`${name} ${(e as Error).message}`), () => true, { slot, doc: doc as unknown as Document, from: from as unknown as Element });
+    return {
+      doc, first, second, field, used, told, ask,
+      arrive: async () => { arrive('menu'); await settle(); },
+      fail: async () => { fail(new Error('offline')); await settle(); },
+    };
+  }
+
+  it('answers the latest request of a slot, not the first', async () => {
+    const p = pending();
+    p.ask('layouts', p.first);
+    p.ask('link', p.second);
+    await p.arrive();
+    expect(p.used).toEqual(['link menu']);
+  });
+
+  it('opens nothing once the user pressed elsewhere or Escape while it loaded, and still tells a failure', async () => {
+    const p = pending();
+    p.ask('layouts', p.first);
+    fire(p.first, 'pointerdown');
+    await p.arrive();
+    // Pressing the control that asked is asking again.
+    expect(p.used).toEqual(['layouts menu']);
+
+    const q = pending();
+    q.ask('layouts', q.first);
+    fire(q.doc.body, 'pointerdown');
+    await q.arrive();
+    expect(q.used).toEqual([]);
+
+    const r = pending();
+    r.ask('shortcuts', null);
+    fireKey(r.doc.body, 'Escape');
+    await r.arrive();
+    expect(r.used).toEqual([]);
+
+    const s = pending();
+    s.ask('shortcuts', null);
+    fireKey(s.doc.body, 'Escape');
+    await s.fail();
+    expect(s.told).toEqual(['shortcuts offline']);
+  });
+
+  it('opens nothing over a field the user started typing in while it loaded, but does over the one they asked from', async () => {
+    const p = pending();
+    p.ask('shortcuts', null);
+    p.field.focus();
+    await p.arrive();
+    expect(p.used).toEqual([]);
+
+    const q = pending();
+    q.field.focus();
+    q.ask('templates', q.first);
+    await q.arrive();
+    expect(q.used).toEqual(['templates menu']);
   });
 
   it('names what could not load and why', () => {
@@ -174,6 +247,17 @@ describe('the shortcuts panel', () => {
     close();
     await held.arrive();
     expect(root.querySelector('.oac-keys-dialog')).toBeNull();
+  });
+
+  it('opens nothing when Escape was pressed before it arrived', async () => {
+    const held = holdBack(shortcutsPart);
+    const { root, chartEl } = make();
+    pressQuestion(chartEl);
+    fireKey(chartEl, 'Escape');
+    await held.arrive();
+    expect(root.querySelector('.oac-keys-dialog')).toBeNull();
+    pressQuestion(chartEl);
+    expect(root.querySelector('.oac-keys-dialog')).not.toBeNull();
   });
 
   it('opens nothing on a widget destroyed before it arrived', async () => {
@@ -249,6 +333,18 @@ describe('the Layouts menu', () => {
     expect(handle.isOpen()).toBe(true);
     expect(root.querySelector('.oac-layouts')).toBe(handle.el);
   });
+
+  it('rejects openLayoutsMenu over a widget destroyed before the menu arrived, and opens nothing', async () => {
+    const held = holdBack(layoutsMenuPart);
+    const { widget, root } = make();
+    const controller = createLayoutsController(repository(), widgetLayoutTarget(widget));
+    live.push({ destroy: () => controller.destroy(), isDestroyed: false });
+    const opening = expect(openLayoutsMenu(widget.context, controller)).rejects.toThrow('destroyed');
+    widget.destroy();
+    await held.arrive();
+    await opening;
+    expect(root.querySelector('.oac-layouts')).toBeNull();
+  });
 });
 
 describe('the indicator templates list', () => {
@@ -308,6 +404,16 @@ describe('the grid bar and its menus', () => {
     await menus.arrive();
     expect(root.querySelectorAll('.oac-grid__picker')).toHaveLength(1);
     expect(grid.isDestroyed).toBe(false);
+  });
+
+  it('open the menu pressed last while they load, not the first', async () => {
+    const menus = holdBack(gridMenusPart);
+    const { root } = makeGrid({ preset: '1x2', toolbar: true });
+    (root.querySelector('.oac-grid__layout') as FakeElement).click();
+    (root.querySelector('.oac-grid__link') as FakeElement).click();
+    await menus.arrive();
+    expect(root.querySelector('.oac-grid__picker')).toBeNull();
+    expect(root.querySelectorAll('.oac-grid__menu')).toHaveLength(1);
   });
 
   it('say on the active chart when a menu cannot load', async () => {

@@ -20,7 +20,7 @@ import type { PanelHandle } from './form';
 import { createLayoutsController, type LayoutsController, type LayoutsState } from './layouts';
 import { widgetLayoutTarget } from './layouts-target';
 import { bindTemplateStore } from './layouts-templates';
-import { lazyPart, partFailed, usePart } from './lazy';
+import { lazyPart, partFailed, usePart, type PartSlot } from './lazy';
 import { widgetText } from './localization';
 import type { Widget } from './widget';
 
@@ -59,22 +59,30 @@ export const layoutsMenuPart = lazyPart(() => import('./layouts-menu'));
  * Open the Layouts menu for `controller`: under `anchor`, or centred as a
  * dialog without one and on a phone layout. The menu loads on first use
  * (since 2.5.10), so this resolves with its handle once it is open, and
- * rejects when it could not load.
+ * rejects when it could not load or the widget was destroyed by then.
  */
 export function openLayoutsMenu(ctx: WidgetContext, controller: LayoutsController, anchor?: HTMLElement): Promise<PanelHandle> {
-  return layoutsMenuPart.load().then(module => module.mountLayoutsMenu(ctx, controller, anchor));
+  return layoutsMenuPart.load().then(module => {
+    // A menu mounted on a destroyed widget would sit off the page, open and still following the controller.
+    if (ctx.chart.isDestroyed) throw new Error('The widget was destroyed before its Layouts menu opened');
+    return module.mountLayoutsMenu(ctx, controller, anchor);
+  });
 }
+
+/** The menu a control of the shell opens, and the request it has on its way (lazy.ts). Internal. */
+export interface LayoutsMenuSlot extends PartSlot { handle: PanelHandle | null }
 
 /**
  * Open the menu for a control of the shell: at once when it has arrived,
- * else when it does, unless `live` says the control has gone by then, and
- * once however often the control is pressed meanwhile. Internal.
+ * else when it does, unless `live` says the control has gone by then or the
+ * user has moved on, and once however often the control is pressed
+ * meanwhile. Internal.
  */
 export function showLayoutsMenu(ctx: WidgetContext, controller: LayoutsController, anchor: HTMLElement | undefined,
-  menu: { handle: PanelHandle | null; waiting: boolean }, live: () => boolean): void {
+  menu: LayoutsMenuSlot, live: () => boolean): void {
   if (menu.handle?.isOpen()) { menu.handle.el.focus(); return; }
   usePart(layoutsMenuPart, module => { menu.handle = module.mountLayoutsMenu(ctx, controller, anchor); },
-    error => ctx.toast(partFailed(ctx, layoutText(ctx)('title', 'Layouts'), error), 'error'), live, menu);
+    error => ctx.toast(partFailed(ctx, layoutText(ctx)('title', 'Layouts'), error), 'error'), live, { slot: menu, doc: ctx.document, from: anchor });
 }
 
 /** The top bar's Layouts button, which shows before the menu has loaded. */
@@ -114,7 +122,7 @@ export function attachWidgetLayouts(widget: Widget, options: WidgetLayoutsOption
   // A controller handed over belongs to its maker (a grid, over all its charts): used, never reopened or destroyed here.
   const own = given === null && options.layouts !== false && store !== undefined ? createLayoutsController(store, widgetLayoutTarget(widget)) : null;
   const controller = given ?? own;
-  const menu: { handle: PanelHandle | null; waiting: boolean } = { handle: null, waiting: false };
+  const menu: LayoutsMenuSlot = { handle: null, waiting: null };
   let destroyed = false;
   let failing = false;
   // An autosave that stops is said once on the status line: the menu may be closed.

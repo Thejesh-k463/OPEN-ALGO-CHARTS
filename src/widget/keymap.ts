@@ -29,7 +29,7 @@
  */
 import { isReservedCombo, normalizeCombo, type ShortcutListItem } from 'openalgo-charts';
 import { inTextField, type WidgetContext } from './context';
-import { lazyPart, partFailed, usePart } from './lazy';
+import { lazyPart, partFailed, usePart, type PartSlot } from './lazy';
 import { widgetText } from './localization';
 
 /**
@@ -1010,23 +1010,23 @@ export function markListOnly(keymap: object): void { LIST_ONLY.add(keymap); }
 
 /** The panel and its editing controls, fetched when it first opens. Internal. */
 export const shortcutsPart = lazyPart(() => import('./keymap-editor'));
-/** Per widget, whether a panel is on its way: `?` pressed again meanwhile opens one. */
-const WAITING = new WeakMap<object, { waiting: boolean }>();
+/** Per widget, the panel on its way: `?` pressed again meanwhile opens one. */
+const WAITING = new WeakMap<object, PartSlot>();
 
 /**
  * The shortcuts panel: every group from `keymap.describe()`, two columns,
  * closed by Escape or its button, with the editing controls unless `edit` is
  * false. Returns the closer. The panel loads on first use (since 2.5.10), so
- * the first one opens once it has arrived, and closing before then cancels
- * it; a panel that cannot load says so in a toast.
+ * the first one opens once it has arrived, unless the closer ran or the user
+ * moved on before then (lazy.ts); a panel that cannot load says so in a toast.
  */
 export function openShortcutsPanel(ctx: WidgetContext, opts: ShortcutsPanelOptions = {}): () => void {
   let close: (() => void) | null = null;
   let wanted = true;
   let slot = WAITING.get(ctx);
-  if (slot === undefined) WAITING.set(ctx, slot = { waiting: false });
+  if (slot === undefined) WAITING.set(ctx, slot = { waiting: null });
   usePart(shortcutsPart, module => { close = module.mountShortcutsPanel(ctx, opts.edit ?? !LIST_ONLY.has(ctx.keymap)); },
     error => ctx.toast(partFailed(ctx, widgetText(ctx, 'Keyboard shortcuts'), error), 'error'),
-    () => wanted && ctx.root.isConnected, slot);
+    () => wanted && !ctx.chart.isDestroyed, { slot, doc: ctx.document });
   return () => { wanted = false; close?.(); };
 }

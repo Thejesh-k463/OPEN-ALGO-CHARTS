@@ -16,6 +16,7 @@
  * Each part is declared beside the code that uses it. The tier entry exports
  * none of this.
  */
+import { inTextField } from './context';
 import { widgetText, type WidgetTranslationOptions } from './localization';
 
 export interface LazyPart<T> {
@@ -43,22 +44,58 @@ export function lazyPart<T>(load: () => Promise<T>): LazyPart<T> {
 }
 
 /**
+ * What one control, or controls whose parts would replace each other, has on
+ * its way: only its latest request is answered, once, however often it was
+ * pressed while the part loaded.
+ */
+export interface PartSlot { waiting: object | null }
+
+/**
+ * A user's request for a part, from a control of the page. Once the part has
+ * arrived a press opens it at once; until then the answer comes later, and
+ * by then the user may have asked for something else or moved on.
+ */
+export interface PartAsk {
+  readonly slot: PartSlot;
+  readonly doc: Document;
+  /** The control that asked: pressing it again is asking again, not moving on. */
+  readonly from?: Element | null;
+}
+
+/**
  * Run `use` with a part: at once when it has arrived, else when it does,
  * unless `live` says by then that whoever asked has gone. A failed load goes
- * to `failed` on the same terms. A control that passes its `slot` is answered
- * once however often it is pressed while the part loads, as it would be once
- * the part had arrived and the first press had opened it.
+ * to `failed` on the same terms. A request a user made (`ask`) is dropped
+ * when a later one from its slot replaced it, and opens nothing when the
+ * user moved on while it loaded: a press elsewhere, Escape, or typing into
+ * another field. A part bundled in would have opened before any of those,
+ * and one arriving after them would take the focus from what the user
+ * turned to. A failure is still told, since the user did ask.
  */
 export function usePart<T>(part: LazyPart<T>, use: (module: T) => void, failed: (error: unknown) => void, live: () => boolean,
-  slot?: { waiting: boolean }): void {
+  ask?: PartAsk): void {
   if (part.now !== null) { use(part.now); return; }
-  if (slot?.waiting === true) return;
-  if (slot !== undefined) slot.waiting = true;
-  const settle = (): boolean => {
-    if (slot !== undefined) slot.waiting = false;
-    return live();
-  };
-  part.load().then(module => { if (settle()) use(module); }, (error: unknown) => { if (settle()) failed(error); });
+  let settle = (): boolean | null => (live() ? true : null);
+  if (ask !== undefined) {
+    const { slot, doc, from } = ask;
+    const me = slot.waiting = {};
+    const focused = doc.activeElement;
+    let away = false;
+    const press = (event: Event): void => { if (from?.contains(event.target as Node) !== true) away = true; };
+    const key = (event: Event): void => { if ((event as KeyboardEvent).key === 'Escape') away = true; };
+    doc.addEventListener('pointerdown', press, true);
+    doc.addEventListener('keydown', key, true);
+    settle = () => {
+      doc.removeEventListener('pointerdown', press, true);
+      doc.removeEventListener('keydown', key, true);
+      if (slot.waiting !== me) return null;
+      slot.waiting = null;
+      if (!live()) return null;
+      const now = doc.activeElement;
+      return !away && (now === focused || !inTextField(now));
+    };
+  }
+  part.load().then(module => { if (settle() === true) use(module); }, (error: unknown) => { if (settle() !== null) failed(error); });
 }
 
 /** What a part that could not load says: its name and the reason. */

@@ -110,3 +110,45 @@ test('a grid bar arrives into a strip that already has its height, so the charts
   expect(parts).toEqual(['/dist/openalgo-charts.widget.grid-bar.mjs', '/dist/openalgo-charts.widget.grid-menus.mjs']);
   expect(errors).toEqual([]);
 });
+
+test('a part the user moved on from while it loaded opens nothing, and leaves the focus where they put it', async ({ page }) => {
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  await page.route('**/dist/openalgo-charts.widget.keymap-editor.mjs', async (route) => { await held; await route.continue(); });
+  const { errors } = await mountWidget(page);
+  // Asked for, then Escape: what a bundled panel would have been closed by.
+  await page.keyboard.press('Shift+Slash');
+  await page.keyboard.press('Escape');
+  // Asked for again, then the user turns to the symbol field and types.
+  await page.keyboard.press('Shift+Slash');
+  const field = page.locator('.oac-topbar .oac-sym__input');
+  await field.click();
+  await page.keyboard.type('RE');
+  release();
+  await page.waitForTimeout(400);
+  await expect(page.locator(DIALOG)).toHaveCount(0);
+  expect(await field.evaluate((node) => node === document.activeElement)).toBe(true);
+  // Arrived now, so the next ? opens it at once.
+  await page.keyboard.press('Escape');
+  await field.evaluate((node: HTMLElement) => node.blur());
+  const box = await page.locator('.oac-widget .oac-chart').boundingBox();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.keyboard.press('Shift+Slash');
+  await expect(page.locator(DIALOG)).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('the grid opens the menu pressed last while its menus load', async ({ page }) => {
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  await page.route('**/dist/openalgo-charts.widget.grid-menus.mjs', async (route) => { await held; await route.continue(); });
+  const { errors } = await mount(page, '/tests/e2e/widget-grid-fixture.html?toolbar=1&preset=2x2');
+  const strip = page.locator('.oac-grid__bar');
+  await expect(strip.locator('.oac-grid__layout')).toBeVisible();
+  await strip.locator('.oac-grid__layout').click();
+  await strip.locator('.oac-grid__link').click();
+  release();
+  await expect(page.locator('.oac-grid__menu')).toBeVisible();
+  await expect(page.locator('.oac-grid__picker')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

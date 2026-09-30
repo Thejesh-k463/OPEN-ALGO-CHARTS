@@ -62,7 +62,7 @@ import type { GridBarHandle, GridBarHost } from './grid-bar';
 import { captureRatio, composeGridCapture, type CaptureBox, type GridCapturePiece } from './grid-capture';
 import { groupMark, installGridKeys, installHeaderDrag, neighbour } from './grid-cells';
 import { KEYMAP_KEY } from './keymap';
-import { lazyPart, partFailed, usePart } from './lazy';
+import { lazyPart, partFailed, usePart, type PartSlot } from './lazy';
 
 /** The grid bar, fetched when a grid shows it, and its menus, fetched when one first opens (lazy.ts). Internal. */
 export const gridBarPart = lazyPart(() => import('./grid-bar'));
@@ -967,8 +967,8 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
   }
 
   // ── the bar ────────────────────────────────────────────────────────────
-  /** A menu on its way: a second press meanwhile opens none, as a press on an open menu's button does. */
-  const menuSlot = { waiting: false };
+  /** A menu on its way: of the bar's menus pressed meanwhile, the last one opens, once, as one press after another would leave it. */
+  const menuSlot: PartSlot = { waiting: null };
   const barHost: GridBarHost = {
     doc, text,
     get overlays() { return chrome().overlays; },
@@ -1003,7 +1003,7 @@ export function createChartGrid(container: HTMLElement | string, options: ChartG
       else if (which === 'link') module.openLinkMenu(barHost, anchor);
       else module.openCaptureMenu(barHost, anchor);
     }, error => report(partFailed(text, widgetText(text, which === 'layouts' ? 'Layouts' : which === 'link' ? 'Linking' : 'Capture every chart'), error), 'error'),
-    () => !destroyed && anchor.isConnected, menuSlot),
+    () => !destroyed && anchor.isConnected, { slot: menuSlot, doc, from: anchor }),
   };
   let bar: GridBarHandle | null = null;
   let foot: BottombarHandle | null = null;

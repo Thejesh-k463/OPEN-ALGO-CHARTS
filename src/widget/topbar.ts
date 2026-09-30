@@ -24,7 +24,7 @@ import type { SymbolSearch } from './symbol-picker';
 import type { PanelHandle } from './form';
 import type { LayoutsController } from './layouts';
 import { layoutNeedsAttention, layoutStatusText } from './layouts-widget';
-import { lazyPart, partFailed, usePart } from './lazy';
+import { lazyPart, partFailed, usePart, type PartSlot } from './lazy';
 
 /** The chart data dialog, fetched when it first opens. Internal. */
 export const dataExportPart = lazyPart(() => import('./chart-data-export-dialog'));
@@ -492,7 +492,7 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
   snapBtn.setAttribute('aria-haspopup', 'menu');
   ctx.tips.attach(snapBtn, { title: widgetText(ctx, 'Capture'), sub: widgetText(ctx, 'PNG, SVG, CSV or the clipboard'), side: 'bottom' });
   let dataDialog: PanelHandle | null = null;
-  const dataSlot = { waiting: false };
+  const dataSlot: PartSlot = { waiting: null };
   const openCapture = (anchor: HTMLElement): void => {
     const s = { ...opts.state() };
     const capturedChart = ctx.chart;
@@ -546,7 +546,7 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
               ctx.status(widgetText(ctx, 'Chart data download started'));
             });
           } catch (error) { failed(error); }
-        }, error => ctx.status(partFailed(ctx, widgetText(ctx, 'Download chart data (CSV)'), error), 'error'), () => host.isConnected, dataSlot);
+        }, error => ctx.status(partFailed(ctx, widgetText(ctx, 'Download chart data (CSV)'), error), 'error'), () => host.isConnected, { slot: dataSlot, doc, from: anchor });
       } },
       ...(opts.captureRows?.() ?? []),
     ], { ariaLabel: widgetText(ctx, 'Capture') });
