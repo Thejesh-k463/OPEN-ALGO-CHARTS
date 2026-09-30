@@ -105,7 +105,7 @@ export function mountGridBar(host: GridBarHost, el: HTMLElement): GridBarHandle 
     return s;
   };
 
-  const layout = button('oac-grid__layout', widgetText(t, 'Layout'));
+  const layout = button('oac-grid__layout', widgetText(t, 'Arrange charts'));
   layout.setAttribute('aria-haspopup', 'menu');
   const layoutGlyph = chrome(doc, chromeIconSvg('layout'));
   const layoutText = h(doc, 'span', 'oac-grid__bar-text');
@@ -113,7 +113,7 @@ export function mountGridBar(host: GridBarHost, el: HTMLElement): GridBarHandle 
   // The tip's title is also the button's name, so it carries the words the button shows.
   host.tips.attach(layout, () => {
     const id = host.layout();
-    return { title: isChartGridLayout(id) ? widgetText(t, 'Layout: {name}', { name: layoutName(t, id) }) : widgetText(t, 'Layout'), side: 'bottom' };
+    return { title: isChartGridLayout(id) ? widgetText(t, 'Arrange charts: {name}', { name: layoutName(t, id) }) : widgetText(t, 'Arrange charts'), side: 'bottom' };
   });
   layout.addEventListener('click', () => host.openMenu('layouts', layout));
   // A host that offers no layouts gets no picker, rather than one that opens empty.
@@ -165,14 +165,15 @@ export function mountGridBar(host: GridBarHost, el: HTMLElement): GridBarHandle 
     b.append(chrome(doc, chromeIconSvg('folder')), name);
     host.tips.attach(b, () => {
       const at = held();
-      return { title: at === null ? title : `${title}: ${at}`, sub: host.saved?.status(), side: 'bottom' };
+      const said = at === null ? title : `${title}: ${at}`;
+      const status = host.saved?.status();
+      // The dot's meaning stays in the name whenever the dot shows.
+      return { title: said, label: layoutNeedsAttention(controller.state()) ? `${said}, ${status ?? ''}` : undefined, sub: status, side: 'bottom' };
     });
     const paint = (): void => {
-      const attention = layoutNeedsAttention(controller.state());
       name.textContent = held() ?? title;
-      b.dataset.attention = String(attention);
+      b.dataset.attention = String(layoutNeedsAttention(controller.state()));
       host.tips.refreshLabel(b);
-      if (attention) b.setAttribute('aria-label', `${b.getAttribute('aria-label') ?? title}, ${host.saved?.status() ?? ''}`);
     };
     offSaved = controller.subscribe(paint);
     paint();
@@ -199,8 +200,8 @@ export function mountGridBar(host: GridBarHost, el: HTMLElement): GridBarHandle 
     layoutText.textContent = known ? layoutName(t, id) : '';
     layoutText.hidden = !known;
     const maxed = host.maximized();
+    // Named for what a press does next (maxLabel), so no pressed state as well.
     maxGlyph.innerHTML = chromeIconSvg(maxed ? 'restore' : 'maximize');
-    max.setAttribute('aria-pressed', String(maxed));
     const blocked = host.maximizeBlocked();
     max.classList.toggle('is-off', blocked !== null);
     max.setAttribute('aria-disabled', String(blocked !== null));

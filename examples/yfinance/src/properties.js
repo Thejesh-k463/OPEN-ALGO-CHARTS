@@ -13,7 +13,7 @@ import {
   drawingSettingsSchema, readDrawingSettings, applyDrawingSettings, getDrawingTool, chromeIconSvg, CHROME_ICON_STROKE,
   formatRatio, gannLabel, cloneLevels, DEFAULT_FIB, INTERVAL_FIELDS,
 } from '/dist/openalgo-charts.draw.mjs';
-import { el, inTextField, toast } from './ui.js';
+import { el, inTextField, toast, MOD } from './ui.js';
 import { attachTip } from './hover.js';
 import { openTextEditor, EDITOR_CSS } from './text-editor.js';
 import { buildLevelEditor, LEVEL_CSS } from './level-editor.js';
@@ -374,7 +374,9 @@ export function mountPropertiesBar(app, anchorEl) {
     b.type = 'button';
     b.innerHTML = html;
     if (cls) b.className = cls;
-    attachTip(b, typeof tip === 'function' ? tip : { title: tip, side: 'top' });
+    // A string is the title alone; a spec or a function passes through, or
+    // its chord and sub line are lost and the name reads "[object Object]".
+    attachTip(b, typeof tip === 'string' ? { title: tip, side: 'top' } : tip);
     if (onClick) b.addEventListener('click', (e) => { e.stopPropagation(); onClick(e); });
     bar.appendChild(b);
     return b;
@@ -437,6 +439,7 @@ export function mountPropertiesBar(app, anchorEl) {
           s.type = 'button';
           s.style.background = c;
           s.setAttribute('aria-label', c);
+          s.setAttribute('aria-pressed', String(c === cur));
           if (c === cur) s.classList.add('is-on');
           // Picking a colour for a switched-off paint switches it on: the
           // pick has to show, or it is a control that did nothing.
@@ -467,7 +470,7 @@ export function mountPropertiesBar(app, anchorEl) {
         inp.type = 'color';
         inp.className = 'swatch';
         inp.value = hexOf(current()) || DEFAULT_COLOR;
-        inp.setAttribute('aria-label', 'Custom colour');
+        inp.setAttribute('aria-label', 'Custom color');
         inp.addEventListener('change', () => apply(toggle ? { [field.path]: inp.value, [toggle.path]: true } : { [field.path]: inp.value }));
         const lab = document.createElement('label');
         lab.textContent = 'Custom';
@@ -493,6 +496,8 @@ export function mountPropertiesBar(app, anchorEl) {
     lab.textContent = field.label;
     const range = document.createElement('input');
     range.type = 'range';
+    // The label beside it is not tied to it, so the slider carries the name.
+    range.setAttribute('aria-label', field.label);
     range.dataset.path = field.path;
     range.min = '0'; range.max = '100'; range.step = '1';
     const out = document.createElement('output');
@@ -547,6 +552,7 @@ export function mountPropertiesBar(app, anchorEl) {
           const it = document.createElement('button');
           it.type = 'button';
           it.className = 'pb-item' + (cur() === v ? ' is-on' : '');
+          it.setAttribute('aria-pressed', String(cur() === v));
           it.dataset.preset = String(v);
           it.innerHTML = (opts.preview ? opts.preview(v) : '') + '<span>' + fmtNum(v) + unit + '</span>';
           it.addEventListener('click', () => { apply({ [field.path]: v }); closePop(); });
@@ -606,6 +612,7 @@ export function mountPropertiesBar(app, anchorEl) {
           const it = document.createElement('button');
           it.type = 'button';
           it.className = 'pb-item' + (cur() === o.value ? ' is-on' : '');
+          it.setAttribute('aria-pressed', String(cur() === o.value));
           it.dataset.value = o.value;
           it.innerHTML = linePreview(2, o.value, true) + '<span>' + o.label + '</span>';
           it.addEventListener('click', () => { apply({ [field.path]: o.value }); closePop(); });
@@ -732,7 +739,7 @@ export function mountPropertiesBar(app, anchorEl) {
 
   /** Rows for `fields`, under small uppercase headers per group. */
   function fieldRows(fields, parent) {
-    const GROUPS = { line: 'Line', fill: 'Fill', text: 'Text', levels: 'Levels', behavior: 'Behaviour', visibility: 'Visibility' };
+    const GROUPS = { line: 'Line', fill: 'Fill', text: 'Text', levels: 'Levels', behavior: 'Behavior', visibility: 'Visibility' };
     let last = null;
     for (const f of fields) {
       const g = f.group || 'behavior';
@@ -786,7 +793,7 @@ export function mountPropertiesBar(app, anchorEl) {
     shownReadOnly = live.every(isReadOnly);
     if (shownReadOnly) {
       span('pb-note', bar).textContent = 'Read-only';
-      const copy = button(chrome('duplicate'), { title: 'Duplicate as your own drawing', chord: 'Ctrl+D', side: 'top' }, () => { app.draw.duplicate(ids.slice()); });
+      const copy = button(chrome('duplicate'), { title: 'Duplicate as your own drawing', chord: `${MOD}+D`, side: 'top' }, () => { app.draw.duplicate(ids.slice()); });
       copy.dataset.act = 'duplicate';
       return;
     }
@@ -795,7 +802,7 @@ export function mountPropertiesBar(app, anchorEl) {
     const colours = colorControls(schema);
     const ctlFor = (path) => colours.find((c) => c.field.path === path);
     const strokeC = ctlFor('style.color');
-    if (strokeC) { take('style.color'); colorBtn(strokeC, { tip: 'Colour' }); }
+    if (strokeC) { take('style.color'); colorBtn(strokeC, { tip: 'Color' }); }
     const widthF = take('style.lineWidth');
     if (widthF) numberBtn(widthF, WIDTH_PRESETS, { unit: 'px', fallback: DEFAULT_LINE_WIDTH, tip: 'Line width', preview: (w) => linePreview(w, 'solid', true) });
     const styleF = take('style.lineStyle');
@@ -821,7 +828,7 @@ export function mountPropertiesBar(app, anchorEl) {
     if (schema.textIsContent) {
       take('text.value');
       const textC = ctlFor('text.color');
-      if (textC) { take('text.color'); colorBtn(textC, { tip: 'Text colour', fallback: () => values()['style.color'] }); }
+      if (textC) { take('text.color'); colorBtn(textC, { tip: 'Text color', fallback: () => values()['style.color'] }); }
       const sizeF = take('text.fontSize');
       if (sizeF) numberBtn(sizeF, FONT_SIZE_PRESETS, { fallback: 14, tip: 'Font size' });
       const famF = take('text.fontFamily');
@@ -842,7 +849,11 @@ export function mountPropertiesBar(app, anchorEl) {
       b.dataset.path = 'text.value';
       b.dataset.pop = 'text';
       b.addEventListener('click', (e) => { e.stopPropagation(); togglePop(b, (p) => fieldRows(textFields, p)); });
-      const paint = () => { b.classList.toggle('is-on', !!values()['text.value']); };
+      // The name follows at once, not on the next hover.
+      const paint = () => {
+        b.classList.toggle('is-on', !!values()['text.value']);
+        b.setAttribute('aria-label', values()['text.value'] ? 'Edit label' : 'Add label');
+      };
       paint();
       syncers.push(paint);
     }
@@ -853,8 +864,9 @@ export function mountPropertiesBar(app, anchorEl) {
     // exactly where it is and only stops following the chart.
     const spaceF = take('space');
     if (spaceF) {
+      // One name; the pressed state says pinned.
       const pin = button(glyph('pin'), () => ({
-        title: values().space === 'viewport' ? 'Pinned to the screen' : 'Pin to the screen',
+        title: 'Pin to the screen',
         sub: values().space === 'viewport' ? 'Click to follow the bars again' : 'Stays put when the chart pans or zooms',
         side: 'top',
       }), () => {
@@ -924,21 +936,33 @@ export function mountPropertiesBar(app, anchorEl) {
 
     // Lock, visibility, order, duplicate, delete: not schema fields, since
     // every drawing has them.
-    const lock = button('', () => ({ title: primary() && primary().locked ? 'Unlock' : 'Lock', side: 'top' }), () => {
+    // Lock and the eye keep one name each; the pressed state and the glyph
+    // say locked or hidden, and follow a keyboard press with no hover.
+    const lock = button('', { title: 'Lock', side: 'top' }, () => {
       const on = !(primary() && primary().locked === true);
       app.draw.updateMany(drawingsOf().map((d) => ({ id: d.id, patch: { locked: on } })));
     });
     lock.dataset.act = 'lock';
-    const paintLock = () => { const on = !!(primary() && primary().locked); lock.innerHTML = chrome(on ? 'lock' : 'unlock'); lock.classList.toggle('is-on', on); };
+    const paintLock = () => {
+      const on = !!(primary() && primary().locked);
+      lock.innerHTML = chrome(on ? 'lock' : 'unlock');
+      lock.classList.toggle('is-on', on);
+      lock.setAttribute('aria-pressed', String(on));
+    };
     paintLock();
     syncers.push(paintLock);
 
-    const eye = button('', () => ({ title: primary() && primary().visible === false ? 'Show' : 'Hide', side: 'top' }), () => {
+    const eye = button('', { title: 'Hide', side: 'top' }, () => {
       const hidden = !!(primary() && primary().visible === false);
       app.draw.updateMany(drawingsOf().map((d) => ({ id: d.id, patch: { visible: hidden } })));
     });
     eye.dataset.act = 'visible';
-    const paintEye = () => { const hidden = !!(primary() && primary().visible === false); eye.innerHTML = chrome(hidden ? 'eye-off' : 'eye'); eye.classList.toggle('is-on', hidden); };
+    const paintEye = () => {
+      const hidden = !!(primary() && primary().visible === false);
+      eye.innerHTML = chrome(hidden ? 'eye-off' : 'eye');
+      eye.classList.toggle('is-on', hidden);
+      eye.setAttribute('aria-pressed', String(hidden));
+    };
     paintEye();
     syncers.push(paintEye);
 
@@ -961,6 +985,7 @@ export function mountPropertiesBar(app, anchorEl) {
           const it = document.createElement('button');
           it.type = 'button';
           it.className = 'pb-item' + (r.on ? ' is-on' : '');
+          if (r.on !== undefined) it.setAttribute('aria-pressed', String(r.on));
           it.dataset.act = r.act;
           it.innerHTML = r.icon + '<span>' + r.label + '</span>';
           // The controller reorders one drawing at a time (the list position
@@ -971,7 +996,7 @@ export function mountPropertiesBar(app, anchorEl) {
       });
     });
 
-    const dup = button(chrome('duplicate'), { title: 'Duplicate', chord: 'Ctrl+D', side: 'top' }, () => { app.draw.duplicate(ids.slice()); });
+    const dup = button(chrome('duplicate'), { title: 'Duplicate', chord: `${MOD}+D`, side: 'top' }, () => { app.draw.duplicate(ids.slice()); });
     dup.dataset.act = 'duplicate';
     const del = button(chrome('trash'), { title: 'Delete', chord: 'Del', side: 'top' }, () => {
       if (typeof app.draw.removeMany === 'function') app.draw.removeMany(ids.slice());

@@ -268,7 +268,7 @@ with `hasIndicator(id)`.
 | Money Flow Index | `mfi` | pane | `period=14` |
 | Percentage Price Oscillator | `ppo` | pane | `source=close`, `fastLength=12`, `slowLength=26`, `signalLength=9`, `oscType=EMA`, `sigType=EMA` |
 | Pring's Special K | `special-k` | pane | `source=close`, `length1=100`, `length2=100` |
-| Rate Of Change | `roc` | pane | `length=9`, `source=close` |
+| Rate of Change | `roc` | pane | `length=9`, `source=close` |
 | Relative Vigor Index | `relative-vigor-index` | pane | `length=10`, `offset=0` |
 | RSI | `rsi` | pane | `length=14`, `source=close`, `overbought=70`, `oversold=30` |
 | RSI Divergence Indicator | `rsi-divergence` | pane | `length=14`, `source=close`, `lbR=5`, `lbL=5`, `rangeUpper=60`, `rangeLower=5`, `plotBull=true`, `plotHiddenBull=false`, `plotBear=true`, `plotHiddenBear=false` |
@@ -309,7 +309,7 @@ with `hasIndicator(id)`.
 | Standard Error | `standard-error` | pane | `length=14` |
 | Standard Error Bands | `standard-error-bands` | onchart | `periods=21`, `errors=2`, `method=Simple`, `averagePeriods=3` |
 | Ulcer Index | `ulcer-index` | pane | `source=close`, `length=14` |
-| William VIX FIX | `williams-vix-fix` | pane | `pd=22`, `bbl=20`, `mult=2`, `lb=50`, `ph=0.85`, `pl=1.01`, `hp=false`, `sd=false` |
+| Williams VIX Fix | `williams-vix-fix` | pane | `pd=22`, `bbl=20`, `mult=2`, `lb=50`, `ph=0.85`, `pl=1.01`, `hp=false`, `sd=false` |
 
 ### Volume (18)
 
@@ -1467,7 +1467,7 @@ Return `undefined` to fall back to the plot's own colour. It reaches the rendere
 as [`Bar.color`](/docs/series-and-styling#per-bar-colour), so every Family-A plot
 type honours it: histogram, column, line, step, area, candles and OHLC bars.
 `values` is the full `calc` result, so a rule can read columns no plot draws:
-MACD compares against the previous bar, and William VIX FIX reads its band even
+MACD compares against the previous bar, and Williams VIX Fix reads its band even
 when the band is hidden.
 
 `calc` must return an array for every plot key, the same length as `bars`, plus any extra

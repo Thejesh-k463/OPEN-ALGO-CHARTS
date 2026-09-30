@@ -29,7 +29,7 @@ async function paint(page: Page): Promise<void> {
 
 async function addSample(page: Page, pane: Pane): Promise<string> {
   await page.locator(pane === 1 ? '#chart' : '#chart2').focus();
-  await page.getByRole('button', { name: 'Add an indicator', exact: true }).click();
+  await page.getByRole('button', { name: /^Add an indicator, / }).click();
   await expect(page.locator('.oac-pick')).toHaveCount(1);
   await page.locator(`.oac-pick__row[data-id="${SAMPLE_ID}"]`).click();
   return page.evaluate(({ pane, id }) => {
@@ -101,14 +101,17 @@ test('source clicks retain instance and chart ownership across a split', async (
   await split(page);
   const other = await addSample(page, 2);
   await clickSource(page, 1, 1);
+  // A study is numbered by its place among its name, never named by its internal id.
   await expect(page.locator('#indsource-owner')).toContainText('Chart 1');
-  await expect(page.locator('#indsource-owner')).toContainText(second);
+  await expect(page.locator('#indsource-owner')).toHaveText(new RegExp(`, ${SAMPLE} \\(2\\)$`));
+  await expect(page.locator('#indsource-owner')).not.toContainText(second);
   await expect(page.locator('#indsource-code')).toContainText("markerAnchor: 'price'");
   expect(first).not.toBe(second);
   await page.locator('#indsource-close').click();
   await clickSource(page, 2);
   await expect(page.locator('#indsource-owner')).toContainText('Chart 2');
-  await expect(page.locator('#indsource-owner')).toContainText(other);
+  await expect(page.locator('#indsource-owner')).toHaveText(new RegExp(`, ${SAMPLE}$`));
+  await expect(page.locator('#indsource-owner')).not.toContainText(other);
   await expect(page.locator('#indsource-title')).toContainText(SAMPLE);
   await shot(page, info, 'source-second-chart');
   await page.keyboard.press('Escape');
@@ -165,8 +168,8 @@ test('legend size previews stay on their owner and survive type rebuild and relo
   await page.locator('#cset-ok').click();
   await clickSource(page, 2);
   await page.locator('#indsource-close').click();
-  await page.getByRole('button', { name: 'Chart type', exact: true }).click();
-  await page.getByRole('button', { name: 'Bars (OHLC)', exact: true }).click();
+  await page.getByRole('button', { name: /^Chart type, / }).click();
+  await page.getByRole('menuitemradio', { name: 'Bars', exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as unknown as DemoWindow).__oac.app.chart2!.primarySeriesInfo()?.type)).toBe('bar');
   expect(await page.evaluate(() => (window as unknown as DemoWindow).__oac.app.chart2!.legendIconSize())).toBe(24);
   await clickSource(page, 2);

@@ -123,6 +123,11 @@ describe('the Layouts button', () => {
     expect(button.dataset.attention).toBe('true');
     // The mark is a dot; the name says it too.
     expect(button.getAttribute('aria-label')).toBe('Layouts: Morning, Unsaved changes');
+    // Reaching it by keyboard or pointer re-reads the tip, and keeps the status in the name.
+    fire(button, 'focus');
+    expect(button.getAttribute('aria-label')).toBe('Layouts: Morning, Unsaved changes');
+    fire(button, 'pointerenter');
+    expect(button.getAttribute('aria-label')).toBe('Layouts: Morning, Unsaved changes');
     expect(widget.openLayouts()).toBe(true);
   });
 });
@@ -383,6 +388,14 @@ describe('the Layouts menu', () => {
     await press(widget, menu, '[data-action="overwrite"]');
     expect(must(menu, '.oac-layouts__conflict').hidden).toBe(true);
     expect(widget.context.document.activeElement).toBe(must(menu, '[data-action="save"]'));
+  });
+
+  it('says why the list could not be read in words, even when the store rejects with a plain object', async () => {
+    const repo = account().repo();
+    repo.load = () => Promise.reject({ code: 1 });
+    const { widget, root } = await make({}, repo);
+    const menu = await openMenu(widget, root);
+    expect(must(menu, '.oac-layouts__error').textContent).toBe('The saved layouts could not be read: unknown error');
   });
 
   it('says the list could not be read, and does not go on saying it is loading', async () => {

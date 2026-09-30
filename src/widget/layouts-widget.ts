@@ -21,7 +21,7 @@ import { createLayoutsController, type LayoutsController, type LayoutsState } fr
 import { widgetLayoutTarget } from './layouts-target';
 import { bindTemplateStore } from './layouts-templates';
 import { lazyPart, partFailed, usePart, type PartSlot } from './lazy';
-import { widgetText } from './localization';
+import { errorText, widgetText } from './localization';
 import type { Widget } from './widget';
 
 type Text = (key: string, fallback: string, values?: Record<string, string | number>) => string;
@@ -147,7 +147,7 @@ export function attachWidgetLayouts(widget: Widget, options: WidgetLayoutsOption
       const report = await own.open(catalog.activeWorkspaceId);
       if (!report.applied && !destroyed) ctx.status(text('notReopened', 'The last layout could not open here: {error}', { error: report.reason ?? '' }), 'error');
     }).catch((error: unknown) => {
-      if (!destroyed) ctx.status(text('notLoaded', 'Saved layouts could not be read: {error}', { error: error instanceof Error ? error.message : String(error) }), 'error');
+      if (!destroyed) ctx.status(text('notLoaded', 'Saved layouts could not be read: {error}', { error: errorText(ctx, error) }), 'error');
     });
   }
   return {

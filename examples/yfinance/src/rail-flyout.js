@@ -208,7 +208,7 @@ export function openFlyout(opts) {
       '<span class="fly__glyph">' + toolGlyph(it.tool) + '</span>' +
       '<span class="fly__name">' + esc(opts.nameOf(it.tool)) + '</span>' +
       '<button type="button" class="fly__star" tabindex="-1" aria-pressed="' + pinned + '"' +
-        ' aria-label="' + (pinned ? 'Unpin from rail' : 'Pin to rail') + '">' +
+        ' aria-label="Pin to rail">' +
         chromeGlyph(pinned ? 'star-filled' : 'star') + '</button>' +
       '<kbd class="fly__chord">' + (chord ? esc(chord) : '') + '</kbd>';
     row.addEventListener('click', (e) => {
@@ -225,8 +225,8 @@ export function openFlyout(opts) {
     const on = !opts.isPinned(tool);
     opts.onPin(tool, on);
     const star = row.querySelector('.fly__star');
+    // One name; the pressed state says pinned.
     star.setAttribute('aria-pressed', String(on));
-    star.setAttribute('aria-label', on ? 'Unpin from rail' : 'Pin to rail');
     star.innerHTML = chromeGlyph(on ? 'star-filled' : 'star');
   };
 

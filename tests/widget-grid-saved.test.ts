@@ -116,6 +116,8 @@ describe('the chart grid saved layouts', () => {
     expect(must(menu, '[data-action="save"]').getAttribute('aria-disabled')).toBe('false');
     expect(control(root).dataset.attention).toBe('true');
     expect(control(root).getAttribute('aria-label')).toBe('Layouts: Desk, Unsaved changes');
+    fire(control(root), 'focus');
+    expect(control(root).getAttribute('aria-label')).toBe('Layouts: Desk, Unsaved changes');
   });
 
   it('hear a change inside a chart a new layout of the grid made', async () => {

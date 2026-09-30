@@ -87,7 +87,7 @@ describe('Momentum, measured parity', () => {
   });
 });
 
-describe('Rate Of Change, measured parity', () => {
+describe('Rate of Change, measured parity', () => {
   it('is 100 * (src - src[n]) / src[n]', () => {
     // close = 100 + i. At bar 9 the base is 100 and the rise is 9, so the
     // reading is exactly 9 percent; at bar 20 it is 100 * 9 / 111.

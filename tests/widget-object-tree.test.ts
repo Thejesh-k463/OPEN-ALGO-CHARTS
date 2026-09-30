@@ -100,3 +100,27 @@ it('executes same-pane drag ordering and cross-pane drops through the model', ()
   fire(root.querySelector('[data-pane-index="1"]')!, 'drop');
   expect(second.paneIndex).toBe(target.paneIndex);
 });
+
+it('names the add-to-selection button for its action and gives it no pressed state', () => {
+  const r = rig();
+  const one = r.draw.add({ tool: 'trend-line', paneIndex: 0, points: [{ time: 1, price: 2 }], style: {} });
+  const content = panels.createObjectsPanelContent(r.ctx); cleanup.push(() => content.destroy());
+  const root = content.element as unknown as FakeElement;
+  const control = root.querySelector(`[data-object-id="drawing:${one.id}"] [data-action="add-selection"]`)!;
+  fire(control, 'click');
+  expect(r.draw.selection()).toEqual([one.id]);
+  expect(control.getAttribute('aria-label')).toMatch(/^Remove .* from selection$/);
+  expect(control.getAttribute('aria-pressed')).toBeNull();
+});
+
+it('tells rows of one name apart and counts one object in the singular', () => {
+  const r = rig();
+  const one = r.draw.add({ tool: 'trend-line', paneIndex: 0, points: [{ time: 1, price: 2 }], style: {} });
+  const content = panels.createObjectsPanelContent(r.ctx); cleanup.push(() => content.destroy());
+  const root = content.element as unknown as FakeElement;
+  expect(root.querySelector('.oac-objects__count')!.textContent).toBe('1 object');
+  const two = r.draw.add({ tool: 'trend-line', paneIndex: 0, points: [{ time: 2, price: 3 }], style: {} });
+  const label = (id: string): string | null => root.querySelector(`[data-object-id="drawing:${id}"] [data-action="remove"]`)!.getAttribute('aria-label');
+  expect(label(one.id)).not.toBe(label(two.id));
+  expect(root.querySelector('.oac-objects__count')!.textContent).toBe('2 objects');
+});

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>OpenAlgo Charts — Market Profile (TPO) demo</title>
+  <title>OpenAlgo Charts: Market Profile (TPO) demo</title>
   <style>
     :root {
       --bg: #0a0c11; --panel: #0f121a; --elev: #151925; --elev-2: #1b2030;
@@ -80,7 +80,7 @@
     </select>
     <select id="block" title="how blocks render">
       <option value="compact" selected>Compact letters</option>
-      <option value="auto">Auto letters &#8646; bricks</option>
+      <option value="auto">Auto letters or bricks</option>
       <option value="letters">Standard letters</option>
       <option value="blocks+letters">Always letters</option>
       <option value="blocks">Bricks only</option>
@@ -104,9 +104,9 @@
     <button id="regen">Regenerate</button>
 
     <span class="spacer"></span>
-    <div class="stat"><span>POC</span><b id="s-poc">—</b></div>
-    <div class="stat"><span>Value area</span><b id="s-va">—</b></div>
-    <div class="stat"><span>Rows</span><b id="s-rows">—</b></div>
+    <div class="stat"><span>POC</span><b id="s-poc">-</b></div>
+    <div class="stat"><span>Value area</span><b id="s-va">-</b></div>
+    <div class="stat"><span>Rows</span><b id="s-rows">-</b></div>
   </div>
   <div class="bar">
     <label for="density" class="lbl">Row height</label>
@@ -202,7 +202,7 @@
       const s = res.sessions.at(-1);
       if (s) {
         el('s-poc').textContent = s.poc.toFixed(1);
-        el('s-va').textContent = `${s.val.toFixed(1)} – ${s.vah.toFixed(1)}`;
+        el('s-va').textContent = `${s.val.toFixed(1)} to ${s.vah.toFixed(1)}`;
         el('s-rows').textContent = String(s.levels.length);
       }
       if (densityLocked) requestAnimationFrame(applyDensity);
@@ -291,7 +291,7 @@
         ].filter(Boolean).map((t) => `<span class="tag">${t}</span>`).join(' ');
         tip.innerHTML =
           `<div class="t">${h.price.toFixed(1)}</div>` +
-          row('Letters', h.level.letters || '—') +
+          row('Letters', h.level.letters || '-') +
           row('TPO count', h.level.count) +
           row('Volume', Math.round(h.level.volume).toLocaleString()) +
           row('Day open', h.session.open.toFixed(1)) +

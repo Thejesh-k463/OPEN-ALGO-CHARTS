@@ -52,17 +52,17 @@ export function openTimelineMenu(app, anchor) {
   const markers = target.chart.eventMarkers();
   popupMenu(anchor, [
     { group: 'Timeline events (sample data)' },
-    { label: 'Show sample events', on: app.sampleEvents === true, onSelect: () => {
+    { label: 'Show sample events', check: true, on: app.sampleEvents === true, onSelect: () => {
       app.sampleEvents = !app.sampleEvents;
       for (const chart of [app.chart, app.chart2]) {
         const entry = chart && attachments.get(chart);
         if (entry) refreshTimeline(chart, entry);
       }
     } },
-    { label: 'Cluster nearby events', on: markers?.options().clustering, onSelect: () => {
+    { label: 'Cluster nearby events', check: true, on: markers?.options().clustering, onSelect: () => {
       if (target.current()) target.chart.setEventMarkerOptions({ clustering: !markers.options().clustering });
     } },
-    ...GROUPS.map(group => ({ label: group.label, on: markers?.isGroupVisible(group.id),
+    ...GROUPS.map(group => ({ label: group.label, check: true, on: markers?.isGroupVisible(group.id),
       onSelect: () => {
         if (target.current()) target.chart.setEventGroupVisible(group.id, !markers.isGroupVisible(group.id));
       } })),

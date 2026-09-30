@@ -322,7 +322,7 @@ export function openCompare(target = captureComparisonTarget()) {
   if (!available(target) || !addComparison) return;
   dialogTarget = captureComparisonTarget(target.pane);
   runtime(dialogTarget);
-  el('cmp-title').textContent = `Compare symbols: chart ${target.pane}`;
+  el('cmp-title').textContent = `Compare symbols: Chart ${target.pane}`;
   renderCompareList();
   el('cmpmodal').hidden = false;
   el('cmp-sym').value = '';

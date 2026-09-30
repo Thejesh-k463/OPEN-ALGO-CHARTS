@@ -34,7 +34,7 @@ import {
   type DrawingDocumentStore, type DrawingInstrument,
 } from 'openalgo-charts/draw';
 import { WidgetBus, type WidgetBusEvents, type WidgetStorage, type WidgetStorageError } from './context';
-import { widgetText } from './localization';
+import { errorText, widgetText } from './localization';
 import { sanitizePanelDockState } from './panel-dock';
 import { RAIL_PREFS_KEY, type RailPrefs } from './rail';
 import type { WidgetThemeName } from './tokens';
@@ -402,7 +402,7 @@ export function restoreWhenLoaded(this: PersistHost): Promise<void> {
     try { this._bus.shelter(() => applyLoaded.call(this, start)); }
     catch (error) {
       this._restoring = false;
-      this._toasts.toast(widgetText(this.context, 'The saved layout could not be restored: {error}', { error: error instanceof Error ? error.message : String(error) }), 'error');
+      this._toasts.toast(widgetText(this.context, 'The saved layout could not be restored: {error}', { error: errorText(this.context, error) }), 'error');
       // The drawings follow the instrument shown, and the chart loads it,
       // rather than stay empty. A second failure is the one just reported.
       try { releaseDrawings.call(this); startHeldLoad.call(this); } catch { /* reported above */ }
@@ -526,7 +526,7 @@ function applyLoaded(this: PersistHost, start: StartFacts): void {
  */
 export function reportStorage(this: PersistHost, failure: WidgetStorageError): void {
   if (this._destroyed) return;
-  const error = failure.error instanceof Error ? failure.error.message : String(failure.error);
+  const error = errorText(this.context, failure.error);
   if (failure.operation !== 'load') {
     this.context.status(widgetText(this.context, 'Saved chart settings could not be written: {error}', { error }), 'error');
     return;

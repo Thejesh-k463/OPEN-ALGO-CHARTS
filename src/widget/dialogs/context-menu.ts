@@ -26,7 +26,7 @@ import type { Chart, ContextMenuEvent, ContextMenuTarget, IndicatorApi, PriceSca
 import { drawingSettingsSchema } from 'openalgo-charts/draw';
 import type { Drawing } from 'openalgo-charts/draw';
 import { editableIds, type WidgetContext } from '../context';
-import { commandChord } from '../keymap';
+import { ariaKeys, commandChord } from '../keymap';
 import { boxInRoot, chromeGlyph, el, openPanel, placePanel, stopOwnKeys, type PanelHandle } from '../form';
 import { mountDrawingProperties } from './drawing-properties';
 import { mountIndicatorPicker } from './indicator-picker';
@@ -137,7 +137,7 @@ function drawingEntries(ctx: WidgetContext, primary: Drawing, ids: readonly stri
   out.push({ id: 'draw-props', label: many ? widgetText(ctx, 'Properties of the selection...') : widgetText(ctx, 'Properties...'), icon: 'settings',
     run: () => { mountDrawingProperties(ctx, undefined, { ids }); } });
   if (!many && isTextContent(primary)) {
-    out.push({ id: 'draw-text', label: widgetText(ctx, 'Edit text'), icon: 'text', chord: 'Enter', disabled: fixed, note: why, run: () => { mountTextEditor(ctx, undefined, { id: primary.id }); } });
+    out.push({ id: 'draw-text', label: widgetText(ctx, 'Edit text'), icon: 'text', disabled: fixed, note: why, run: () => { mountTextEditor(ctx, undefined, { id: primary.id }); } });
   }
   if (schema.fields.some((f) => f.kind === 'levels')) {
     out.push({ id: 'draw-levels', label: widgetText(ctx, 'Edit levels...'), disabled: fixed, note: why, run: () => { mountLevelEditor(ctx, undefined, { ids }); } });
@@ -148,9 +148,10 @@ function drawingEntries(ctx: WidgetContext, primary: Drawing, ids: readonly stri
     run: () => { void draw.cut(ids); } });
   out.push({ id: 'draw-duplicate', label: widgetText(ctx, 'Duplicate'), icon: 'duplicate', chord: commandChord(ctx.keymap, 'duplicate', 'Mod+D'), run: () => { draw.duplicate(ids); } });
   out.push(SEP);
-  out.push({ id: 'draw-lock', label: locked ? widgetText(ctx, 'Unlock') : widgetText(ctx, 'Lock'), icon: locked ? 'lock' : 'unlock', mark: 'check', on: locked, disabled: fixed, note: why,
+  // Checkbox rows keep their names; the check says locked or hidden.
+  out.push({ id: 'draw-lock', label: widgetText(ctx, 'Lock'), icon: locked ? 'lock' : 'unlock', mark: 'check', on: locked, disabled: fixed, note: why,
     run: () => { draw.updateMany(ids.map((id) => ({ id, patch: { locked: !locked } }))); } });
-  out.push({ id: 'draw-hide', label: hidden ? widgetText(ctx, 'Show') : widgetText(ctx, 'Hide'), icon: hidden ? 'eye-off' : 'eye', mark: 'check', on: hidden, disabled: fixed, note: why,
+  out.push({ id: 'draw-hide', label: widgetText(ctx, 'Hide'), icon: hidden ? 'eye-off' : 'eye', mark: 'check', on: hidden, disabled: fixed, note: why,
     run: () => { draw.updateMany(ids.map((id) => ({ id, patch: { visible: hidden } }))); } });
   out.push(SEP);
   out.push(header(widgetText(ctx, 'Order')));
@@ -402,7 +403,7 @@ export function contextMenuEntries(ctx: WidgetContext, e: ContextMenuEvent, hook
   }
 
   sep();
-  out.push({ id: 'chart-fit', label: widgetText(ctx, 'Fit all bars'), icon: 'fit',
+  out.push({ id: 'chart-fit', label: widgetText(ctx, 'Fit all bars'), icon: 'fit', chord: commandChord(ctx.keymap, 'chart:fitContent'),
     disabled: chart.navigationOptions().zoomEnabled === false,
     run: () => { if (chart.navigationOptions().zoomEnabled !== false) chart.fitContent(); } });
   if (target.kind !== 'time-scale') {
@@ -481,7 +482,12 @@ export function mountContextMenu(ctx: WidgetContext, anchor?: HTMLElement, opts:
       row.appendChild(mark);
       row.appendChild(el(doc, 'span', 'oac-ctx__label', item.label));
       if (item.note !== undefined && item.note !== '') row.appendChild(el(doc, 'span', 'oac-ctx__note', item.note));
-      if (item.chord !== undefined) row.appendChild(el(doc, 'kbd', 'oac-ctx__key', item.chord));
+      if (item.chord !== undefined) {
+        // Shown beside the name, said as the row's shortcut rather than read into its name.
+        const key = row.appendChild(el(doc, 'kbd', 'oac-ctx__key', item.chord));
+        key.setAttribute('aria-hidden', 'true');
+        row.setAttribute('aria-keyshortcuts', ariaKeys(item.chord));
+      }
       if (item.disabled === true) {
         row.setAttribute('aria-disabled', 'true');
       } else {

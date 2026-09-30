@@ -87,6 +87,15 @@ describe('default candle density', () => {
 });
 
 describe('the frame', () => {
+  it('names drawing rows the way the rail and the properties title do', () => {
+    const { w } = make();
+    const at = [{ time: 1, price: 2 }];
+    const line = w.draw.add({ tool: 'trend-line', paneIndex: 0, style: {}, points: at });
+    const xabcd = w.draw.add({ tool: 'xabcd-pattern', paneIndex: 0, style: {}, points: at });
+    expect(w.objects.get('drawing:' + line.id)?.name).toBe('Trend Line');
+    expect(w.objects.get('drawing:' + xabcd.id)?.name).toBe('XABCD Pattern');
+  });
+
   it('owns a live objects panel and routes edits to existing settings dialogs', () => {
     const { w, root, doc } = make();
     const drawing = w.draw.add({ tool: 'trend-line', paneIndex: 0, style: {}, points: [] });
@@ -264,6 +273,8 @@ describe('symbol, interval and chart type', () => {
     expect(a.root.querySelectorAll('.oac-pills > button').map((b) => b.dataset.interval)).toEqual(['1m', '5m', '15m', '1h', '1d', '1w', '2h']);
     const b = make({ intervals: ['5m', '1d'], interval: '1d' });
     expect(b.root.querySelectorAll('.oac-pills > button').map((x) => x.textContent)).toEqual(['5m', 'D']);
+    // Each name carries the text the pill shows.
+    expect(b.root.querySelectorAll('.oac-pills > button').map((x) => x.getAttribute('aria-label'))).toEqual(['Interval 5m', 'Interval D']);
     (b.root.querySelector('.oac-pills > button[data-interval="5m"]') as FakeElement).click();
     expect(b.w.interval()).toBe('5m');
   });

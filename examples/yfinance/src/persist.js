@@ -1,6 +1,6 @@
 import * as engine from '/dist/openalgo-charts.mjs';
 import * as drawTier from '/dist/openalgo-charts.draw.mjs';
-import { el, toast } from './ui.js';
+import { el, toast, plural } from './ui.js';
 import { volumeShown, setVolumeShown, volumeSettings, applyVolumeSettings } from './volume.js';
 import { syncTimezoneFromChart } from './timezone.js';
 import { comparisonSnapshot, restoreComparisons, syncComparisons } from './compare.js';
@@ -594,7 +594,7 @@ export async function importLayoutFile(file) {
   if (!report.applied) return false;
   if (report.secondaryReady && !await report.secondaryReady) return false;
   persistLayoutNow();
-  toast('success', `Layout imported: ${report.indicators} indicator(s), ${(doc.drawings && doc.drawings.drawings || []).length} drawing(s).`);
+  toast('success', `Layout imported: ${plural(report.indicators, 'indicator')}, ${plural((doc.drawings && doc.drawings.drawings || []).length, 'drawing')}.`);
   return true;
 }
 
@@ -615,7 +615,7 @@ export function initPersist(a) {
     const did = persistLayoutNow({ retryStorage: true });
     el('status').textContent = did === 'memory'
       ? 'layout kept in memory only (storage refused the write)'
-      : `layout saved · ${app.chart.indicators().length} indicator(s)`;
+      : `layout saved · ${plural(app.chart.indicators().length, 'indicator')}`;
     // The readout is overwritten by the next thing that happens; a save is
     // worth a notice that stays long enough to be read.
     if (did !== 'memory') toast('success', 'Layout saved');
@@ -626,7 +626,7 @@ export function initPersist(a) {
     const report = applyLayout(keepHostStudy(app.chart, doc), { keepView: true, replaceComparisons: true });
     // applyLayout has already raised the toast for a refused document.
     if (!report.applied) { el('status').textContent = 'restore failed: ' + report.reason; return; }
-    el('status').textContent = `layout restored · ${report.indicators} indicator(s) · ${report.series.length} series descriptor(s)`;
+    el('status').textContent = `layout restored · ${plural(report.indicators, 'indicator')} · ${plural(report.series.length, 'series descriptor')}`;
   });
   // The file buttons are optional markup: a page without them still saves.
   const exp = el('lexport');

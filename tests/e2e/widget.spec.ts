@@ -123,6 +123,11 @@ test('the settings dialog opens from the top bar and closes from its own button'
   expect(await dialog.locator('.oac-form .oac-row').count()).toBeGreaterThan(0);
   // Focus moved into the dialog, so the keyboard user is where the mouse user is.
   expect(await page.evaluate(() => document.activeElement?.closest('.oac-dialog') !== null)).toBe(true);
+  // A field's help text is its description, not part of its name.
+  await dialog.getByRole('tab', { name: 'Axes' }).click();
+  const scale = dialog.getByRole('combobox', { name: 'Scale', exact: true });
+  await expect(scale).toBeVisible();
+  await expect(scale).toHaveAttribute('aria-description', /Logarithmic/);
 
   await dialog.locator('.oac-dialog__head button[aria-label="Close"]').click();
   await expect(page.locator(DIALOG)).toHaveCount(0);
@@ -148,6 +153,71 @@ test('Escape closes the top overlay first and only then reaches the chart', asyn
   await page.mouse.move(600, 350);
   await page.keyboard.press('Escape');
   expect(await page.evaluate(() => (window as any).__widget.draw.activeTool())).toBeNull();
+  expect(errors).toEqual([]);
+});
+
+test('the legend buttons painted on the canvas say what they do under the pointer', async ({ page }) => {
+  const errors = await mount(page);
+  const id = await page.evaluate(() => (window as any).__widget.chart.addIndicator('rsi').id as string);
+  const name = await page.evaluate(studyId => (window as any).__widget.chart.indicators().find((s: any) => s.id === studyId).name as string, id);
+  const where = (action: string) => page.evaluate(([studyId, action]) => {
+    const { chart } = (window as any).__widget;
+    const study = chart.indicators().find((s: any) => s.id === studyId);
+    const pane = chart.panes()[study.paneIndex].element.getBoundingClientRect();
+    const button = (study.legend()._buttons as { id: string; x: number; y: number }[]).find(b => b.id.endsWith(`::${action}`));
+    return { row: { x: pane.left + 40, y: pane.top + 15 }, at: button ? { x: pane.left + button.x + 8, y: pane.top + button.y + 8 } : null };
+  }, [id, action] as const);
+  const tip = page.locator('.oac-tip.is-on');
+  for (const [action, said] of [['hide', `Hide ${name}`], ['settings', `Settings for ${name}`], ['close', `Remove ${name}`]] as const) {
+    await page.mouse.move((await where(action)).row.x, (await where(action)).row.y);
+    let at = (await where(action)).at;
+    expect(at, action).not.toBeNull();
+    // The controls reveal on hover and can shift as they do; follow them until they hold still.
+    for (let tries = 0; tries < 4; tries++) {
+      await page.mouse.move(at!.x, at!.y);
+      const next = (await where(action)).at!;
+      const settled = Math.abs(next.x - at!.x) < 0.5 && Math.abs(next.y - at!.y) < 0.5;
+      at = next;
+      if (settled) break;
+    }
+    await expect(tip).toHaveText(said);
+  }
+  // Off the buttons, the label goes.
+  await page.mouse.move(10, 690);
+  await expect(tip).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('the close boxes on order and position lines say what they do under the pointer', async ({ page }) => {
+  const errors = await mount(page);
+  // The chart's own trading layer, and a position marker from the trade tier.
+  const lines = await page.evaluate(async () => {
+    const { chart } = (window as any).__widget;
+    const { PositionMarker } = await import('/dist/openalgo-charts.trade.mjs' as string);
+    const close = chart.primaryBars().at(-1).close as number;
+    chart.trading.setOrders([{ id: 'o1', side: 'buy', type: 'limit', size: 1, price: close - 6 }]);
+    chart.trading.setPositions([{ id: 'p1', side: 'long', size: 2, entryPrice: close - 3 }]);
+    chart.addPrimitive(new PositionMarker({ symbol: 'FIXTURE', netQty: 3, avgPrice: close + 3 }));
+    (window as any).__hover = null;
+    chart.on('hover', (e: { id: string | null }) => { (window as any).__hover = e.id; });
+    const box = document.querySelector('.oac-widget .oac-chart')!.getBoundingClientRect();
+    const at = (price: number) => box.top + chart.priceToCoordinate(price);
+    return { left: box.left, width: box.width, order: at(close - 6), position: at(close - 3), marker: at(close + 3) };
+  });
+  const tip = page.locator('.oac-tip.is-on');
+  // A pill group sits along its line; walk the pointer along it until the close box answers.
+  for (const [y, id, said] of [[lines.order, 'ord:o1::close', 'Cancel order'], [lines.position, 'pos:p1::close', 'Close position'],
+    [lines.marker, 'position:FIXTURE::close', 'Close position']] as const) {
+    let found = false;
+    for (let x = lines.left + 20; x < lines.left + lines.width - 60 && !found; x += 3) {
+      await page.mouse.move(x, y);
+      found = await page.evaluate(want => (window as any).__hover === want, id);
+    }
+    expect(found, id).toBe(true);
+    await expect(tip).toHaveText(said);
+    await page.mouse.move(10, 690);
+    await expect(tip).toHaveCount(0);
+  }
   expect(errors).toEqual([]);
 });
 

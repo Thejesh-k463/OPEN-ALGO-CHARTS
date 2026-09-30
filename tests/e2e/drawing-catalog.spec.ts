@@ -25,6 +25,13 @@ test('the gallery exposes every registered drawing in both its picker and rail',
   expect(missing).toEqual([]);
 });
 
+test('the status line says what opens the properties of a drawing, and double-click is not it', async ({ page }) => {
+  await mount(page);
+  // Right-click or the drawing's toolbar opens them; a double-click resets the scale.
+  await expect(page.locator('#status')).toContainText('Right-click a drawing, or use its toolbar, for properties.');
+  await expect(page.locator('#status')).not.toContainText('Double-click a drawing');
+});
+
 test('every drawing paints, restores and stays clipped inside the chart', async ({ page }, info) => {
   test.setTimeout(180_000);
   const errors: string[] = [];

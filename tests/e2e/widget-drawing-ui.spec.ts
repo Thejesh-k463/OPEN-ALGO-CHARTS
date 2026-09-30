@@ -182,7 +182,7 @@ test('a saved default reaches the next drawing placed with that tool, in the one
   await bar.locator('[data-drawbar="width"]').click();
   await page.getByRole('menuitemradio', { name: '3 px' }).click();
   await bar.locator('[data-drawbar="more"]').click();
-  await page.getByRole('menuitemradio', { name: 'Save as default for this tool' }).click();
+  await page.getByRole('menuitem', { name: 'Save as default for this tool' }).click();
   await expect.poll(() => page.evaluate(async () => (await window.__drawUi.templates.load()).defaults.map(d => d.tool))).toEqual(['trend-line']);
   const existing = await page.evaluate(() => window.__drawUi.widget.draw.get(window.__drawUi.ids.box)!.style.lineWidth);
 
@@ -220,7 +220,7 @@ test('a named template saves from the more menu and applies to another drawing o
     widget.draw.select(ids.trend);
   });
   await bar.locator('[data-drawbar="more"]').click();
-  await page.getByRole('menuitemradio', { name: 'Save as template...' }).click();
+  await page.getByRole('menuitem', { name: 'Save as template...' }).click();
   const input = page.getByLabel('Template name');
   await expect(input).toBeFocused();
   await input.fill('Swing low support');
@@ -228,7 +228,7 @@ test('a named template saves from the more menu and applies to another drawing o
   await expect(input).toBeHidden();
   await page.evaluate(() => window.__drawUi.widget.draw.select((window as unknown as { second: string }).second));
   await bar.locator('[data-drawbar="more"]').click();
-  await page.getByRole('menuitemradio', { name: 'Apply Swing low support' }).click();
+  await page.getByRole('menuitem', { name: 'Apply Swing low support' }).click();
   expect(await page.evaluate(() => window.__drawUi.widget.draw.get((window as unknown as { second: string }).second)!.style.color)).toBe('#f0a020');
   await page.evaluate(() => window.__drawUi.widget.history.undo());
   expect(await page.evaluate(() => window.__drawUi.widget.draw.get((window as unknown as { second: string }).second)!.style.color)).not.toBe('#f0a020');
@@ -272,7 +272,7 @@ test('the coordinates tab shows each anchor on the chart clock and moves it to a
   const errors = await mount(page);
   await select(page, 'trend');
   await page.locator('.oac-drawbar [data-drawbar="more"]').click();
-  await page.getByRole('menuitemradio', { name: 'Properties...' }).click();
+  await page.getByRole('menuitem', { name: 'Properties...' }).click();
   const dialog = page.locator('.oac-props');
   await dialog.getByRole('tab', { name: 'Coordinates' }).click();
   const anchor = await style(page, 'trend');
@@ -303,7 +303,7 @@ test('a date typed into the coordinates tab moves the anchor once, when the focu
   const errors = await mount(page);
   await select(page, 'trend');
   await page.locator('.oac-drawbar [data-drawbar="more"]').click();
-  await page.getByRole('menuitemradio', { name: 'Properties...' }).click();
+  await page.getByRole('menuitem', { name: 'Properties...' }).click();
   const dialog = page.locator('.oac-props');
   await dialog.getByRole('tab', { name: 'Coordinates' }).click();
   const anchor = await style(page, 'trend');
@@ -339,7 +339,7 @@ test('the objects panel reorders by dragging a row and by Alt with an arrow key'
   const errors = await mount(page);
   await page.evaluate(() => window.__drawUi.widget.openObjects());
   const stack = () => page.evaluate(() => window.__drawUi.widget.objects.stack(0).map(item => item.name));
-  expect(await stack()).toEqual(['RELIANCE', 'Trend line', 'Horizontal line', 'Rectangle']);
+  expect(await stack()).toEqual(['RELIANCE', 'Trend Line', 'Horizontal Line', 'Rectangle']);
   const rows = page.locator('.oac-objects__row[data-object-id^="drawing:"]');
   await expect(page.locator('.oac-objects__hint')).toContainText('back to front');
   await expect(rows.first().locator('.oac-objects__grip')).toBeVisible();
@@ -355,11 +355,11 @@ test('the objects panel reorders by dragging a row and by Alt with an arrow key'
   await page.mouse.move(target.x + 62, target.y + target.height - 5, { steps: 3 });
   await page.waitForTimeout(100);
   await page.mouse.up();
-  await expect.poll(stack).toEqual(['RELIANCE', 'Horizontal line', 'Rectangle', 'Trend line']);
+  await expect.poll(stack).toEqual(['RELIANCE', 'Horizontal Line', 'Rectangle', 'Trend Line']);
   await page.screenshot({ path: info.outputPath('objects-dragged.png') });
   await page.locator('.oac-objects__row[data-object-id^="drawing:"]').last().locator('.oac-objects__summary').focus();
   await page.keyboard.press('Alt+ArrowUp');
-  await expect.poll(stack).toEqual(['RELIANCE', 'Horizontal line', 'Trend line', 'Rectangle']);
+  await expect.poll(stack).toEqual(['RELIANCE', 'Horizontal Line', 'Trend Line', 'Rectangle']);
   expect(errors).toEqual([]);
 });
 

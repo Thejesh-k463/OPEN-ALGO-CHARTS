@@ -17,7 +17,7 @@
  * none of this.
  */
 import { inTextField } from './context';
-import { widgetText, type WidgetTranslationOptions } from './localization';
+import { errorText, widgetText, type WidgetTranslationOptions } from './localization';
 
 export interface LazyPart<T> {
   /** The module once it has arrived, else null. */
@@ -100,7 +100,7 @@ export function usePart<T>(part: LazyPart<T>, use: (module: T) => void, failed: 
 
 /** What a part that could not load says: its name and the reason. */
 export function partFailed(text: WidgetTranslationOptions, name: string, error: unknown): string {
-  return widgetText(text, '{name} could not load: {error}', { name, error: error instanceof Error ? error.message : String(error) });
+  return widgetText(text, '{name} could not load: {error}', { name, error: errorText(text, error) });
 }
 
 /**

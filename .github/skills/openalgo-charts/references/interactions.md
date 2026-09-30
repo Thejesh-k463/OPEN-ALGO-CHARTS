@@ -117,8 +117,8 @@ On by default. `chart.shortcuts` is the `ShortcutManager`, or `null` when disabl
 | `panDown` | Pan down | `ArrowDown` | `panes[0].priceScale.panByPixels(-20)` |
 | `zoomIn` | Zoom in | `Equal`, `Shift+Equal`, `NumpadAdd` | `zoomAtX(width/2, 1.1)` |
 | `zoomOut` | Zoom out | `Minus`, `NumpadSubtract` | `zoomAtX(width/2, 1/1.1)` |
-| `resetScale` | Reset scale | `Home`, `Digit0` | `resetScale()` |
-| `fitContent` | Fit content | `Alt+KeyF` | `timeScale.fitContent(length)` |
+| `resetScale` | Reset view | `Home`, `Digit0` | `resetScale()` |
+| `fitContent` | Fit all bars | `Alt+KeyF` | `timeScale.fitContent(length)` |
 | `screenshot` | Screenshot (PNG) | `Alt+Shift+KeyS` | `downloadScreenshot()` |
 | `toggleGridVert` | Toggle vertical grid | `Alt+KeyV` | flips `grid.vertLines` |
 | `toggleGridHorz` | Toggle horizontal grid | `Alt+KeyH` | flips `grid.horzLines` |

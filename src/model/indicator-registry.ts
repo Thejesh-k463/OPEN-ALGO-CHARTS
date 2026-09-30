@@ -1103,7 +1103,7 @@ export function getIndicator(id: string): IndicatorDescriptor {
   const d = registry.get(id);
   if (d === undefined) {
     throw new Error(
-      `openalgo-charts: unknown indicator "${id}" — did you import 'openalgo-charts/indicators'?`,
+      `openalgo-charts: unknown indicator "${id}", did you import 'openalgo-charts/indicators'?`,
     );
   }
   return d;

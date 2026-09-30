@@ -938,16 +938,20 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
     const label = el(doc, 'label', className, c.kind === 'timestamp'
       ? widgetText(opts, '{label} (UTC seconds)', { label: c.label }) : c.label);
     // The mark rides inside the label so it lands the same way in all three row
-    // shapes below, and so a pointer-less device can still reach it by tab.
+    // shapes below. It is for the pointer: inside the label its text would be
+    // read as part of the control's name, so the control carries it as its
+    // description instead (bindLabel).
     if (c.tooltip !== undefined && c.tooltip !== '') {
       const help = el(doc, 'span', 'oac-help', '?');
       help.title = c.tooltip;
-      help.tabIndex = 0;
-      help.setAttribute('role', 'note');
-      help.setAttribute('aria-label', c.tooltip);
+      help.setAttribute('aria-hidden', 'true');
       label.appendChild(help);
     }
     return label;
+  };
+  const bindLabel = (label: HTMLLabelElement, control: HTMLElement, c: FormControl): void => {
+    label.htmlFor = control.id;
+    if (c.tooltip !== undefined && c.tooltip !== '') control.setAttribute('aria-description', c.tooltip);
   };
   const member = (c: FormControl, row: HTMLElement, head: HTMLElement | undefined, fields: Bound[], parts: HTMLElement[]): Member => {
     const m: Member = { control: c, fields, parts, offKeys: fields.map(f => f.key), offEl: row, offClass: 'oac-row--off',
@@ -973,11 +977,20 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
 
   let lastGroup: string | undefined;
   let head: HTMLElement | undefined;
+  // Where rows go: the form, or the group of the heading above them.
+  let box = host;
   let inline: { id: string; row: HTMLElement; ctl: HTMLElement } | null = null;
   for (const c of controls) {
     if (c.group !== undefined && c.group !== lastGroup) {
       head = el(doc, 'div', 'oac-head', c.group);
       host.appendChild(head);
+      // The rows under a heading are a group it names, so a second Color says
+      // whose. The box takes no layout (display: contents), the rows stay the grid's.
+      head.id = idFor(`group-${members.length}`);
+      box = el(doc, 'div', 'oac-form__group');
+      box.setAttribute('role', 'group');
+      box.setAttribute('aria-labelledby', head.id);
+      host.appendChild(box);
       inline = null;
     }
     lastGroup = c.group ?? lastGroup;
@@ -989,7 +1002,7 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
       const f = field(c.key, c.kind, c, opts.values[c.key]);
       f.b.control.id = idFor(c.key);
       const label = labelFor(c, 'oac-inline__label');
-      label.htmlFor = (f.b.focus ?? f.b.control).id;
+      bindLabel(label, f.b.focus ?? f.b.control, c);
       bound.push(f.b);
       const item = el(doc, 'span', 'oac-inline__item');
       item.dataset.key = c.key;
@@ -1015,7 +1028,7 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
       const ctl = el(doc, 'div', 'oac-row__ctl');
       ctl.appendChild(body);
       row.appendChild(ctl);
-      host.appendChild(row);
+      box.appendChild(row);
       // The body is the dialog's own markup, so there is nothing here to
       // disable: a condition can only show or hide it.
       member(c, row, head, [], [row]).offEl = null;
@@ -1029,7 +1042,7 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
         const sw = field(pair.enabled.key, 'boolean', c, opts.values[pair.enabled.key]);
         sw.ctl.classList.add('oac-row__sw');
         sw.ctl.id = idFor(pair.enabled.key);
-        label.htmlFor = sw.ctl.id;
+        bindLabel(label, sw.ctl, c);
         bound.push(sw.b);
         fields.push(sw.b);
         row.appendChild(sw.ctl);
@@ -1038,8 +1051,10 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
       }
       row.appendChild(label);
       const ctl = el(doc, 'div', 'oac-row__ctl');
+      let first: HTMLElement | undefined;
       for (const half of [pair.up, pair.down]) {
         const f = field(half.key, 'color', c, opts.values[half.key]);
+        first ??= f.b.focus ?? f.b.control;
         f.b.control.id = idFor(half.key);
         // Which swatch is which is not obvious at 26px, and the row is too
         // tight for two more labels, so the name rides on the control.
@@ -1050,9 +1065,9 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
         fields.push(f.b);
         ctl.appendChild(f.ctl);
       }
-      if (pair.enabled === undefined) label.htmlFor = `${idFor(pair.up.key)}-trigger`;
+      if (pair.enabled === undefined && first !== undefined) bindLabel(label, first, c);
       row.appendChild(ctl);
-      host.appendChild(row);
+      box.appendChild(row);
       // Inert only when both halves are: one live half keeps the row live and
       // dims the swatch with nothing to paint.
       member(c, row, head, fields, [row]).offKeys = [pair.up.key, pair.down.key];
@@ -1061,7 +1076,7 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
 
     const f = field(c.key, c.kind, c, opts.values[c.key]);
     f.b.control.id = idFor(c.key);
-    label.htmlFor = (f.b.focus ?? f.b.control).id;
+    bindLabel(label, f.b.focus ?? f.b.control, c);
     bound.push(f.b);
     let parts: HTMLElement[] = [row];
     let titles: HTMLElement[] = [row];
@@ -1100,7 +1115,7 @@ export function renderForm(host: HTMLElement, controls: readonly FormControl[], 
       inline = { id: c.inline as string, row, ctl: row.lastChild as HTMLElement };
     }
     errorLine(c.key, f.b, row);
-    host.appendChild(row);
+    box.appendChild(row);
     const m = member(c, row, head, [f.b], parts);
     m.titles = titles;
     rows.get(c.key)!.member = m;

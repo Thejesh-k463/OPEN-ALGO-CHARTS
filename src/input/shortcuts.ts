@@ -63,7 +63,8 @@ const MODIFIER_KEYS = new Set([
   'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight', 'OSLeft', 'OSRight',
 ]);
 
-function detectMac(): boolean {
+/** Internal: the chart's key hints read it too. Not part of the package's API. */
+export function detectMac(): boolean {
   return typeof navigator !== 'undefined' && /mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent || '');
 }
 
@@ -148,8 +149,8 @@ export const DEFAULT_KEYMAP: KeymapEntry[] = [
   { command: 'panDown', label: 'Pan down', combos: ['ArrowDown'] },
   { command: 'zoomIn', label: 'Zoom in', combos: ['Equal', 'Shift+Equal', 'NumpadAdd'] },
   { command: 'zoomOut', label: 'Zoom out', combos: ['Minus', 'NumpadSubtract'] },
-  { command: 'resetScale', label: 'Reset scale', combos: ['Home', 'Digit0'] },
-  { command: 'fitContent', label: 'Fit content', combos: ['Alt+KeyF'] },
+  { command: 'resetScale', label: 'Reset view', combos: ['Home', 'Digit0'] },
+  { command: 'fitContent', label: 'Fit all bars', combos: ['Alt+KeyF'] },
   { command: 'screenshot', label: 'Screenshot (PNG)', combos: ['Alt+Shift+KeyS'] },
   { command: 'toggleGridVert', label: 'Toggle vertical grid', combos: ['Alt+KeyV'] },
   { command: 'toggleGridHorz', label: 'Toggle horizontal grid', combos: ['Alt+KeyH'] },

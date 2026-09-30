@@ -14,6 +14,7 @@ import { getIndicator, indicatorDefaults, indicatorStyleInputs } from 'openalgo-
 import type { IndicatorApi, IndicatorDescriptor, IndicatorInput, IndicatorSettings, IndicatorStudySource } from 'openalgo-charts';
 import type { WidgetContext } from '../context';
 import { mountIndicatorInputControls, type IndicatorInputControlsHandle } from '../indicator-input-controls';
+import { studyNames } from '../objects-panel';
 import {
   button, controlsFromInputs, dialogFrame, el, openPanel, renderForm, tabList,
   type FormHandle, type PanelHandle,
@@ -156,6 +157,7 @@ export function mountIndicatorSettings(
       if (input.type !== 'source') continue;
       const control = controls.find(item => item.key === input.key)!;
       const options = [...(control.options ?? [])], references = new Map<string, IndicatorStudySource>();
+      const names = studyNames(ctx.chart);
       if (input.allowStudyOutputs) for (const producer of ctx.chart.indicators()) {
         if (producer.id === inst.id) continue;
         for (const plot of getIndicator(producer.indicatorId).plots) {
@@ -163,7 +165,7 @@ export function mountIndicatorSettings(
           const token = `study-output:${references.size}`;
           references.set(token, { kind: 'indicator', instanceId: producer.id, plotKey: plot.key });
           const title = widgetText(ctx, `schema.indicator.${producer.indicatorId}.plot.${plot.key}`, {}, plot.title ?? plot.key);
-          options.push({ value: token, label: `${producer.name} [${producer.id}] / ${title}` });
+          options.push({ value: token, label: `${names.get(producer.id)!} / ${title}` });
         }
       }
       control.options = options;

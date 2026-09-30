@@ -276,7 +276,7 @@ test('the grid bar lays out four by four and an uneven layout from the picker, b
   const errors = await mount(page, '2x2', { width: 1360, height: 900 }, '&toolbar=1');
   await readyEvery(page);
   await page.locator('.oac-grid__layout').click();
-  const picker = page.getByRole('menu', { name: 'Layouts' });
+  const picker = page.getByRole('menu', { name: 'Arrange charts' });
   await expect(picker).toBeVisible();
   await expect(picker.getByRole('menuitemradio')).toHaveCount(26);
   await expect(picker.getByRole('menuitemradio', { name: 'Two by two' })).toHaveAttribute('aria-checked', 'true');
@@ -334,7 +334,7 @@ test('a chart maximizes from the bar, a double click on its bar and Alt+Enter, a
   await expect(page.locator('.oac-grid__cell:visible')).toHaveCount(1);
   await expect(cells.nth(1)).toBeVisible();
   await expect(page.locator('.oac-grid__tab')).toHaveCount(4);
-  await expect(page.locator('.oac-grid__max')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.oac-grid__max')).toHaveAttribute('aria-label', 'Restore the grid');
   await expect.poll(() => cells.nth(1).locator('.oac-chart').evaluate(el => el.clientWidth)).toBeGreaterThan(1200);
   await expect.poll(() => painted(page, 1)).toBe(true);
   await page.screenshot({ path: info.outputPath('grid-maximized.png') });
@@ -460,7 +460,7 @@ test('one PNG of the whole grid puts each chart own pixels at its place, from th
   await page.locator('.oac-grid__cell').nth(1).locator('.oac-topbar button[aria-label="Capture chart"]').click();
   await expect(page.locator('.oac-grid__cell').nth(1).locator('.oac-menu .oac-head')).toHaveText('Every chart');
   const second = page.waitForEvent('download');
-  await page.locator('.oac-grid__cell').nth(1).getByRole('menuitemradio', { name: 'Download PNG of every chart' }).click();
+  await page.locator('.oac-grid__cell').nth(1).getByRole('menuitem', { name: 'Download PNG of every chart' }).click();
   expect((await second).suggestedFilename()).toMatch(/^charts-1x2-/);
   await page.screenshot({ path: info.outputPath('grid-capture.png') });
   expect(errors).toEqual([]);
@@ -473,7 +473,7 @@ test('at phone width the bar stays usable: menus fit, maximize and capture say w
   await expect(page.locator('.oac-grid__tab')).toHaveCount(4);
   await expect(page.locator('.oac-grid__max')).toHaveAttribute('aria-disabled', 'true');
   await page.locator('.oac-grid__layout').click();
-  const picker = (await page.getByRole('menu', { name: 'Layouts' }).boundingBox())!;
+  const picker = (await page.getByRole('menu', { name: 'Arrange charts' }).boundingBox())!;
   expect(picker.x).toBeGreaterThanOrEqual(0);
   expect(picker.x + picker.width).toBeLessThanOrEqual(400);
   await page.screenshot({ path: info.outputPath('grid-phone-picker.png') });
@@ -586,6 +586,12 @@ test('the grid bar keeps the desk saved layouts: save, change, and the saved des
   // A change to the desk is unsaved (autosave is off), and the mark says so.
   await page.evaluate(() => (window as any).fixture.grid.setPreset('1x1'));
   await expect(control).toHaveAttribute('data-attention', 'true');
+  await expect(control).toHaveAccessibleName('Layouts: Morning desk, Unsaved changes');
+  // Escape handed focus back to the control, so focus goes elsewhere first:
+  // only a fresh focus raises its tip, which is what rewrote the name.
+  await page.locator('.oac-grid__layout').focus();
+  await control.focus();
+  await expect(page.locator('.oac-tip.is-on')).toBeVisible();
   await expect(control).toHaveAccessibleName('Layouts: Morning desk, Unsaved changes');
   // The grid's own desk comes back as the one chart, and then the layout that was active opens over it.
   await page.reload();

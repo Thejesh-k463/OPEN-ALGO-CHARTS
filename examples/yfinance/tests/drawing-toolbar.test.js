@@ -11,6 +11,7 @@ vi.mock('../src/persist.js', () => ({ autosave: vi.fn() }));
 vi.mock('../src/rail.js', () => ({
   buildRail: vi.fn(), syncRail: vi.fn(), syncMobileControls: vi.fn(), observeMobileControls: vi.fn(),
   armCursor: vi.fn(), setDrawLock: vi.fn(), magnetMode: () => 'off', stayMode: () => false,
+  toolName: (id) => ({ 'trend-line': 'Trend Line' }[id] ?? id),
 }));
 vi.mock('../src/clipboard.js', () => ({
   clipboardPort: undefined, activeDraw: () => null, canClip: () => false, clipboardAction: vi.fn(),
@@ -110,7 +111,8 @@ describe('the controller the host attaches', () => {
 
   it('says what the user drew, and nothing for a mark the host put back', () => {
     line(app.draw);
-    expect($('status').textContent).toBe('drew trend-line');
+    // The tool by its name, not its id.
+    expect($('status').textContent).toBe('drew Trend Line');
     $('status').textContent = '';
     addSessionMark(app.draw, { time: T0 + 600, price: 101 }, 'AAPL');
     expect($('status').textContent).toBe('');

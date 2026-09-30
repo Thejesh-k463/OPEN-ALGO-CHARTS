@@ -25,7 +25,7 @@
 import type { WorkspaceDocument } from 'openalgo-charts/workspace';
 import type { WidgetContext } from './context';
 import { button, dialogFrame, el, openPanel, type PanelHandle } from './form';
-import { widgetText } from './localization';
+import { errorText, widgetText } from './localization';
 import type { LayoutsController, LayoutsState } from './layouts';
 import { layoutStatusText, layoutText } from './layouts-widget';
 import { addWidgetStyles } from './styles';
@@ -186,7 +186,7 @@ export function mountLayoutsMenu(ctx: WidgetContext, controller: LayoutsControll
     b.setAttribute('aria-disabled', String(off));
     if (off && why !== undefined) b.title = why; else b.removeAttribute('title');
   };
-  const reason = (thrown: unknown): string => thrown instanceof Error ? thrown.message : String(thrown);
+  const reason = (thrown: unknown): string => errorText(ctx, thrown);
   const rowFor = (id: string): HTMLElement | null =>
     Array.from(lists.querySelectorAll<HTMLElement>('.oac-layouts__row')).find(b => b.dataset.layoutId === id) ?? null;
   /**

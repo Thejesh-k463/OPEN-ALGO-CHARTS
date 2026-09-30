@@ -173,7 +173,7 @@ export function openAccountPanel(anchor) {
   root.setAttribute('aria-label', 'Sandbox broker');
   const head = node('div', 'acct-head');
   head.append(node('span', 'acct-title', 'Sandbox broker'), button('×', () => close(), 'acct-x'));
-  head.lastChild.setAttribute('aria-label', 'Close');
+  head.lastChild.setAttribute('aria-label', 'Close panel');
   const summaryHost = node('div', 'acct-summary');
   const note = node('p', 'acct-note', `Analyzer mode against a simulated provider. ${symbol} fills at the last close shown.`);
   const message = node('p', 'acct-msg');
@@ -197,7 +197,7 @@ export function openAccountPanel(anchor) {
   const qty = numberInput('Quantity', ticket.qty, '1');
   const limit = numberInput('Limit price', ticket.price, '0.01');
   const leverage = numberInput('Leverage', '', '1');
-  leverage.placeholder = 'account';
+  leverage.placeholder = 'Account default';
   const expiry = node('input', 'acct-expiry');
   expiry.type = 'datetime-local';
   expiry.setAttribute('aria-label', 'Expiry');
@@ -262,7 +262,7 @@ export function openAccountPanel(anchor) {
     commands.push(b);
     return b;
   };
-  const closeAll = command('Close', 'close', () => engine.closePosition({ symbol }));
+  const closeAll = command('Close position', 'close', () => engine.closePosition({ symbol }));
   const closePart = command('Close part', 'close', () => engine.closePosition({ symbol, qty: Number(partQty.value) }));
   const reverse = command('Reverse', 'reverse', () => engine.reversePosition({ symbol }));
   closeAll.id = 'acct-close';

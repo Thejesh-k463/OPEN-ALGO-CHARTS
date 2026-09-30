@@ -139,20 +139,20 @@
       </select>
       <select id="ctype" class="field" title="chart type">
         <option value="candlestick">Candles</option>
-        <option value="hollow-candle">Hollow Candles</option>
-        <option value="bar">Bars (OHLC)</option>
-        <option value="high-low">High-Low</option>
-        <option value="volume-candle">Volume Candles</option>
+        <option value="hollow-candle">Hollow candles</option>
+        <option value="bar">Bars</option>
+        <option value="high-low">High-low</option>
+        <option value="volume-candle">Volume candles</option>
         <option value="line">Line</option>
-        <option value="line-markers">Line + Markers</option>
-        <option value="step">Step</option>
+        <option value="line-markers">Line with markers</option>
+        <option value="step">Step line</option>
         <option value="area">Area</option>
-        <option value="hlc-area">HLC Area</option>
+        <option value="hlc-area">HLC area</option>
         <option value="baseline">Baseline</option>
         <option value="heikin-ashi">Heikin Ashi</option>
         <option value="renko">Renko</option>
-        <option value="range">Range</option>
-        <option value="line-break">Line Break</option>
+        <option value="range">Range bars</option>
+        <option value="line-break">Line break</option>
       </select>
     </div>
     <div class="divider"></div>
@@ -160,7 +160,7 @@
       <button id="connect" class="btn btn--primary">Connect</button>
       <button id="disconnect" class="btn btn--ghost">Disconnect</button>
       <button id="fit" class="btn" title="restore the default view (fit bars + auto price scale), same as double-click">Fit</button>
-      <button id="snap" class="btn" title="save the chart as a PNG (composites all layers; browser right-click save only captures the crosshair overlay)">📷 PNG</button>
+      <button id="snap" class="btn" title="save the chart as a PNG (composites all layers; browser right-click save only captures the crosshair overlay)">Save PNG</button>
     </div>
     <div class="status"><span class="status-dot"></span><span id="status">enter your API key and Connect</span></div>
   </header>
@@ -174,7 +174,7 @@
     <span class="spacer"></span>
     <label class="lbl">Qty <input type="number" id="qty" class="field field--qty" value="1" min="1" title="order quantity" /></label>
     <select id="product" class="field" title="product"><option>MIS</option><option>CNC</option><option>NRML</option></select>
-    <label class="chk"><input type="checkbox" id="arm" /> <span>Arm trading</span></label>
+    <label class="chk"><input type="checkbox" id="live-trading" /> <span>Live trading</span></label>
     <span class="chip" id="mode" title="OpenAlgo order routing mode">mode -</span>
     <span class="hint">right-click chart to order</span>
   </div>
@@ -385,7 +385,7 @@
     // Exit the open position at market (square off to flat via placesmartorder position_size 0).
     async function exitPosition() {
       if (!trade || !position) return;
-      if (!el('arm').checked) { el('status').textContent = 'Tick "Arm trading" to exit the position'; el('arm').focus(); return; }
+      if (!el('live-trading').checked) { el('status').textContent = 'Turn on "Live trading" to exit the position'; el('live-trading').focus(); return; }
       const qty = Math.abs(position.net), side = position.net > 0 ? 'SELL' : 'BUY';
       const summary = `close ${position.net > 0 ? 'LONG' : 'SHORT'} ${qty} ${lastReq.symbol} @ market`;
       if (isLiveMode() && !window.confirm(`LIVE - ${summary}\n\nProceed?`)) return;
@@ -401,7 +401,7 @@
     }
     async function placeFromMenu(side, type) {
       if (!trade) { el('status').textContent = 'connect first (click Connect)'; return; }
-      if (!el('arm').checked) { el('status').textContent = 'Tick "Arm trading" in the toolbar to place orders'; el('arm').focus(); return; }
+      if (!el('live-trading').checked) { el('status').textContent = 'Turn on "Live trading" in the toolbar to place orders'; el('live-trading').focus(); return; }
       const qty = Math.max(1, Number(el('qty').value) || 1), product = el('product').value;
       const price = type === 'MARKET' ? 0 : round2v(ctxPrice);
       if (!stopSideOk(side, type, price)) {

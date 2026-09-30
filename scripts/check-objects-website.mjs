@@ -64,17 +64,17 @@ try {
     await expect(panel.getByText('No objects match your search.', { exact: true })).toBeVisible();
     await panel.getByRole('searchbox').fill('trend');
     const line = panel.locator('[data-object-id^="drawing:"]').filter({
-      has: page.getByText('Trend line', { exact: true }),
+      has: page.getByText('Trend Line', { exact: true }),
     });
-    await line.getByRole('button', { name: 'Select Trend line', exact: true }).click();
-    await expect(line.getByRole('button', { name: 'Select Trend line', exact: true }))
+    await line.getByRole('button', { name: 'Select Trend Line', exact: true }).click();
+    await expect(line.getByRole('button', { name: 'Select Trend Line', exact: true }))
       .toHaveAttribute('aria-pressed', 'true');
-    await line.getByRole('button', { name: 'Hide Trend line', exact: true }).click();
+    await line.getByRole('button', { name: 'Hide Trend Line', exact: true }).click();
     await expect(line).toContainText('Hidden');
-    await line.getByRole('button', { name: 'Show Trend line', exact: true }).click();
-    await line.getByRole('button', { name: 'Lock Trend line', exact: true }).click();
-    await expect(line.getByRole('button', { name: 'Unlock Trend line', exact: true })).toBeVisible();
-    await line.getByRole('button', { name: 'Remove Trend line', exact: true }).click();
+    await line.getByRole('button', { name: 'Show Trend Line', exact: true }).click();
+    await line.getByRole('button', { name: 'Lock Trend Line', exact: true }).click();
+    await expect(line.getByRole('button', { name: 'Unlock Trend Line', exact: true })).toBeVisible();
+    await line.getByRole('button', { name: 'Delete Trend Line', exact: true }).click();
     await expect(line).toHaveCount(0);
     await close();
     await demo.getByRole('button', { name: 'Undo drawing action', exact: true }).click();

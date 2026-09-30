@@ -192,7 +192,9 @@ describe('conflicts', () => {
     expect(chart).toBeDefined();
     const grid = chart?.rows.find((r) => r.label === 'Toggle vertical grid');
     expect(grid?.shadowedBy).toBe('vertical-line');
-    expect(chart?.rows.find((r) => r.label === 'Fit content')?.shadowedBy).toBeUndefined();
+    expect(chart?.rows.find((r) => r.label === 'Fit all bars')?.shadowedBy).toBeUndefined();
+    // One name per action across the widget: the context menu fits all bars, the navigator resets the view.
+    expect(chart?.rows.map((r) => r.label)).toEqual(expect.arrayContaining(['Fit all bars', 'Reset view']));
   });
 
   it('does not count a rail or overlay binding as shadowing the chart', () => {

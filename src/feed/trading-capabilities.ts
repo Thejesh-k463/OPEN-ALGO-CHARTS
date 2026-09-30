@@ -28,6 +28,13 @@ export type TradingCapabilitySource = TradingCapabilities
 
 export type TradingCapabilityResult = { supported: true } | { supported: false; reason: string };
 
+// A reason reaches the chart's menus and a host's toasts, so it names the
+// operation, the order type and the mode in words, not by their ids.
+const OPERATION_WORDS: Record<TradingOperation, string> = { place: 'placing orders', modify: 'modifying orders', cancel: 'cancelling orders' };
+const TYPE_WORDS: Record<OrderType, string> = { MARKET: 'Market orders', LIMIT: 'Limit orders', SL: 'Stop-loss orders', 'SL-M': 'Stop-loss market orders' };
+const MODE_WORDS = { live: 'Live trading', analyzer: 'Analyzer mode' } as const;
+const capital = (words: string): string => words[0].toUpperCase() + words.slice(1);
+
 /** Shared by host controls and the write boundary. Never grants broker authority. */
 export function checkTradingCapability(
   source: TradingCapabilitySource | undefined,
@@ -40,9 +47,9 @@ export function checkTradingCapability(
       return { supported: false, reason: 'Trading capabilities are unavailable' };
     }
     const support = capabilities[request.operation];
-    if (support === false) return { supported: false, reason: `Trading operation ${request.operation} is not supported` };
+    if (support === false) return { supported: false, reason: `${capital(OPERATION_WORDS[request.operation] ?? request.operation)} is not supported` };
     if (support !== undefined && support !== true) {
-      return { supported: false, reason: `Support for trading operation ${request.operation} is unknown` };
+      return { supported: false, reason: `Support for ${OPERATION_WORDS[request.operation] ?? request.operation} is unknown` };
     }
     // Placement restrictions cannot strand an existing order that remains cancellable.
     if (request.operation === 'place') {
@@ -51,7 +58,7 @@ export function checkTradingCapability(
           return { supported: false, reason: 'Supported order types are unavailable for this request' };
         }
         if (!capabilities.orderTypes.includes(request.type)) {
-          return { supported: false, reason: `Order type ${request.type} is not supported` };
+          return { supported: false, reason: `${TYPE_WORDS[request.type] ?? `${request.type} orders`} are not supported` };
         }
       }
       if (capabilities.modes !== undefined) {
@@ -59,7 +66,7 @@ export function checkTradingCapability(
           return { supported: false, reason: 'Supported trading modes are unavailable for this request' };
         }
         if (!capabilities.modes.includes(request.mode)) {
-          return { supported: false, reason: `Trading mode ${request.mode} is not supported` };
+          return { supported: false, reason: `${MODE_WORDS[request.mode] ?? `${request.mode} mode`} is not supported` };
         }
       }
     }

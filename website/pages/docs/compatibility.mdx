@@ -27,7 +27,17 @@ that names no removal release, so none can stay open-ended.
 | Widget message key "Enter a valid expiry date and time in UTC" | 3.0.0 | Nothing: the widget no longer shows it |
 | Widget message keys `Dark` and `Light` | 3.0.0 | Nothing: the theme button shows a sun or a moon, named by `Switch to the light theme` or `Switch to the dark theme` |
 | Widget message keys `Armed`, `Keep tool armed`, `On: the tool stays armed after each drawing`, `Tools stay armed after each drawing`, `{group}: chevron for the rest. Double-click keeps it armed` and `{name} stays armed until Escape` | 3.0.0 | The same keys with "active" for "armed", which the widget shows since 2.5.10 |
-| Widget message keys `{count} chart shortcut struck through: the same chord arms a drawing tool here and takes precedence.` and `{count} chart shortcuts struck through: the same chord arms a drawing tool here and takes precedence.` | 3.0.0 | The same keys ending "a drawing tool uses the same chord here and takes precedence.", which the widget shows since 2.5.10 |
+| Widget message keys `{count} chart shortcut struck through: the same chord arms a drawing tool here and takes precedence.` and `{count} chart shortcuts struck through: the same chord arms a drawing tool here and takes precedence.` | 3.0.0 | The same keys ending "another shortcut uses the same chord here and takes precedence.", which the widget shows since 2.5.10 |
+| Widget message keys `Enter an expiry date and time in UTC`, `Expires {time} UTC` and `Last fired {time} UTC` | 3.0.0 | The same keys without " UTC", which the alert editor and list show since 2.4.6, on the chart's own clock |
+| Widget message key `Symbol search results` | 3.0.0 | Nothing: the widget no longer shows it |
+| Widget message keys `That side is already in use` and `other side taken` | 3.0.0 | Nothing: the widget no longer shows them |
+| Widget message keys `Unlock drawing` and `Show drawing` | 3.0.0 | "Lock drawing" and "Hide drawing": the rail keeps one name and its pressed state says locked or hidden |
+| Widget message keys `Dark theme` and `Light theme` | 3.0.0 | "Switch to the dark theme" and "Switch to the light theme", the words the top bar uses |
+| Widget message key `Stay: {mode}` | 3.0.0 | `Keep tool active: {mode}` |
+| Widget message key `Edit on chart` | 3.0.0 | "Edit text", as the right-click menu says |
+| Widget message key `History is stale for {symbol} {interval}. Reload to retry.` | 3.0.0 | `History is stale for {symbol} {interval}`, beside the Retry button |
+| Widget message keys `Magnet weak: snaps when O/H/L/C is within a few pixels`, `Magnet strong: every anchor lands on the nearest O/H/L/C`, `Click for weak: snaps when O/H/L/C is within a few pixels` and `Click for strong: every anchor lands on the nearest O/H/L/C` | 3.0.0 | The same keys with "a bar or study value" for "O/H/L/C", since the magnet snaps to study values too |
+| Widget message keys `Ratio` and `Remove level` | 3.0.0 | `Level {level} ratio` and `Remove level {level}`, which name the row |
 | `shiftKey`, `ctrlKey` and `metaKey` on a `click` event | 3.0.0 | `modifiers.shift`, `modifiers.ctrl` and `modifiers.meta`, the same state |
 | `chart.renderer` | 3.0.0 | `chart.rendererKind`, the same value |
 | `chart.movePriceAxis(pane, from, to)` | 3.0.0 | `chart.setPriceAxisPlacement(pane, scaleId, side)`, which keeps the scale's id |

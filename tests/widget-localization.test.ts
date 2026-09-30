@@ -5,6 +5,7 @@ import {
   mountIndicatorSettings, mountDrawingProperties, mountLevelEditor, openShortcutsPanel,
   type Widget, type WidgetMessageKey, type WidgetOptions, type WidgetTranslator,
 } from '../src/widget/index';
+import { errorText } from '../src/widget/localization';
 import { ensureWindowGlobal, fakeContainer, fakeWidgetDocument, fire, type FakeElement } from './helpers/fake-dom-widget';
 
 beforeAll(ensureWindowGlobal);
@@ -28,6 +29,19 @@ function make(options: WidgetOptions = {}) {
   widgets.push(widget);
   return { widget, root: widget.root as unknown as FakeElement };
 }
+
+describe('error text', () => {
+  it('uses the message of an error, else a fallback, never [object Object] or nothing', () => {
+    expect(errorText({}, new Error('quota exceeded'))).toBe('quota exceeded');
+    expect(errorText({}, { message: 'x' })).toBe('x');
+    expect(errorText({}, 'offline')).toBe('offline');
+    expect(errorText({}, {})).toBe('unknown error');
+    expect(errorText({}, { code: 1 })).toBe('unknown error');
+    expect(errorText({}, new Error(''))).toBe('unknown error');
+    expect(errorText({}, undefined)).toBe('unknown error');
+    expect(errorText({ translate: (key, fallback) => key === 'unknown error' ? 'erreur inconnue' : fallback }, null)).toBe('erreur inconnue');
+  });
+});
 
 describe('widget translation contract', () => {
   it('keeps published alert message keys valid in typed host catalogs', () => {
@@ -61,9 +75,9 @@ describe('widget translation contract', () => {
       expect(label.textContent).toContain(`Caduca <b> (${timezone})`);
       expect(label.querySelector('b')).toBeNull();
       const help = label.querySelector('.oac-help');
-      expect(help?.getAttribute('aria-label')).toBe('Vacio para no caducar');
-      expect(help?.tabIndex).toBe(0);
       expect(help?.title).toBe('Vacio para no caducar');
+      // Read as the field's description, not as part of its name.
+      expect(root.querySelector('[data-key="expiresAt"] input')!.getAttribute('aria-description')).toBe('Vacio para no caducar');
     };
     check();
     const condition = root.querySelector('[data-key="condition"] select')!;
@@ -165,7 +179,7 @@ describe('widget translation contract', () => {
     widget.context.overlays.closeAll();
     mountLevelEditor(widget.context, undefined, { ids: [drawing.id] });
     expect(root.querySelector('[aria-label="Local Levels"]')).not.toBeNull();
-    expect(root.querySelector('[aria-label="Local Ratio"]')).not.toBeNull();
+    expect(root.querySelector('.oac-levels__row input[type="number"]')?.getAttribute('aria-label')).toMatch(/^Local Level .* ratio$/);
     widget.context.overlays.closeAll();
     openShortcutsPanel(widget.context);
     expect(root.querySelector('.oac-keys-dialog')?.getAttribute('aria-label')).toBe('Local Keyboard shortcuts');

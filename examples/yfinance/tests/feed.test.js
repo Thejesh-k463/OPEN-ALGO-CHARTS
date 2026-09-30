@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   YFinanceDataFeed, initFeed, barsRequest, fetchBars, fetchNote, abortFetch,
   classifyHistoryResponse, feedErrorState, staleness, currentStaleness, syncStaleBadge,
-  FeedError, NotFoundError, RateLimitedError, NetworkError, AbortedError, STALE_GRACE_SEC,
+  FeedError, NotFoundError, RateLimitedError, NetworkError, AbortedError, STALE_GRACE_SEC, overdueText,
 } from '../src/feed.js';
 import { UnknownIntervalError } from '../src/intervals.js';
 import { fakeDom, flatBar } from './helpers.js';
@@ -410,5 +410,13 @@ describe('the forming bar and the cache', () => {
     await fetchBars('AAPL', '1mo', '5y');
     const now = Math.floor(WEDNESDAY_1507 / 1000);
     expect(currentStaleness()).toEqual({ stale: false, overdueSec: now - (today + DAY) });
+  });
+});
+
+describe('overdueText', () => {
+  it('rounds to the minute before it splits hours, so no reading says 60 min', () => {
+    expect(overdueText(7190)).toBe('2 h 0 min');
+    expect(overdueText(3660)).toBe('1 h 1 min');
+    expect(overdueText(90)).toBe('2 min');
   });
 });

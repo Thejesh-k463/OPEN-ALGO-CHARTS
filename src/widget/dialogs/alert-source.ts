@@ -2,6 +2,7 @@ import { widgetText } from '../localization';
 import { getIndicator, registeredBarConditions, type AlertSource, type IndicatorApi } from 'openalgo-charts';
 import type { WidgetContext } from '../context';
 import { toolName } from '../rail';
+import { numberedNames, studyNames } from '../objects-panel';
 import type { FormControl } from '../form';
 
 type Choice = { value: string; label: string };
@@ -31,9 +32,8 @@ export function alertSourceFields(ctx: WidgetContext, draft: Record<string, unkn
     if (draft[key] === undefined) draft[key] = options[0]?.value ?? '';
     return String(draft[key]);
   };
-  const studies = (items: readonly IndicatorApi[]): Choice[] => items.map(instance => ({
-    value: instance.id, label: `${instances.indexOf(instance) + 1}: ${instance.name}`,
-  }));
+  const names = studyNames(ctx.chart);
+  const studies = (items: readonly IndicatorApi[]): Choice[] => items.map(instance => ({ value: instance.id, label: names.get(instance.id) ?? instance.name }));
   const kind = draft.kind;
   if (kind === 'barCondition') {
     const conditions = registeredBarConditions().map(item => ({ value: item.id, label: widgetText(ctx, `schema.barCondition.${item.id}.title`, {}, item.title) }));
@@ -58,8 +58,9 @@ export function alertSourceFields(ctx: WidgetContext, draft: Record<string, unkn
   if (kind === 'drawing') {
     // A host's unlisted drawings stay out of every list, this one included,
     // unless the alert being edited already names one.
-    const drawings = ctx.draw.drawings().filter(item => item.policy?.listed !== false || item.id === draft.drawingId);
-    const choices = drawings.map((item, index) => ({ value: item.id, label: `${widgetText(ctx, `schema.drawing.${item.tool}.name`, {}, toolName(item.tool))} (${index + 1})` }));
+    const all = ctx.draw.drawings(), listed = (item: (typeof all)[number]): boolean => item.policy?.listed !== false;
+    const named = numberedNames(all, item => widgetText(ctx, `schema.drawing.${item.tool}.name`, {}, toolName(item.tool)), listed);
+    const choices = all.filter(item => listed(item) || item.id === draft.drawingId).map(item => ({ value: item.id, label: named.get(item.id)! }));
     const drawingId = choose('drawingId', choices);
     const info = ctx.draw.alertInfo(drawingId);
     const levels = info.levels.map(item => ({ value: item.id, label: item.title }));

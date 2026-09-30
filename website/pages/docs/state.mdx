@@ -206,10 +206,10 @@ positions have no bar behind them, so the whole-index helpers are not enough.
 
 | Method | Description |
 |---|---|
-| `chart.timeToCoordinate(time)` | UTC seconds → container-relative x (media px). |
-| `chart.coordinateToTime(x)` | x → UTC seconds, interpolated between bars and **extrapolated past the right edge**. |
-| `chart.priceToCoordinate(price, paneIndex?)` | Price → y. |
-| `chart.coordinateToPrice(y, paneIndex?)` | y → price. |
+| `chart.timeToCoordinate(time)` | UTC seconds to container-relative x (media px). |
+| `chart.coordinateToTime(x)` | x to UTC seconds, interpolated between bars and **extrapolated past the right edge**. |
+| `chart.priceToCoordinate(price, paneIndex?)` | Price to y. |
+| `chart.coordinateToPrice(y, paneIndex?)` | y to price. |
 
 `coordinateToTime` is what makes a two-axis drag work: `chart.subscribeDrag` passes the
 time under the cursor as a third argument alongside the price, so a trendline endpoint or a

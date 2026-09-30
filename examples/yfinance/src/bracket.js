@@ -1,5 +1,5 @@
 import * as engine from '/dist/openalgo-charts.mjs';
-import { el, fmt, rupee } from './ui.js';
+import { el, fmt, pnlText } from './ui.js';
 import { snapPrice } from './ticks.js';
 import { saveState, tradeColors, TRADE_EXTENT, removeAllOrders, clearPosition, executionAllowed } from './orders.js';
 
@@ -83,7 +83,7 @@ export function updateBracket() {
     const n = el(id);
     n.querySelector('.pts').textContent = fmt(pts);
     n.querySelector('.pct').textContent = (pts / app.bracket.entry * 100).toFixed(2) + '%';
-    n.querySelector('.pnl').textContent = rupee(pnl);
+    n.querySelector('.pnl').textContent = pnlText(pnl);
   };
   set('bk-tp', tpPts, tpPnl);
   set('bk-sl', slPts, slPnl);
@@ -162,6 +162,7 @@ export function initBracket(a) {
       if (!executionAllowed()) return;
       el('status').textContent = `placed ${app.bracket.side} OCO bracket - ${app.bracket.qty} entry ${fmt(app.bracket.entry)} · TP ${fmt(app.bracket.target)} · SL ${fmt(app.bracket.stop)} (target/stop are OCO)`;
     } else if (act === 'modify') {
+      // It edits nothing: it writes the bracket out, so it is named that way.
       const rr = (Math.abs(app.bracket.target - app.bracket.entry) / Math.max(1e-9, Math.abs(app.bracket.entry - app.bracket.stop))).toFixed(2);
       el('status').textContent = `bracket - entry ${fmt(app.bracket.entry)} · TP ${fmt(app.bracket.target)} · SL ${fmt(app.bracket.stop)} · R:R ${rr}`;
     }

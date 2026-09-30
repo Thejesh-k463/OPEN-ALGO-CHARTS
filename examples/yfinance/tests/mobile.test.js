@@ -182,7 +182,7 @@ describe('compact controls', () => {
 
     doc.getElementById('mobile-magnet').click();
     expect(magnetMode()).toBe('weak');
-    expect(doc.getElementById('mobile-magnet').textContent).toBe('Magnet weak');
+    expect(doc.getElementById('mobile-magnet').textContent).toBe('Magnet: weak');
 
     syncMobileControls('rectangle');
     expect(tool.value).toBe('rectangle');

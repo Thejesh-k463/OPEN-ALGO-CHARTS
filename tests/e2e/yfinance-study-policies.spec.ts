@@ -34,7 +34,7 @@ test('the protected VWAP keeps every user control from removing, configuring or 
   await paint(page);
   await menuAt(page, 300, 200);
   const hostRow = page.locator('#ctxmenu [data-act="hoststudy"]');
-  await expect(hostRow).toHaveText('Add Protected VWAP');
+  await expect(hostRow).toHaveText('Add protected VWAP');
   await hostRow.click();
   await expect.poll(() => study(page)).not.toBeNull();
   const added = (await study(page))!;
@@ -73,7 +73,7 @@ test('the protected VWAP keeps every user control from removing, configuring or 
   await row.locator('[data-action="visibility"]').click();
 
   // The shared indicator picker greys its remove button.
-  await page.getByRole('button', { name: 'Add an indicator', exact: true }).click();
+  await page.getByRole('button', { name: /^Add an indicator, / }).click();
   const remove = page.locator(`.oac-pick__running-row[data-instance-id="${added.id}"] .oac-pick__remove`);
   await expect(remove).toBeDisabled();
   await expect(remove).toHaveAttribute('title', 'protected');
@@ -88,7 +88,7 @@ test('the protected VWAP keeps every user control from removing, configuring or 
 
   // Only the host row, which passes force, takes it away.
   await menuAt(page, 300, 200);
-  await expect(hostRow).toHaveText('Remove Protected VWAP');
+  await expect(hostRow).toHaveText('Remove protected VWAP');
   await hostRow.click();
   await expect.poll(() => study(page)).toBeNull();
   expect(errors).toEqual([]);

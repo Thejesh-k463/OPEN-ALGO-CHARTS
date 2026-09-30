@@ -237,7 +237,8 @@ describe('mobile mode', () => {
 
     action(root, 'lock').click();
     expect(w.draw.get(drawing.id)?.locked).toBe(true);
-    expect(action(root, 'lock').textContent).toBe('Unlock');
+    expect(action(root, 'lock').textContent).toBe('Lock');
+    expect(action(root, 'lock').getAttribute('aria-pressed')).toBe('true');
     action(root, 'properties').click();
     expect(root.querySelector('.oac-props')).not.toBeNull();
     w.context.overlays.closeAll();
@@ -257,6 +258,17 @@ describe('mobile mode', () => {
     expect(action(root, 'studies')).toBeNull();
     expect(action(root, 'objects')).toBeNull();
     expect(action(root, 'more')).toBeNull();
+  });
+
+  it('uses the words the rest of the widget uses for studies, the theme and the stay toggle', () => {
+    const { w, root } = make({ mobile: 'always' });
+    expect(action(root, 'studies').textContent).toBe('Indicators');
+    action(root, 'more').click();
+    expect(action(root, 'theme').textContent).toMatch(/^Switch to the (light|dark) theme$/);
+    w.context.overlays.closeAll();
+    w.draw.setTool('trend-line');
+    action(root, 'draw').click();
+    expect(action(root, 'stay').textContent).toBe('Keep tool active: off');
   });
 
   it('keeps an accessible branding link current in the More sheet', () => {

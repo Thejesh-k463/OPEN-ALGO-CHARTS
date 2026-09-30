@@ -36,22 +36,23 @@ export function openLinkMenu(anchor) {
   const rows = [
     { group: 'Layout' },
     {
+      // Named for the action, so it carries no checked state as well.
       label: isSplit() ? 'Close the second chart' : 'Open a second chart',
-      icon: 'split', on: isSplit(),
+      icon: 'split',
       onSelect: () => (isSplit() ? closeSplit() : openSplit()),
     },
     // More than two charts, or rows, live in the grid view: a page built on
     // the widget tier's chart grid over the same feed.
-    { label: 'Open the chart grid', icon: 'grid', onSelect: () => location.assign('grid.html') },
+    { label: 'Open the chart grid', icon: 'gridView', onSelect: () => location.assign('grid.html') },
     { group: isSplit() ? 'Sync' : 'Sync (open the second chart to see it)' },
-    { label: 'Crosshair', on: o.crosshair, onSelect: () => setLink({ crosshair: !o.crosshair }) },
-    { label: 'Viewport', on: o.viewport, onSelect: () => setLink({ viewport: !o.viewport }) },
-    { label: 'Symbol', on: o.symbol, onSelect: () => setLink({ symbol: !o.symbol }) },
-    { label: 'Interval', on: o.interval, disabled: typeof app.linkGroup.setInterval !== 'function',
+    { label: 'Crosshair', check: true, on: o.crosshair, onSelect: () => setLink({ crosshair: !o.crosshair }) },
+    { label: 'Viewport', check: true, on: o.viewport, onSelect: () => setLink({ viewport: !o.viewport }) },
+    { label: 'Symbol', check: true, on: o.symbol, onSelect: () => setLink({ symbol: !o.symbol }) },
+    { label: 'Interval', check: true, on: o.interval, disabled: typeof app.linkGroup.setInterval !== 'function',
       reason: typeof app.linkGroup.setInterval !== 'function' ? 'This build has no interval linking' : '',
       onSelect: () => setLink({ interval: !o.interval }) },
-    { label: 'Appearance', on: o.appearance, onSelect: () => setLink({ appearance: !o.appearance }) },
-    { label: 'Drawings (same instrument)', on: app.drawingLinkGroup?.options().enabled,
+    { label: 'Appearance', check: true, on: o.appearance, onSelect: () => setLink({ appearance: !o.appearance }) },
+    { label: 'Drawings (same instrument)', check: true, on: app.drawingLinkGroup?.options().enabled,
       onSelect: () => {
         app.drawingLinkGroup?.setOptions({ enabled: !app.drawingLinkGroup.options().enabled });
         renderToolbar();

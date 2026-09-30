@@ -368,6 +368,8 @@ describe('the price scale toggles', () => {
     w.series.setData(sessionBars('1d', -Infinity, Infinity));
     vi.advanceTimersByTime(1100);
     expect(scaleButton(root, 'auto').getAttribute('aria-pressed')).toBe('true');
+    // The axis menu and the settings say the same.
+    expect(scaleButton(root, 'auto').getAttribute('aria-label')).toBe('Auto-fit to the data');
     scaleButton(root, 'log').click();
     await flush();
     expect(axis(w).mode).toBe('logarithmic');

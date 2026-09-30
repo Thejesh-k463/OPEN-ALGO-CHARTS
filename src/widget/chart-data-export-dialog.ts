@@ -1,7 +1,8 @@
 import type { ChartDataCsvOptions } from 'openalgo-charts';
 import type { WidgetContext } from './context';
 import { button, dialogFrame, el, openPanel, renderForm, type FormControl, type PanelHandle } from './form';
-import { widgetText } from './localization';
+import { errorText, widgetText } from './localization';
+import { studyNames } from './objects-panel';
 
 let sequence = 0;
 
@@ -10,7 +11,8 @@ export function openChartDataExportDialog(
   ctx: WidgetContext, anchor: HTMLElement, onDownload: (options: ChartDataCsvOptions) => void,
 ): PanelHandle {
   const chart = ctx.chart;
-  const studies = chart.indicators().map(study => ({ id: study.id, name: study.name, hidden: !study.visible() }));
+  const names = studyNames(chart);
+  const studies = chart.indicators().map(study => ({ id: study.id, name: names.get(study.id)!, hidden: !study.visible() }));
   const viewport = chart.getVisibleLogicalRange();
   const visible = chart.primaryBars().filter(bar => {
     const index = chart.dataLayer.timeToIndex(bar.time);
@@ -38,7 +40,7 @@ export function openChartDataExportDialog(
     ] },
     ...studies.map((study, index): FormControl => ({
       key: `study-${index}`, kind: 'boolean', group: widgetText(ctx, 'Studies'),
-      label: `${study.name} (${study.id})${study.hidden ? ` - ${widgetText(ctx, 'Hidden')}` : ''}`,
+      label: study.hidden ? widgetText(ctx, '{name}, hidden', { name: study.name }) : study.name,
     })),
   ];
   const form = renderForm(formHost, controls, {
@@ -90,7 +92,7 @@ export function openChartDataExportDialog(
         range, alignment: draft.alignment === 'display' ? 'display' : 'source' });
       close();
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const message = errorText(ctx, cause);
       error.textContent = message;
       ctx.status(widgetText(ctx, 'Data export failed: {error}', { error: message }), 'error');
     }

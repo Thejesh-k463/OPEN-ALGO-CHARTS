@@ -1,5 +1,5 @@
 import { widgetText } from './localization';
-import type { ChartObjects, ChartObjectSnapshot } from 'openalgo-charts';
+import type { Chart, ChartObjects, ChartObjectSnapshot, IndicatorApi } from 'openalgo-charts';
 import type { WidgetContext } from './context';
 import { chromeIconSvg } from 'openalgo-charts/draw';
 import { button, dialogFrame, el, openPanel, type PanelHandle } from './form';
@@ -31,6 +31,35 @@ const STATUS = { loading: 'Loading', ready: 'Ready', empty: 'No data', unsupport
 const FAILURES = { select: 'Could not select {name}', visibility: 'Could not change visibility for {name}', lock: 'Could not change lock for {name}', settings: 'Could not open settings for {name}', focus: 'Could not focus {name}', remove: 'Could not remove {name}' } as const;
 
 let rowSequence = 0;
+
+/**
+ * Names that tell apart objects of one name, by id: the second listed "Trend
+ * Line" is "Trend Line (2)", and a name nothing listed repeats carries no
+ * number. Objects, the alert editor, study settings and the data export all
+ * number through this, over the chart's own order (drawings back to front,
+ * studies as the chart lists them), so one object carries one number wherever
+ * it is named. Only listed items count, so a host's unlisted object never
+ * moves a number a user has seen; one a list shows anyway is numbered after.
+ */
+export function numberedNames<T extends { readonly id: string }>(items: readonly T[], name: (item: T) => string,
+  listed: (item: T) => boolean = () => true): Map<string, string> {
+  const count = (some: readonly T[]): Map<string, number> => {
+    const out = new Map<string, number>();
+    for (const item of some) out.set(name(item), (out.get(name(item)) ?? 0) + 1);
+    return out;
+  };
+  const shown = items.filter(listed), extra = items.filter(item => !listed(item));
+  const repeats = count(shown), everywhere = count(items), seen = new Map<string, number>();
+  return new Map([...shown, ...extra].map(item => {
+    const base = name(item), n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    return [item.id, ((listed(item) ? repeats : everywhere).get(base) ?? 0) > 1 ? `${base} (${n})` : base];
+  }));
+}
+
+/** The chart's studies named apart, as `numberedNames` says. */
+export const studyNames = (chart: Chart): Map<string, string> => numberedNames(chart.indicators(), study => study.name,
+  study => (study as Partial<IndicatorApi>).policy?.().listed !== false);
 
 export interface ObjectsPanelContent {
   element: HTMLElement;
@@ -271,7 +300,7 @@ export function createObjectsPanelContent(ctx: WidgetContext, opts: ObjectsPanel
     row.el.classList.toggle('is-group-member', item.groupId !== undefined);
     const meta = [kindLabel(item), paneLabel(item), item.visible ? widgetText(ctx, 'Visible') : widgetText(ctx, 'Hidden')];
     // Where a drawing paints, when it is not the default place in front.
-    if (item.kind === 'drawing' && item.band === 'below') meta.push(text('behind', 'Behind series'));
+    if (item.kind === 'drawing' && item.band === 'below') meta.push(text('behind', 'Behind the series'));
     if (item.kind === 'drawing' && item.band === 'series') {
       const under = all.find(other => other.id === item.stackAbove);
       meta.push(text('above', 'Above {name}', { name: under?.name ?? text('hidden', 'a hidden study') }));
@@ -304,9 +333,11 @@ export function createObjectsPanelContent(ctx: WidgetContext, opts: ObjectsPanel
       }
       const label = action === 'visibility' ? (item.visible ? widgetText(ctx, 'Hide') : widgetText(ctx, 'Show'))
         : action === 'lock' ? (item.locked ? widgetText(ctx, 'Unlock') : widgetText(ctx, 'Lock'))
-          : action === 'settings' ? widgetText(ctx, 'Settings') : action === 'focus' ? widgetText(ctx, 'Focus') : widgetText(ctx, 'Remove');
+          : action === 'settings' ? widgetText(ctx, 'Settings') : action === 'focus' ? widgetText(ctx, 'Focus')
+            // A drawing is deleted, as its menu and toolbar say; a study is removed from the chart.
+            : item.kind === 'drawing' ? widgetText(ctx, 'Delete') : widgetText(ctx, 'Remove');
       control.textContent = label;
-      control.setAttribute('aria-label', widgetText(ctx, action === 'visibility' ? (item.visible ? 'Hide {name}' : 'Show {name}') : action === 'lock' ? (item.locked ? 'Unlock {name}' : 'Lock {name}') : action === 'settings' ? 'Settings for {name}' : action === 'focus' ? 'Focus {name}' : 'Remove {name}', { name: item.name }));
+      control.setAttribute('aria-label', widgetText(ctx, action === 'visibility' ? (item.visible ? 'Hide {name}' : 'Show {name}') : action === 'lock' ? (item.locked ? 'Unlock {name}' : 'Lock {name}') : action === 'settings' ? 'Settings for {name}' : action === 'focus' ? 'Focus {name}' : item.kind === 'drawing' ? 'Delete {name}' : 'Remove {name}', { name: item.name }));
       if (row.actions.children[index] !== control) row.actions.insertBefore(control, row.actions.children[index] ?? null);
       index++;
     }
@@ -320,8 +351,8 @@ export function createObjectsPanelContent(ctx: WidgetContext, opts: ObjectsPanel
         row.buttons.set('add-selection', control);
       }
       control.textContent = text(item.selected ? 'deselect' : 'selectMore', item.selected ? 'Deselect' : 'Select');
+      // Named for the action it takes, so it carries no pressed state; the row's summary says selected.
       control.setAttribute('aria-label', text(item.selected ? 'deselectLabel' : 'selectMoreLabel', item.selected ? 'Remove {name} from selection' : 'Add {name} to selection', { name: item.name }));
-      control.setAttribute('aria-pressed', String(item.selected));
       if (row.actions.children[index] !== control) row.actions.insertBefore(control, row.actions.children[index] ?? null);
       index++;
     }
@@ -450,7 +481,9 @@ export function createObjectsPanelContent(ctx: WidgetContext, opts: ObjectsPanel
     updateGroupButton();
     empty.hidden = shown.length > 0;
     empty.textContent = all.length === 0 ? widgetText(ctx, 'No objects on this chart.') : widgetText(ctx, 'No objects match your search.');
-    count.textContent = query === '' ? widgetText(ctx, '{count} objects', { count: all.length }) : widgetText(ctx, '{shown} of {count} objects', { shown: shown.length, count: all.length });
+    const one = all.length === 1;
+    count.textContent = query === '' ? widgetText(ctx, one ? '{count} object' : '{count} objects', { count: all.length })
+      : widgetText(ctx, one ? '{shown} of {count} object' : '{shown} of {count} objects', { shown: shown.length, count: all.length });
     if (heldFocus) {
       if (!list.contains(focused)) search.focus();
       else if (doc.activeElement !== focused) focused!.focus();
@@ -460,7 +493,13 @@ export function createObjectsPanelContent(ctx: WidgetContext, opts: ObjectsPanel
   search.addEventListener('input', paint);
   const unsubscribe = objects.subscribe(items => {
     if (closed) return;
-    all = items;
+    // Rows of one name carry their number (numberedNames), or every one's
+    // actions read the same. Drawings count in the controller's order, as the
+    // alert editor lists them, whatever order an inventory gives.
+    const drawn = new Map((ctx.draw?.drawings() ?? []).map((drawing, index) => [drawing.id, index]));
+    const place = (item: ChartObjectSnapshot): number => (item.kind === 'drawing' ? drawn.get(item.sourceId) ?? drawn.size : -1);
+    const names = numberedNames([...items].sort((a, b) => place(a) - place(b)), item => item.name);
+    all = items.map(item => (names.get(item.id) === item.name ? item : { ...item, name: names.get(item.id)! }));
     paint();
   });
   const dispose = (): void => {

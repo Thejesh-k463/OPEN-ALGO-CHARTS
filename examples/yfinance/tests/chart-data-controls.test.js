@@ -51,8 +51,9 @@ describe('reference chart data controls', () => {
     const first = chart.addIndicator('csv-controls-study'), second = chart.addIndicator('csv-controls-study');
     second.setVisible(false);
     expect(openChartDataControls(app)).toBe(true);
-    expect(field('csv-studies').textContent).toContain(first.id);
-    expect(field('csv-studies').textContent).toContain(second.id);
+    // Repeated instances are told apart by their place among their name, as the widget numbers them, not by an internal id.
+    expect(field('csv-studies').textContent).toBe(`${first.name} (1)${second.name} (2)`);
+    expect(field('csv-studies').textContent).not.toContain(first.id);
     chart.setVisibleLogicalRange({ from: 0, to: 0 });
     chart.getVisibleLogicalRange.mockReturnValue({ from: 0, to: 0 });
     chart.addIndicator('csv-controls-study');

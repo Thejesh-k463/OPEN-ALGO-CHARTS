@@ -13,7 +13,7 @@ import {
   Chart, darkTheme, readChartSettings, registerIndicator, chartSettingsSchema,
 } from 'openalgo-charts';
 import type { Bar, ContextMenuEvent, ContextMenuTarget, IndicatorDescriptor } from 'openalgo-charts';
-import { DrawingController, registerBuiltinDrawingTools, DEFAULT_FIB, type FibLevel } from 'openalgo-charts/draw';
+import { DrawingController, registerBuiltinDrawingTools, DEFAULT_FIB, formatRatio, type FibLevel } from 'openalgo-charts/draw';
 import { createOverlayStack, WidgetBus, WidgetStorage, type OverlayStack, type WidgetContext } from '../src/widget/context';
 import {
   mountSettingsDialog, tabDefaults,
@@ -499,8 +499,11 @@ describe('mountDrawingProperties', () => {
     act('lock').click();
     expect(rig.draw.get(a.id)?.locked).toBe(true);
     expect(act('lock').getAttribute('aria-pressed')).toBe('true');
+    // The toggles keep their names; the pressed state says locked or hidden.
+    expect(act('lock').getAttribute('aria-label')).toBe('Lock');
     act('visible').click();
     expect(rig.draw.get(a.id)?.visible).toBe(false);
+    expect([act('visible').getAttribute('aria-label'), act('visible').getAttribute('aria-pressed')]).toEqual(['Hide', 'true']);
     act('behind').click();
     expect(rig.draw.get(a.id)?.zIndex).toBeLessThan(0);
     expect(act('behind').getAttribute('aria-pressed')).toBe('true');
@@ -549,6 +552,8 @@ describe('mountDrawingProperties', () => {
     rig.draw.select(t.id);
     mountDrawingProperties(rig.ctx);
     expect(rig.q('[data-key="text.value"] textarea')).not.toBeNull();
+    // The same words as the right-click menu row that opens the same editor.
+    expect((rig.q('[data-act="edit-text"]') as FakeElement).textContent).toContain('Edit text');
     (rig.q('[data-act="edit-text"]') as FakeElement).click();
     expect(rig.q('.oac-textedit')).not.toBeNull();
   });
@@ -582,6 +587,24 @@ describe('mountLevelEditor', () => {
     (rig.q('.oac-color__palette button') as FakeElement).click();
     expect(rig.draw.get(f.id)?.style.levels?.[0].color).toBe('#4f8cff');
   });
+  it('names the controls of each row by its level, so no two rows read the same', () => {
+    const rig = makeRig();
+    const f = fib(rig.draw);
+    rig.draw.select(f.id);
+    mountLevelEditor(rig.ctx);
+    const rows = rig.qa('.oac-levels__row');
+    const names = (selector: string): string[] => rows.map((row) => (row.querySelector(selector) as FakeElement).getAttribute('aria-label') ?? '');
+    for (const selector of ['input[type="checkbox"]', 'input[type="number"]', '.oac-color__trigger', 'input[type="text"]', '.oac-levels__x']) {
+      expect(new Set(names(selector)).size, selector).toBe(rows.length);
+    }
+    expect(names('.oac-levels__x')[1]).toBe(`Remove level ${formatRatio(DEFAULT_FIB[1].ratio)}`);
+    // A changed ratio renames its row at once.
+    const ratio = rows[1].querySelector('input[type="number"]') as FakeElement;
+    ratio.value = '0.25';
+    ratio.fire('change');
+    expect((rows[1].querySelector('.oac-levels__x') as FakeElement).getAttribute('aria-label')).toBe(`Remove level ${formatRatio(0.25)}`);
+  });
+
   it('draws one row per level and writes the whole list back on every edit', () => {
     const rig = makeRig();
     const f = fib(rig.draw);
@@ -812,16 +835,29 @@ describe('contextMenuEntries', () => {
     const del = items(again).find((i) => i.id === 'draw-delete') as MenuItem;
     expect(del.disabled).toBe(true);
     expect(del.note).toBe('locked');
-    expect((items(again).find((i) => i.id === 'draw-lock') as MenuItem).label).toBe('Unlock');
+    const lock = items(again).find((i) => i.id === 'draw-lock') as MenuItem;
+    // A checkbox row keeps its name; the check says locked.
+    expect([lock.label, lock.on]).toEqual(['Lock', true]);
     (items(again).find((i) => i.id === 'draw-duplicate') as MenuItem).run?.();
     expect(rig.draw.drawings().length).toBe(3);
+  });
+
+  it('names the hide row Hide and checks it for a hidden drawing', () => {
+    const rig = makeRig();
+    const a = line(rig.draw);
+    rig.draw.update(a.id, { visible: false });
+    const hide = items(contextMenuEntries(rig.ctx, event(rig, { kind: 'drawing', id: `draw:${a.id}` }))).find((i) => i.id === 'draw-hide') as MenuItem;
+    expect([hide.label, hide.on]).toEqual(['Hide', true]);
   });
 
   it('adds text and level rows only for tools that have them', () => {
     const rig = makeRig();
     const t = text(rig.draw);
     const f = fib(rig.draw);
-    expect(ids(contextMenuEntries(rig.ctx, event(rig, { kind: 'drawing', id: `draw:${t.id}` })))).toContain('draw-text');
+    const onText = contextMenuEntries(rig.ctx, event(rig, { kind: 'drawing', id: `draw:${t.id}` }));
+    expect(ids(onText)).toContain('draw-text');
+    // No key opens the text editor in the widget, so the row names none.
+    expect((items(onText).find((i) => i.id === 'draw-text') as MenuItem).chord).toBeUndefined();
     const fibIds = ids(contextMenuEntries(rig.ctx, event(rig, { kind: 'drawing', id: `draw:${f.id}` })));
     expect(fibIds).toContain('draw-levels');
     expect(fibIds).not.toContain('draw-text');

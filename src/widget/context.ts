@@ -847,6 +847,8 @@ function firstControl(node: HTMLElement): HTMLElement | null {
 
 export interface TipSpec {
   title: string;
+  /** The accessible name, when it must say more than the title. Default: the title. Since 2.5.10. */
+  label?: string;
   /** The chord, shown in monospace after the title. */
   chord?: string;
   /** A second, muted line. */
@@ -898,7 +900,7 @@ export function createTipController(root: HTMLElement, layer: HTMLElement, doc: 
     if (raw === undefined || !target.isConnected) return;
     const spec = read(raw);
     if (spec === null || !spec.title) { hide(); return; }
-    if (typeof raw === 'function') target.setAttribute('aria-label', spec.title);
+    if (typeof raw === 'function') target.setAttribute('aria-label', spec.label ?? spec.title);
     if (node === null) {
       node = h(doc, 'div', 'oac-tip', { role: 'presentation' });
     }
@@ -927,7 +929,7 @@ export function createTipController(root: HTMLElement, layer: HTMLElement, doc: 
     attach: (target, spec, dwellMs = 0) => {
       specs.set(target, spec);
       const first = read(spec);
-      if (first !== null && first.title && !target.getAttribute('aria-label')) target.setAttribute('aria-label', first.title);
+      if (first !== null && first.title && !target.getAttribute('aria-label')) target.setAttribute('aria-label', first.label ?? first.title);
       target.removeAttribute('title');
       const arm = (): void => {
         if (timer !== 0) clearTimeout(timer);
@@ -947,7 +949,7 @@ export function createTipController(root: HTMLElement, layer: HTMLElement, doc: 
       const raw = specs.get(target);
       if (typeof raw !== 'function') return;
       const spec = raw();
-      if (spec !== null && spec.title) target.setAttribute('aria-label', spec.title);
+      if (spec !== null && spec.title) target.setAttribute('aria-label', spec.label ?? spec.title);
     },
     show,
     hide,

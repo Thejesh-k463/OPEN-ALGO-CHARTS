@@ -127,7 +127,7 @@ export function getChartType(type: SeriesType | (string & {})): RendererEntry {
   const e = registry.get(type);
   if (e === undefined) {
     if (TRANSFORM_TIER_TYPES.has(type)) {
-      throw new Error(`openalgo-charts: series type "${type}" needs the transform tier — import 'openalgo-charts/transform' first`);
+      throw new Error(`openalgo-charts: series type "${type}" needs the transform tier, import 'openalgo-charts/transform' first`);
     }
     throw new Error(`openalgo-charts: unknown series type "${type}"`);
   }

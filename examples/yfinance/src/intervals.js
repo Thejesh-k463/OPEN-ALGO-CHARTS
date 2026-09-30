@@ -116,7 +116,10 @@ export function foldToBuckets(bars, bucketing, zone) {
 export const INTERVALS = ['5m', '15m', '30m', '1h', '1d']
   .concat(registerInterval ? CUSTOM_INTERVALS.map((i) => i.code) : ['1wk']);
 export const intervalLabel = (iv) => (customInterval(iv) || { label: iv.toUpperCase() }).label;
+// Words, not codes: "5M bars" read as five months beside the bottom bar's 1M.
+const INTERVAL_NAMES = { '5m': '5 minute bars', '15m': '15 minute bars', '30m': '30 minute bars', '1h': 'Hourly bars', '1d': 'Daily bars', '1wk': 'Weekly bars' };
 export const intervalName = (iv) => {
+  if (INTERVAL_NAMES[iv]) return INTERVAL_NAMES[iv];
   const c = customInterval(iv);
   if (c) return c.name + (c.foldFrom ? ' (folded from ' + c.foldFrom.toUpperCase() + ' bars)' : '');
   return iv.toUpperCase() + ' bars';

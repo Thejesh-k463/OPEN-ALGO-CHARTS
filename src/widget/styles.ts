@@ -116,10 +116,11 @@ export const WIDGET_CSS = `
   width: 13px; height: 13px; margin-left: 5px; vertical-align: -2px; flex: none;
   border: 1px solid ${v('bd')}; border-radius: 50%; color: ${v('faint')};
   font-size: 9px; font-weight: 600; line-height: 1; cursor: help; user-select: none; }
-.oac-widget .oac-help:hover, .oac-widget .oac-help:focus-visible {
-  color: ${v('tx')}; border-color: ${v('bd-hover')}; outline: none; }
+.oac-widget .oac-help:hover { color: ${v('tx')}; border-color: ${v('bd-hover')}; }
+/* A heading's rows as one named group, laid out as if the box were not there. */
+.oac-widget .oac-form__group { display: contents; }
 
-/* Buttons: flat, 28px tall, a tint when pressed or armed. */
+/* Buttons: flat, 28px tall, a tint when pressed or active. */
 .oac-widget .oac-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   height: ${v('ctl-h')}; padding: 0 9px; background: transparent; border: 1px solid transparent;
   border-radius: ${v('radius')}; color: ${v('tx')}; white-space: nowrap; transition: background .1s, border-color .1s, color .1s; }
@@ -260,6 +261,7 @@ export const WIDGET_CSS = `
 .oac-widget .oac-fly__star[aria-pressed="false"] > svg { fill: none; }
 
 /* Tooltip */
+.oac-widget .oac-tip-spot { position: absolute; width: 1px; height: 1px; pointer-events: none; }
 .oac-widget .oac-tip { position: absolute; z-index: 200; left: 0; top: 0; max-width: 260px; pointer-events: none;
   padding: 5px 9px; border-radius: 6px; background: ${v('elev-2')}; color: ${v('tx')}; border: 1px solid ${v('bd')};
   box-shadow: ${v('shadow')}; font-size: 12px; line-height: 1.4; opacity: 0; transition: opacity .09s ease; }

@@ -278,9 +278,10 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
   const cycleMagnet = (): MagnetMode => {
     const next = MAGNET_MODES[(MAGNET_MODES.indexOf(prefs.magnet) + 1) % MAGNET_MODES.length];
     setMagnetMode(next);
+    // The magnet snaps to study values too (draw/snap.ts), not only to O/H/L/C.
     ctx.status(next === 'off' ? widgetText(ctx, 'Magnet off')
-      : next === 'weak' ? widgetText(ctx, 'Magnet weak: snaps when O/H/L/C is within a few pixels')
-      : widgetText(ctx, 'Magnet strong: every anchor lands on the nearest O/H/L/C'));
+      : next === 'weak' ? widgetText(ctx, 'Magnet weak: snaps when a bar or study value is within a few pixels')
+      : widgetText(ctx, 'Magnet strong: every anchor lands on the nearest bar or study value'));
     return next;
   };
   const setStayMode = (on: boolean): void => {
@@ -352,7 +353,8 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
     const b = makeBtn({
       cls: 'oac-rail__tool oac-rail__fav',
       glyphEl: toolGlyph(doc, id),
-      tip: () => ({ title: translatedTool(id), chord: chordOf(id), sub: widgetText(ctx, 'Pinned. Right-click to unpin'), side: 'right' }),
+      // Its name is not the group button's, which may show the same tool.
+      tip: () => ({ title: widgetText(ctx, '{name} (pinned)', { name: translatedTool(id) }), chord: chordOf(id), sub: widgetText(ctx, 'Pinned. Right-click to unpin'), side: 'right' }),
       onClick: (e) => {
         if (e.detail >= 2 && !prefs.stay) { hold(id); return; }
         setDrawLock(false);
@@ -438,8 +440,9 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
       name.textContent = translatedTool(tool);
       row.appendChild(name);
       const pinned = isFavorite(tool);
+      // One name; the pressed state says pinned.
       const star = h(doc, 'button', 'oac-fly__star', {
-        type: 'button', 'aria-pressed': String(pinned), 'aria-label': pinned ? widgetText(ctx, 'Unpin from rail') : widgetText(ctx, 'Pin to rail'),
+        type: 'button', 'aria-pressed': String(pinned), 'aria-label': widgetText(ctx, 'Pin to rail'),
       });
       star.tabIndex = -1;
       star.innerHTML = chromeIconSvg(pinned ? 'star-filled' : 'star');
@@ -451,7 +454,6 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
         const on = !isFavorite(tool);
         toggleFavorite(tool, on);
         star.setAttribute('aria-pressed', String(on));
-        star.setAttribute('aria-label', on ? widgetText(ctx, 'Unpin from rail') : widgetText(ctx, 'Pin to rail'));
         star.innerHTML = chromeIconSvg(on ? 'star-filled' : 'star');
       };
       star.addEventListener('click', (e) => { e.stopPropagation(); togglePin(); });
@@ -539,8 +541,8 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
       glyphEl: toolGlyph(doc, 'magnet'),
       tip: () => ({
         title: widgetText(ctx, 'Magnet: {mode}', { mode: widgetText(ctx, `schema.magnet.${prefs.magnet}`, {}, prefs.magnet) }),
-        sub: prefs.magnet === 'off' ? widgetText(ctx, 'Click for weak: snaps when O/H/L/C is within a few pixels')
-          : prefs.magnet === 'weak' ? widgetText(ctx, 'Click for strong: every anchor lands on the nearest O/H/L/C')
+        sub: prefs.magnet === 'off' ? widgetText(ctx, 'Click for weak: snaps when a bar or study value is within a few pixels')
+          : prefs.magnet === 'weak' ? widgetText(ctx, 'Click for strong: every anchor lands on the nearest bar or study value')
           : widgetText(ctx, 'Click to switch the magnet off'),
         side: 'right',
       }),
@@ -559,13 +561,13 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
     });
     box.appendChild(ctl.stay);
     box.appendChild(sep());
+    // Lock and the eye keep one name each; the pressed state and the glyph say locked or hidden.
     ctl.lock = makeBtn({
       cls: 'oac-rail__btn--chrome',
-      glyphEl: chromeGlyph(doc, 'lock'),
+      glyphEl: chromeGlyph(doc, 'unlock'),
       tip: () => {
         const sel = selectionOf();
-        if (sel.length === 0) return { title: widgetText(ctx, 'Lock drawing'), sub: widgetText(ctx, 'Select a drawing first'), side: 'right' };
-        return { title: allLocked(sel) ? widgetText(ctx, 'Unlock drawing') : widgetText(ctx, 'Lock drawing'), sub: readOnlyNote(sel), side: 'right' };
+        return { title: widgetText(ctx, 'Lock drawing'), sub: sel.length === 0 ? widgetText(ctx, 'Select a drawing first') : readOnlyNote(sel), side: 'right' };
       },
       onClick: () => {
         const sel = selectionOf();
@@ -580,10 +582,8 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
       glyphEl: chromeGlyph(doc, 'eye'),
       tip: () => {
         const sel = selectionOf();
-        if (sel.length === 0) return { title: widgetText(ctx, 'Hide drawing'), sub: widgetText(ctx, 'Select a drawing first'), side: 'right' };
-        return allHidden(sel)
-          ? { title: widgetText(ctx, 'Show drawing'), sub: readOnlyNote(sel), side: 'right' }
-          : { title: widgetText(ctx, 'Hide drawing'), sub: readOnlyNote(sel) ?? widgetText(ctx, 'Stays selected, so the eye brings it back'), side: 'right' };
+        return { title: widgetText(ctx, 'Hide drawing'), side: 'right', sub: sel.length === 0 ? widgetText(ctx, 'Select a drawing first')
+          : readOnlyNote(sel) ?? (allHidden(sel) ? undefined : widgetText(ctx, 'Stays selected, so the eye brings it back')) };
       },
       onClick: () => {
         const sel = selectionOf();
@@ -600,12 +600,15 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
         const sel = selectionOf();
         // The count is what the press deletes: read-only drawings stay.
         const n = editableIds(draw, sel).length;
+        // A locked selection stays, as the drawing toolbar and the menu say.
+        const why = readOnlyNote(sel) ?? (n > 0 && allLocked(sel) ? widgetText(ctx, 'locked') : undefined);
         return sel.length > 0
-          ? { title: n > 1 ? widgetText(ctx, 'Delete {count} drawings', { count: n }) : widgetText(ctx, 'Delete drawing'), chord: chordFor('delete', 'Delete'), sub: readOnlyNote(sel) ?? widgetText(ctx, 'Right-click to remove all'), side: 'right' }
+          ? { title: n > 1 ? widgetText(ctx, 'Delete {count} drawings', { count: n }) : widgetText(ctx, 'Delete drawing'), chord: chordFor('delete', 'Delete'), sub: why ?? widgetText(ctx, 'Right-click to remove all'), side: 'right' }
           : { title: widgetText(ctx, 'Delete drawing'), chord: chordFor('delete', 'Delete'), sub: widgetText(ctx, 'Select one first. Right-click to remove all'), side: 'right' };
       },
       onClick: () => {
-        for (const id of selectionOf()) draw.remove(id);
+        const sel = selectionOf();
+        if (!allLocked(sel)) for (const id of sel) draw.remove(id);
         refreshControls();
       },
       onContext: () => {
@@ -672,13 +675,13 @@ export function mountRail(ctx: WidgetContext, host: HTMLElement, opts: RailOptio
     const none = editableIds(draw, sel).length === 0;
     const locked = !none && allLocked(sel);
     const hidden = !none && allHidden(sel);
-    setState(ctl.lock, { off: none, on: locked, pressed: locked, glyph: locked ? 'unlock' : 'lock' });
+    setState(ctl.lock, { off: none, on: locked, pressed: locked, glyph: locked ? 'lock' : 'unlock' });
     setState(ctl.eye, { off: none, on: hidden, pressed: hidden, glyph: hidden ? 'eye-off' : 'eye' });
-    setState(ctl.trash, { off: none });
+    setState(ctl.trash, { off: none || locked });
     setState(ctl.undo, { off: !historyReady(ctx, 'undo') });
     setState(ctl.redo, { off: !historyReady(ctx, 'redo') });
-    // The accessible name says what the button would do now, not what it
-    // said when it was built or last hovered.
+    // The accessible name follows the tip now, not what it said when it was
+    // built or last hovered (the trash counts what it deletes).
     for (const b of Object.values(ctl)) ctx.tips.refreshLabel(b);
   };
 

@@ -3,9 +3,9 @@ import { createChart, PaneLegend } from '/dist/openalgo-charts.mjs';
 import { attachAlerts, detachAlerts } from './alerts.js';
 import { attachInspection, detachInspection } from './inspection.js';
 import { DrawingController, DrawingLinkGroup } from '/dist/openalgo-charts.draw.mjs';
-import { el, fmt, fmtVol, UP, DOWN, chartTheme, chartMotionOptions, toast } from './ui.js';
+import { el, fmt, fmtVol, UP, DOWN, chartTheme, chartMotionOptions, toast, MOD } from './ui.js';
 import { clipboardPort } from './clipboard.js';
-import { armCursor, magnetMode, stayMode, syncMobileControls, observeMobileControls, focusChart } from './rail.js';
+import { armCursor, magnetMode, stayMode, syncMobileControls, observeMobileControls, focusChart, toolName } from './rail.js';
 import { fetchBars, fetchNote, feedErrorState } from './feed.js';
 import { attachComparison, comparisonState, invalidateComparisons, restoreComparisons, syncComparisons } from './compare.js';
 import { autosave, stripView } from './persist.js';
@@ -26,6 +26,7 @@ import { attachReplay, exitReplay, syncReplayAlertPause } from './replay.js';
 import { attachTimeline } from './timeline.js';
 import { attachHistory, historyFor, withoutHistory } from './history.js';
 import { scopeDrawings } from './drawing-scope.js';
+import { attachCanvasTips } from './canvas-tips.js';
 
 // 1.3 surfaces: chart linking, the bar cache and the interval registry.
 // Same namespace read for the same reason: this page must still draw
@@ -199,6 +200,7 @@ export function closeSplit() {
     if (app.linkGroup) app.linkGroup.remove(app.chart2);
     if (app.instrumentDrawings2) { app.instrumentDrawings2.destroy(); app.instrumentDrawings2 = null; }
     if (app.draw2) { app.draw2.destroy(); app.draw2 = null; }
+    app.offCanvasTips2?.(); app.offCanvasTips2 = null;
     app.chart2.destroy();
     // A split opened again is a new second chart, with nothing to take back yet.
     historyFor(2)?.clear();
@@ -342,7 +344,8 @@ export function buildChart2({ keepView = true, typeChanged = false, state } = {}
     armCursor(el('chart2'), tool);
     if (app.focusPane === 2) syncMobileControls(tool);
   });
-  app.chart2.on('draw:add', () => { el('status').textContent = 'chart 2: ' + app.draw2.drawings().length + ' drawings'; });
+  app.chart2.on('draw:add', () => { el('status').textContent = 'Chart 2: ' + app.draw2.drawings().length + ' drawings'; });
+  app.offCanvasTips2 = attachCanvasTips(app.chart2, el('chart2'), 2);
   for (const event of ['draw:add', 'draw:remove', 'draw:update', 'indicatorAdded', 'indicatorRemoved', 'indicatorUpdated', 'paneCollapsed']) app.chart2.on(event, autosave);
   // No properties widget over here (it is glued to the main chart's box),
   // but the chords apply to the selected plot, so the
@@ -350,7 +353,7 @@ export function buildChart2({ keepView = true, typeChanged = false, state } = {}
   app.chart2.on('draw:select', ({ id }) => {
     const d = id ? app.draw2.get(id) : null;
     if (d && typeof app.draw2.copy === 'function') {
-      el('status').textContent = `chart 2: ${d.tool} selected · Ctrl+C copy · Ctrl+X cut · Ctrl+V paste`;
+      el('status').textContent = `Chart 2: ${toolName(d.tool)} selected · ${MOD}+C copy · ${MOD}+X cut · ${MOD}+V paste`;
     }
   });
   joinLink();
@@ -492,7 +495,7 @@ export function setPane2Legend(bar) {
 export function renderPane2Bar() {
   const bar = el('p2bar');
   bar.innerHTML = '';
-  const select = tbtn('Chart 2', 'Select chart 2');
+  const select = tbtn('Chart 2', 'Select Chart 2');
   select.addEventListener('click', () => { focusChart(2); el('chart2').focus(); });
   bar.appendChild(select);
 
@@ -501,7 +504,7 @@ export function renderPane2Bar() {
   note.textContent = app.p2.note || '';
   bar.appendChild(note);
 
-  const x = tbtn('&times;', 'Close the split view');
+  const x = tbtn('&times;', 'Close the second chart');
   x.classList.add('tbtn--icon');
   x.addEventListener('click', closeSplit);
   bar.appendChild(x);

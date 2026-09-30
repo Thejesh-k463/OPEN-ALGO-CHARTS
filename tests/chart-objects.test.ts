@@ -24,6 +24,21 @@ const makeChart = (): Chart => {
 };
 afterEach(() => { for (const chart of charts.splice(0)) chart.destroy(); });
 
+describe('drawing row names', () => {
+  it('names a drawing by the host when it can, else from the tool id', () => {
+    const chart = makeChart();
+    const draw = new DrawingController(chart);
+    const line = draw.add({ tool: 'trend-line', paneIndex: 0, style: {}, points: [{ time: 1700000000, price: 23800 }, { time: 1700000600, price: 23810 }] });
+    const named = new ChartObjects(chart, { drawings: draw, drawingName: tool => (tool === 'trend-line' ? 'Trend Line' : tool) });
+    const plain = new ChartObjects(chart, { drawings: draw });
+    expect(named.get('drawing:' + line.id)?.name).toBe('Trend Line');
+    expect(plain.get('drawing:' + line.id)?.name).toBe('Trend line');
+    named.destroy();
+    plain.destroy();
+    draw.destroy();
+  });
+});
+
 describe('object lifecycle and persistence', () => {
   it('hides reference levels and keeps a hidden indicator hidden when its plot type changes', () => {
     const chart = makeChart();

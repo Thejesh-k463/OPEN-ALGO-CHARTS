@@ -81,7 +81,7 @@ export const MOMENTUM: IndicatorDescriptor = {
 };
 
 /**
- * Rate Of Change: the same comparison as Momentum, expressed as a percentage of
+ * Rate of Change: the same comparison as Momentum, expressed as a percentage of
  * the older price so readings are comparable across instruments and across time.
  *
  * A zero reference price makes the ratio undefined, which is drawn upstream as a
@@ -89,7 +89,7 @@ export const MOMENTUM: IndicatorDescriptor = {
  */
 export const ROC: IndicatorDescriptor = {
   id: 'roc',
-  name: 'Rate Of Change',
+  name: 'Rate of Change',
   category: 'Momentum',
   placement: 'pane',
   inputs: [

@@ -19,22 +19,22 @@ function owned(promise, signal) {
 function validateStudiesAndDrawings(state) {
   for (const study of state.indicators || []) {
     try { getIndicator(study.indicatorId); }
-    catch { throw new Error(`Unavailable workspace study: ${study.indicatorId}`); }
+    catch { throw new Error(`Unavailable layout study: ${study.indicatorId}`); }
   }
   // Any document version this build reads: a save is written as the lowest
   // version that holds it, so one with no interval range is still version 2.
   const version = state.drawings?.version;
   if (state.drawings !== undefined && !Array.isArray(state.drawings)
     && !(Number.isInteger(version) && version >= 2 && version <= DRAWING_STATE_VERSION)) {
-    throw new Error('Unsupported workspace drawing document version');
+    throw new Error('Unsupported layout drawing document version');
   }
   const drawings = Array.isArray(state.drawings) ? state.drawings : state.drawings?.drawings || [];
-  if (!Array.isArray(drawings)) throw new Error('Invalid workspace drawings');
+  if (!Array.isArray(drawings)) throw new Error('Invalid layout drawings');
   const ids = new Set();
   for (const drawing of drawings) {
-    if (!hasDrawingTool(drawing.tool)) throw new Error(`Unavailable workspace drawing: ${drawing.tool}`);
+    if (!hasDrawingTool(drawing.tool)) throw new Error(`Unavailable layout drawing: ${drawing.tool}`);
     if (typeof drawing.id !== 'string' || !drawing.id || ids.has(drawing.id) || !sanitizeDrawing(drawing)) {
-      throw new Error('Invalid workspace drawing or duplicate drawing identity');
+      throw new Error('Invalid layout drawing or duplicate drawing identity');
     }
     ids.add(drawing.id);
   }
@@ -52,7 +52,7 @@ async function sourceBars(request, options) {
 export function validateReferenceLayout(layout) {
   for (const key of ['symbol', 'interval']) {
     if (layout.secondary && layout.linkOptions[key] && layout.request[key] !== layout.secondary.request[key]) {
-      throw new Error(`Linked workspace ${key} settings conflict between charts`);
+      throw new Error(`Linked layout ${key} settings conflict between charts`);
     }
   }
   validateStudiesAndDrawings(layout);
@@ -96,8 +96,8 @@ export class ReferenceWorkspaceTransition {
   }
 
   async open(payload, persist = async () => {}) {
-    if (this.closed) throw new Error('Workspace owner is closed');
-    if (this.publishing) throw new Error('A workspace is being installed');
+    if (this.closed) throw new Error('The layout owner is closed');
+    if (this.publishing) throw new Error('A layout is being installed');
     this.cancel();
     const before = this.callbacks.capture();
     const operation = { controller: new AbortController(), unwatch: null };
@@ -114,7 +114,7 @@ export class ReferenceWorkspaceTransition {
       try { this.assertCurrent(operation, before); }
       catch (error) {
         try { await receipt?.rollback?.(); }
-        catch (rollbackError) { throw new AggregateError([error, rollbackError], 'Workspace changed and storage recovery failed'); }
+        catch (rollbackError) { throw new AggregateError([error, rollbackError], 'The layout changed and storage recovery failed'); }
         throw error;
       }
       this.unwatch(operation);
@@ -124,7 +124,7 @@ export class ReferenceWorkspaceTransition {
         const failures = [error];
         try { this.callbacks.install(before); } catch (rollbackError) { failures.push(rollbackError); }
         try { await receipt?.rollback?.(); } catch (rollbackError) { failures.push(rollbackError); }
-        if (failures.length > 1) throw new AggregateError(failures, 'Workspace installation and recovery failed');
+        if (failures.length > 1) throw new AggregateError(failures, 'Layout installation and recovery failed');
         throw error;
       } finally { this.publishing = false; }
       return prepared;
@@ -143,7 +143,7 @@ export class ReferenceWorkspaceTransition {
   assertCurrent(operation, before) {
     operation.controller.signal.throwIfAborted();
     if (this.closed || this.pending !== operation || !this.callbacks.current(before)) {
-      throw new Error('The current workspace changed; this switch was cancelled');
+      throw new Error('The current layout changed; this switch was cancelled');
     }
   }
 
@@ -157,7 +157,7 @@ export class ReferenceWorkspaceTransition {
     if (!this.pending || this.publishing) return;
     const operation = this.pending;
     this.pending = null;
-    operation.controller.abort(new Error('Workspace preparation was cancelled'));
+    operation.controller.abort(new Error('Layout preparation was cancelled'));
     this.unwatch(operation);
     this.callbacks.setPending(false);
   }

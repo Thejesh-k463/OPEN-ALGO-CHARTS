@@ -1,4 +1,4 @@
-import { el, fmt, round2, rupee } from './ui.js';
+import { el, fmt, round2, pnlText } from './ui.js';
 import { snapPrice, tickNote } from './ticks.js';
 
 let app;
@@ -133,7 +133,7 @@ export function markPrice() { return app.currentBars.length ? app.currentBars[ap
 export function positionLabel(mp) {
   const long = app.position.netQty > 0;
   const pnl = (mp - app.position.avgPrice) * app.position.netQty;
-  return `${long ? 'LONG' : 'SHORT'} ${Math.abs(app.position.netQty)} @ ${fmt(app.position.avgPrice)}  ${rupee(pnl)}`;
+  return `${long ? 'LONG' : 'SHORT'} ${Math.abs(app.position.netQty)} @ ${fmt(app.position.avgPrice)}  ${pnlText(pnl)}`;
 }
 export function updatePositionLine() {
   if (app.posLine && app.chart) { app.chart.removePrimitive(app.posLine); app.posLine = null; }

@@ -204,6 +204,12 @@ describe('widget managed data loading', () => {
     expect(second.chart.getVisibleLogicalRange()).not.toEqual(view);
   });
 
+  it('counts one loaded bar in the singular', async () => {
+    const { root } = make({ feed: { getBars: async () => [bar(600)] } });
+    await flush();
+    expect(root.querySelector('.oac-statusline__msg')?.textContent).toBe('1 bar');
+  });
+
   it('releases a failed paging gesture and exposes a working older-history retry', async () => {
     const hook = vi.spyOn(Chart.prototype, 'setHistoryLoader');
     let calls = 0;

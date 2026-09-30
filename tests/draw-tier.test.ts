@@ -1112,6 +1112,17 @@ describe('drawing shortcuts', () => {
     expect(matchDrawingShortcut({ key: 'h', altKey: true })).toBe('horizontal-line');
   });
 
+  it('reads the letter from the physical key under Alt only where macOS Option types a symbol', () => {
+    // What e.key holds for Option+T and Option+H on a US Mac layout.
+    expect(matchDrawingShortcut({ key: String.fromCharCode(0x2020), code: 'KeyT', altKey: true })).toBe('trend-line');
+    expect(matchDrawingShortcut({ key: String.fromCharCode(0x2d9), code: 'KeyH', altKey: true })).toBe('horizontal-line');
+    expect(matchDrawingShortcut({ key: 't', code: 'KeyT', altKey: true })).toBe('trend-line');
+    // A layout that types a letter keeps its own letters, as before 2.5.10:
+    // on Dvorak the key labelled T sits where QWERTY has K.
+    expect(matchDrawingShortcut({ key: 't', code: 'KeyK', altKey: true })).toBe('trend-line');
+    expect(matchDrawingShortcut({ key: 'k', code: 'KeyT', altKey: true })).toBeNull();
+  });
+
   it('requires the modifiers to match exactly, so it cannot shadow a host chord', () => {
     // Ctrl+Alt+T is a terminal shortcut on Linux; it must not arm a tool.
     expect(matchDrawingShortcut({ key: 't', altKey: true, ctrlKey: true })).toBeNull();

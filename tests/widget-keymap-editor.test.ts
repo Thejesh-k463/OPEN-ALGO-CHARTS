@@ -5,10 +5,10 @@
  * the same storage, and the panel records a chord, names a conflict, refuses
  * what it must and resets. Everything runs against the fake DOM.
  */
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import type { Bar } from '../src/index';
 import {
-  createWidget, openShortcutsPanel, contextMenuEntries, mountDrawingProperties, KEYMAP_KEY, STORAGE_PREFIX,
+  createWidget, openShortcutsPanel, contextMenuEntries, mountContextMenu, mountDrawingProperties, KEYMAP_KEY, STORAGE_PREFIX,
   type Widget, type WidgetOptions, type StorageLike, type WidgetMessageKey,
 } from '../src/widget/index';
 import { fakeWidgetDocument, fakeContainer, fireKey, fire, ensureWindowGlobal, type FakeDocument, type FakeElement } from './helpers/fake-dom-widget';
@@ -125,6 +125,15 @@ describe('a moved chord does what the old one did', () => {
     };
     const before = menuChords();
     expect(before['draw-copy']).toBe(km.format('Mod+C'));
+    // Fit all bars names the chart's chord too, as every other row with one does.
+    const fit = contextMenuEntries(w.context, { paneIndex: 0, point: { x: 200, y: 150 }, price: 100, time: T0 + 5 * DAY, index: 5, preventDefault: () => {}, target: { kind: 'empty', id: null } })
+      .find((e) => 'id' in e && e.id === 'chart-fit') as { chord?: string };
+    expect(fit.chord).toBe(km.format('Alt+F'));
+    // Painted rows keep the chord out of the name and carry it as the row's shortcut.
+    mountContextMenu(w.context, undefined, { event: { paneIndex: 0, point: { x: 200, y: 150 }, price: 100, time: T0 + 5 * DAY, index: 5, preventDefault: () => {}, target: { kind: 'empty', id: null } } });
+    const row = root.querySelector('.oac-ctx [data-act="chart-fit"]') as FakeElement;
+    expect(row.querySelector('.oac-ctx__key')!.getAttribute('aria-hidden')).toBe('true');
+    expect(row.getAttribute('aria-keyshortcuts')).toBe('Alt+F');
     expect(before['draw-delete']).toBe(km.format('Delete'));
     for (const [command, combo] of [['copy', 'Alt+Shift+C'], ['cut', 'Alt+Shift+X'], ['paste', 'Alt+Shift+V'], ['duplicate', 'Alt+Shift+D'], ['delete', 'Alt+Shift+Backspace']]) {
       expect(km.rebind(command, combo).ok, command).toBe(true);
@@ -384,6 +393,20 @@ describe('the shortcuts panel as an editor', () => {
     expect(m.w.chart.shortcuts?.handleKey('Alt+KeyF')).toBe('fitContent');
   });
 
+  it('records a chart chord on macOS as the one it shows: Control or Cmd, both are Mod', () => {
+    vi.stubGlobal('navigator', { platform: 'MacIntel', userAgent: '' });
+    try {
+      const m = make();
+      expect(m.w.context.keymap.isMac).toBe(true);
+      const panel = open(m);
+      change(m.root, 'chart:fitContent').click();
+      fireKey(panel, 'g', { ctrlKey: true, code: 'KeyG' });
+      expect(chordOf(m.root, 'chart:fitContent')).toBe('Cmd+G');
+      // Cmd+G, the chord the row names, is what now fits the content.
+      expect(m.w.chart.shortcuts?.handleKey('Mod+KeyG')).toBe('fitContent');
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   it('resets a row, offers the choice when its default is taken, and resets all after a confirmation', () => {
     const m = make();
     const km = m.w.context.keymap;
@@ -424,11 +447,19 @@ describe('the shortcuts panel as an editor', () => {
     expect(m.w.context.overlays.size()).toBe(0);
   });
 
-  it('says a drawing tool takes precedence, in the active wording', () => {
+  it('heads the own group of the widget General', () => {
+    const m = make();
+    open(m);
+    const heads = m.root.querySelectorAll('.oac-keys__group h3, .oac-keys__group .oac-head').map((h) => h.textContent);
+    expect(heads).toContain('General');
+    expect(heads).not.toContain('Widget');
+  });
+
+  it('says another shortcut takes precedence, in the active wording', () => {
     const m = make();
     open(m);
     const note = m.root.querySelector('.oac-keys__note')?.textContent ?? '';
-    expect(note).toMatch(/a drawing tool uses the same chord here and takes precedence/);
+    expect(note).toMatch(/another shortcut uses the same chord here and takes precedence/);
     expect(note).not.toMatch(/\barm/i);
   });
 
@@ -443,7 +474,7 @@ describe('the shortcuts panel as an editor', () => {
     const asked: string[] = [];
     const m = make({ translate: (key, fallback) => { asked.push(key); return messages[key as WidgetMessageKey] ?? fallback; } });
     open(m);
-    expect(asked).toContain('{count} chart shortcuts struck through: a drawing tool uses the same chord here and takes precedence.');
+    expect(asked).toContain('{count} chart shortcuts struck through: another shortcut uses the same chord here and takes precedence.');
     expect(asked.some((k) => /arms a drawing tool/.test(k))).toBe(false);
   });
 

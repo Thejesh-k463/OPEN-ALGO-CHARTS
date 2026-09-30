@@ -39,7 +39,7 @@ import {
 import { defaultWidgetStore } from './storage';
 import { ChartHistory } from './history';
 import { Keymap } from './keymap';
-import { mountRail, type RailHandle, type RailOptions, type RailPrefs } from './rail';
+import { mountRail, toolName, type RailHandle, type RailOptions, type RailPrefs } from './rail';
 import { mountStatusline, type StatuslineHandle } from './statusline';
 import { mountTopbar, type MenuRow, type SymbolSearch, type TopbarHandle } from './topbar';
 import { mountToasts, type ToastHandle, type ToastKind, type Toaster } from './toast';
@@ -52,7 +52,7 @@ import { mountMobile, type MobileHandle, type MobileMode } from './mobile';
 import { mountDrawingToolbar, type DrawingToolbarHandle } from './drawing-toolbar';
 import { createDrawingTemplates, type DrawingTemplates } from './drawing-templates';
 import type { DrawingTemplateStore } from 'openalgo-charts/workspace';
-import { widgetText, type WidgetTranslator } from './localization';
+import { errorText, widgetText, type WidgetTranslator } from './localization';
 import { EventDetailsPopup, type EventDetailsPopupOptions } from './event-details';
 import type { ChartEventClick } from 'openalgo-charts';
 import { mountDataWindow } from './data-window';
@@ -464,6 +464,46 @@ class WidgetContextImpl implements WidgetContext {
   public get chartTheme(): ChartTheme { return this._source.chartThemeInUse(); }
 }
 
+/**
+ * A study legend's eye, gear and cross and the cross on an order or position
+ * line are painted on the canvas, with no element to carry a name, so the
+ * chart's hover id raises the widget's tip at the pointer saying what a press
+ * does. Returns the teardown.
+ */
+function canvasButtonTips(ctx: WidgetContext, chartEl: HTMLElement): () => void {
+  const spot = h(ctx.document, 'span', 'oac-tip-spot', { 'aria-hidden': 'true' });
+  ctx.root.appendChild(spot);
+  let said: string | null = null;
+  const words = (id: string): string | null => {
+    const sep = id.lastIndexOf('::');
+    if (sep < 0) return null;
+    const owner = id.slice(0, sep), action = id.slice(sep + 2);
+    // The trade tier's lines hit-test as order: and position:, the chart's own trading layer as ord: and pos:.
+    if (/^(?:ord|order):/.test(owner)) return action === 'close' ? widgetText(ctx, 'Cancel order') : null;
+    if (/^(?:pos|position):/.test(owner)) return action === 'close' ? widgetText(ctx, 'Close position') : null;
+    const study = owner.startsWith('indicator:') ? ctx.chart.indicators().find(item => item.id === owner.slice('indicator:'.length)) : undefined;
+    if (study === undefined) return null;
+    const name = study.name;
+    return action === 'hide' ? widgetText(ctx, study.visible() ? 'Hide {name}' : 'Show {name}', { name })
+      : action === 'settings' ? widgetText(ctx, 'Settings for {name}', { name })
+        : action === 'close' ? widgetText(ctx, 'Remove {name}', { name }) : null;
+  };
+  ctx.tips.attach(spot, () => (said === null ? null : { title: said, side: 'bottom' }));
+  const move = (e: PointerEvent): void => {
+    const root = ctx.root.getBoundingClientRect();
+    spot.style.left = `${e.clientX - root.left}px`;
+    spot.style.top = `${e.clientY - root.top}px`;
+  };
+  chartEl.addEventListener('pointermove', move);
+  const off = ctx.chart.on('hover', payload => {
+    const id = (payload as { id: string | null }).id;
+    said = id === null ? null : words(id);
+    if (said !== null) ctx.tips.show(spot);
+    else if (ctx.tips.target() === spot) ctx.tips.hide();
+  });
+  return () => { off(); chartEl.removeEventListener('pointermove', move); spot.remove(); };
+}
+
 class WidgetImpl implements Widget {
   public readonly dataController: DataLoadingController | null;
   public readonly chart: Chart;
@@ -650,6 +690,8 @@ class WidgetImpl implements Widget {
     this.alerts = new AlertController(this.chart, { drawings: this.draw });
     this.objects = new ChartObjects(this.chart, {
       drawings: this.draw,
+      // The name the rail and the properties title give the tool, translated.
+      drawingName: tool => widgetText(options, `schema.drawing.${tool}.name`, {}, toolName(tool)),
       onSettings: object => {
         if (object.kind === 'source') this.openSettings();
         else if (object.kind === 'indicator') mountIndicatorSettings(this.context, undefined, { instanceId: object.sourceId });
@@ -663,7 +705,7 @@ class WidgetImpl implements Widget {
       // Through the shell, so the top bar and the persisted layout follow.
       setChartType: id => this.setChartType(id),
       onError: ({ direction, error }) => {
-        const reason = error instanceof Error ? error.message : String(error);
+        const reason = errorText(this.context, error);
         this._toasts.toast(direction === 'undo'
           ? widgetText(this.context, 'That step could not be undone: {error}', { error: reason })
           : widgetText(this.context, 'That step could not be redone: {error}', { error: reason }), 'error');
@@ -705,6 +747,7 @@ class WidgetImpl implements Widget {
       interval: () => this._interval,
     });
     this._cleanups.push(() => { tips.destroy(); overlays.destroy(); });
+    this._cleanups.push(canvasButtonTips(this.context, chartEl));
     if (options.eventDetails !== false) {
       const eventDetails = new EventDetailsPopup(chartEl, {
         styleNonce: options.styleNonce, overlays: this.context.overlays,
@@ -1154,13 +1197,13 @@ class WidgetImpl implements Widget {
     } else if (state.status === 'loading') this.context.status(widgetText(this.context, 'Loading {symbol} {interval}', { symbol, interval }));
     else if (state.status === 'refreshing') this.context.status(widgetText(this.context, 'History is stale. Refreshing {symbol} {interval}', { symbol, interval }));
     else if (state.status === 'error' || state.status === 'stale') {
-      this.context.status(state.status === 'stale' ? widgetText(this.context, 'History is stale for {symbol} {interval}. Reload to retry.', { symbol, interval }) : widgetText(this.context, 'Could not load {symbol} {interval}', { symbol, interval }), 'error');
+      this.context.status(state.status === 'stale' ? widgetText(this.context, 'History is stale for {symbol} {interval}', { symbol, interval }) : widgetText(this.context, 'Could not load {symbol} {interval}', { symbol, interval }), 'error');
       if (state.error && state.error !== previous?.error) {
         this._toasts.toast(widgetText(this.context, 'Could not load {symbol} {interval}: {error}', { symbol, interval, error: state.error.message }), 'error');
         this._bus.emit('data', { symbol, interval, bars: 0, error: state.error.message });
       }
     } else if (state.status === 'ready' || state.status === 'empty') {
-      this.context.status(state.bars.length === 0 ? widgetText(this.context, 'No bars for {symbol} {interval}', { symbol, interval }) : widgetText(this.context, '{count} bars', { count: state.bars.length }));
+      this.context.status(state.bars.length === 0 ? widgetText(this.context, 'No bars for {symbol} {interval}', { symbol, interval }) : widgetText(this.context, state.bars.length === 1 ? '{count} bar' : '{count} bars', { count: state.bars.length }));
       this._bus.emit('data', { symbol, interval, bars: state.bars.length });
     }
   }

@@ -13,7 +13,7 @@ import type { WidgetContext } from './context';
 import { openTemplateNamePrompt } from './drawing-templates';
 import { button, el, stopOwnKeys, type PanelHandle } from './form';
 import { applyIndicatorTemplate, hostKept, saveIndicatorTemplate, type IndicatorTemplateApplyMode } from './layouts-templates';
-import { widgetText } from './localization';
+import { errorText, widgetText } from './localization';
 import { addWidgetStyles } from './styles';
 
 /** Studies a template would hold: the user's, none of the host's. */
@@ -57,7 +57,7 @@ export function openTemplatesMenu(ctx: WidgetContext, anchor: HTMLElement, store
     message.classList.toggle('is-error', error);
     message.setAttribute('role', error ? 'alert' : 'status');
   };
-  const reason = (error: unknown): string => error instanceof Error ? error.message : String(error);
+  const reason = (error: unknown): string => errorText(ctx, error);
   const disable = (b: HTMLButtonElement, why: string | null): void => {
     b.setAttribute('aria-disabled', String(why !== null));
     if (why === null) b.removeAttribute('title'); else b.title = why;

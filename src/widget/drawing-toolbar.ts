@@ -302,15 +302,17 @@ export function mountDrawingToolbar(ctx: WidgetContext, host: HTMLElement, opts:
     const locked = live.filter((d) => d.locked === true).length;
     const allLocked = live.length > 0 && locked === live.length;
     lock.replaceChildren(chromeGlyph(doc, allLocked ? 'lock' : 'unlock'));
-    lock.setAttribute('aria-label', allLocked ? widgetText(ctx, 'Unlock') : widgetText(ctx, 'Lock'));
-    // A selection that is partly locked is neither: the toggle says so.
+    // One name; the pressed state says locked, and a partly locked selection is neither.
+    lock.setAttribute('aria-label', widgetText(ctx, 'Lock'));
     lock.setAttribute('aria-pressed', allLocked ? 'true' : locked > 0 ? 'mixed' : 'false');
     lock.disabled = why !== null;
-    lock.title = why === null ? (allLocked ? widgetText(ctx, 'Unlock') : widgetText(ctx, 'Lock')) : `${widgetText(ctx, 'Lock')} (${why})`;
+    lock.title = why === null ? widgetText(ctx, 'Lock') : `${widgetText(ctx, 'Lock')} (${why})`;
     // Every one locked is the context menu's rule for delete too.
     const noDelete = why ?? (allLocked ? widgetText(ctx, 'locked') : null);
     remove.disabled = noDelete !== null;
-    remove.title = noDelete === null ? `${widgetText(ctx, 'Delete')} (Del)` : `${widgetText(ctx, 'Delete')} (${noDelete})`;
+    // Why it is off, else the chord the user bound: none once Delete has no key.
+    const note = noDelete ?? commandChord(ctx.keymap, 'delete', 'Delete');
+    remove.title = note === undefined ? widgetText(ctx, 'Delete') : `${widgetText(ctx, 'Delete')} (${note})`;
     if (!controls().includes(current)) setRoving(controls()[0] ?? more);
     else setRoving(current);
   }

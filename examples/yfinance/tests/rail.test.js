@@ -380,10 +380,12 @@ describe('selection controls', () => {
     expect(names(d.calls, 'update')).toEqual([['update', 'a', { locked: true }], ['update', 'b', { locked: true }]]);
     expect(lock.getAttribute('aria-pressed')).toBe('true');
     expect(useIds(lock)).toHaveLength(0);   // chrome glyphs are inline, not sprite
-    expect(lock.dataset.glyph).toBe('unlock');
+    // The closed padlock while locked, as every other surface shows it; one name throughout.
+    expect(lock.dataset.glyph).toBe('lock');
+    expect(lock.getAttribute('aria-label')).toBe('Lock drawing');
     clickOn(lock);
     expect(names(d.calls, 'update').pop()).toEqual(['update', 'b', { locked: false }]);
-    expect(lock.dataset.glyph).toBe('lock');
+    expect(lock.dataset.glyph).toBe('unlock');
 
     clickOn(eye);
     expect(names(d.calls, 'update').pop()).toEqual(['update', 'b', { visible: false }]);

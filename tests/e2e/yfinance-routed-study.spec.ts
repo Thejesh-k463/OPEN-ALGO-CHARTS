@@ -72,7 +72,7 @@ test('the routed signal sample draws on the candles and follows them to the othe
   page.on('pageerror', error => errors.push(error.message));
   const before = await routed(page);
   await page.locator('#chart').focus();
-  await page.getByRole('button', { name: 'Add an indicator', exact: true }).click();
+  await page.getByRole('button', { name: /^Add an indicator, / }).click();
   await expect(page.locator('.oac-pick')).toHaveCount(1);
   await page.locator(`.oac-pick__row[data-id="${SAMPLE_ID}"]`).click();
   await paint(page);
@@ -209,7 +209,7 @@ test('the routed signal sample shades the candles by momentum and its settings d
   page.on('pageerror', error => errors.push(error.message));
   expect(SAMPLED.length).toBeGreaterThan(8);
   await page.locator('#chart').focus();
-  await page.getByRole('button', { name: 'Add an indicator', exact: true }).click();
+  await page.getByRole('button', { name: /^Add an indicator, / }).click();
   await expect(page.locator('.oac-pick')).toHaveCount(1);
   await page.locator(`.oac-pick__row[data-id="${SAMPLE_ID}"]`).click();
   await page.locator('.oac-pick').getByRole('button', { name: 'Done', exact: true }).click();

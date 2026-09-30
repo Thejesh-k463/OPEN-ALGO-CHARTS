@@ -31,7 +31,7 @@ import {
 import { chromeIconSvg } from 'openalgo-charts/draw';
 import { glyph, h, type OverlayOptions, type TipController, type WidgetContext } from './context';
 import { timeBuckets, type DateNavigationResult } from './date-navigator';
-import { widgetText, type WidgetTranslationOptions } from './localization';
+import { errorText, widgetText, type WidgetTranslationOptions } from './localization';
 import {
   MarketStatusHold, PHASE_GLYPHS, clockText, marketStatusReading, sessionStateShown, utcOffsetLabel,
   type MarketStatusReading,
@@ -136,7 +136,7 @@ export interface BottombarHandle {
 
 /** The glyph and the words for each scale toggle; the phone layout's sheet shows the same words. */
 export const SCALE_TOGGLES: ReadonlyArray<{ id: BottombarScaleToggle; icon: string; key: `schema.${string}`; label: string }> = [
-  { id: 'auto', icon: 'scale-auto', key: 'schema.ui.bottombar.auto', label: 'Auto-fit prices' },
+  { id: 'auto', icon: 'scale-auto', key: 'schema.ui.bottombar.auto', label: 'Auto-fit to the data' },
   { id: 'log', icon: 'scale-log', key: 'schema.ui.bottombar.log', label: 'Logarithmic scale' },
   { id: 'percent', icon: 'scale-percent', key: 'schema.ui.bottombar.percent', label: 'Percent scale' },
 ];
@@ -252,7 +252,7 @@ export function mountBottombar(ctx: BottombarContext, host: HTMLElement, opts: B
       const mine = ++request;
       let work: ReturnType<NonNullable<BottombarTarget['setRange']>>;
       try { work = t.setRange(id); } catch (error) {
-        ctx.status(widgetText(ctx, 'Could not load history: {error}', { error: error instanceof Error ? error.message : String(error) }), 'error');
+        ctx.status(widgetText(ctx, 'Could not load history: {error}', { error: errorText(ctx, error) }), 'error');
         return;
       }
       changed();
@@ -262,7 +262,7 @@ export function mountBottombar(ctx: BottombarContext, host: HTMLElement, opts: B
         if (text !== '') ctx.status(text, result.status === 'error' || result.status === 'unsupported' ? 'error' : 'info');
         changed();
       }, (error: unknown) => {
-        if (!destroyed && mine === request) ctx.status(widgetText(ctx, 'Could not load history: {error}', { error: error instanceof Error ? error.message : String(error) }), 'error');
+        if (!destroyed && mine === request) ctx.status(widgetText(ctx, 'Could not load history: {error}', { error: errorText(ctx, error) }), 'error');
       });
     },
     marketStatus: () => {

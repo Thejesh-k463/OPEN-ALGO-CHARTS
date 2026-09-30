@@ -65,7 +65,7 @@ test('the selected chart shares a resizable Data and Objects dock', async ({ pag
 });
 
 test('symbol results preserve an explicit venue and direct interval entry owns the focused chart', async ({ page }) => {
-  await page.getByRole('button', { name: 'Change symbol', exact: true }).click();
+  await page.getByRole('button', { name: /^Change symbol, / }).click();
   const input = page.getByPlaceholder('Symbol or expression');
   await input.fill('reliance');
   await page.getByRole('option', { name: /NSE:RELIANCE\.NS/ }).click();
@@ -85,7 +85,7 @@ test('symbol results preserve an explicit venue and direct interval entry owns t
 });
 
 test('the shared indicator picker manages duplicate running instances independently', async ({ page }) => {
-  await page.getByRole('button', { name: 'Add an indicator', exact: true }).click();
+  await page.getByRole('button', { name: /^Add an indicator, / }).click();
   const ema = page.locator('.oac-pick__row[data-id="ema"]');
   await ema.click();
   await ema.click();

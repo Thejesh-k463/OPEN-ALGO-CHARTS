@@ -104,7 +104,7 @@ function instructions(tool) {
 function refresh() {
   const tool = getDrawingTool(picker.value);
   const active = draw.activeTool();
-  status.textContent = `${tools.length} tools. ${active ? getDrawingTool(active).name + ': ' + instructions(getDrawingTool(active)) : tool.name + ': drag its body or handles. Double-click a drawing for properties.'} Simulated prices near 23800.`;
+  status.textContent = `${tools.length} tools. ${active ? getDrawingTool(active).name + ': ' + instructions(getDrawingTool(active)) : tool.name + ': drag its body or handles. Right-click a drawing, or use its toolbar, for properties.'} Simulated prices near 23800.`;
   document.getElementById('undo').disabled = !draw.canUndo();
   document.getElementById('redo').disabled = !draw.canRedo();
 }

@@ -275,6 +275,7 @@ select.field { cursor: pointer; padding-right: 24px; }
 .set-group { color: var(--faint); font-size: 10px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .8px; line-height: 15px; margin: 8px 0 1px; }
 .set-group:first-child { margin-top: 0; }
+.set-rows { display: contents; }
 /* A 3px gap with 24px rows: the row itself carries the breathing room, and
    the densest tab (Appearance, 17 controls over 4 groups) has to fit in one
    panel without a scrollbar. Groups get their air from the header margin. */
@@ -289,7 +290,7 @@ select.field { cursor: pointer; padding-right: 24px; }
   width: 13px; height: 13px; margin-left: 5px; vertical-align: -2px;
   border: 1px solid var(--bd); border-radius: 50%; color: var(--faint);
   font-size: 9px; font-weight: 600; line-height: 1; cursor: help; user-select: none; }
-.set-help:hover, .set-help:focus-visible { color: var(--tx); border-color: var(--bd-hover); outline: none; }
+.set-help:hover { color: var(--tx); border-color: var(--bd-hover); }
 .set-ctl { grid-column: 3; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
 .set-ctl:has([data-input-action]) { flex-wrap: wrap; }
 .oac-widget.host-input-actions { position: fixed; inset: 0; z-index: 80; display: block;
@@ -354,6 +355,7 @@ select.field { cursor: pointer; padding-right: 24px; }
   box-shadow: var(--shadow); font: 12px/1.4 system-ui, sans-serif;
   opacity: 0; transition: opacity .09s ease; }
 #tip.is-on { opacity: 1; }
+.tip-spot { position: fixed; width: 1px; height: 1px; pointer-events: none; }
 #tip .tip-chord { color: var(--mut); margin-left: 10px; font-variant-numeric: tabular-nums; }
 /* Second line: a gesture the control also answers to, dimmer than its name. */
 #tip .tip-sub { display: block; margin-top: 2px; color: var(--faint); font-size: 11px; }
@@ -423,7 +425,8 @@ select.field { cursor: pointer; padding-right: 24px; }
 .menu button:hover { background: var(--elev-2); }
 .menu button:disabled { opacity: .45; cursor: not-allowed; }
 .menu button:focus-visible { outline-offset: -2px; }
-.menu button em { margin-left: auto; color: var(--acc-2); font-style: normal; }
+.menu button em { margin-left: auto; color: var(--acc-2); font-style: normal; display: grid; }
+.menu button em svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .menu-find { position: sticky; top: 0; z-index: 1; background: var(--panel); padding: 6px; }
 .menu-find input { width: 100%; box-sizing: border-box; padding: 5px 7px; font: inherit;
   font-size: 12px; color: var(--tx); background: var(--elev); border: 1px solid var(--bd);
@@ -786,7 +789,8 @@ body[data-fullscreen-pane="2"] #chart2 { left: 42px; }
 .axrow.is-on .axdot { border-color: var(--acc); background:
   radial-gradient(circle, var(--acc-2) 0 3px, transparent 3.5px); }
 .axrow:disabled .axdot { opacity: .4; }
-.axrow .axarrow { color: var(--faint); font-size: 11px; }
+.axrow .axarrow { color: var(--faint); display: grid; place-items: center; }
+.axrow .axarrow svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .axmenu hr { border: 0; border-top: 1px solid var(--bd-soft); margin: 5px 7px; }
 .axmenu .axhead { padding: 7px 9px 3px; color: var(--faint); font-size: 10px;
   font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }

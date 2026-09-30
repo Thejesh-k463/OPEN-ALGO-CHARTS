@@ -118,8 +118,8 @@ larger value, the close stays with the ticks). `DataLoadingController.pushBar(ba
 later ticks. After a reconnect, reseed with `builder.seed(builder.current())` so the
 bucket opened after the gap is provisional too, then refresh.
 
-The WS adapter speaks the documented OpenAlgo protocol (authenticate → numeric-mode subscribe
-→ `market_data`), with connection and control callbacks (`onState` / `onControl`).
+The WS adapter speaks the documented OpenAlgo protocol (authenticate, then a numeric-mode subscribe,
+then `market_data`), with connection and control callbacks (`onState` / `onControl`).
 Market-data frames can carry `symbol` and `exchange` on the top-level envelope with
 prices inside `data`. Non-empty identity fields inside `data` take precedence, followed
 by the envelope fields and then the legacy `topic` fallback.
@@ -165,7 +165,7 @@ new OpenAlgoWsFeed({
 ## All-in-one live feed
 
 `OpenAlgoLiveDataFeed` composes REST history + WebSocket + the candle builder so you get a
-seamless history → live seam from a single object:
+history that joins live data without a seam, from a single object:
 
 ```ts
 import { OpenAlgoLiveDataFeed } from 'openalgo-charts';

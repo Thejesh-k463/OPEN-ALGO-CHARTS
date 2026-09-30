@@ -1,5 +1,5 @@
 import { registerIndicator } from '/dist/openalgo-charts.mjs';
-import { el } from './ui.js';
+import { el, studyNames } from './ui.js';
 
 /** Self-contained so the viewer can show the exact factory the host registers. */
 export function sourceSignalDescriptor() {
@@ -46,7 +46,7 @@ export function bindIndicatorSource(chart, pane) {
     owner = { chart, instanceId };
     const context = chart.getDataContext();
     el('indsource-title').textContent = instance.name + ' source';
-    el('indsource-owner').textContent = `Chart ${pane}: ${context?.symbol || 'Unknown symbol'} | Instance ${instanceId}`;
+    el('indsource-owner').textContent = `Chart ${pane}: ${context?.symbol || 'Unknown symbol'}, ${studyNames(chart).get(instance.id)}`;
     el('indsource-code').textContent = sourceSignalDescriptor.toString() + '\n\nregisterIndicator(sourceSignalDescriptor());';
     el('indsource').hidden = false;
   });

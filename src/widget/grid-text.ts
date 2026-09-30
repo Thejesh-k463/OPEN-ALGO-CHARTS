@@ -16,20 +16,18 @@ export type ChartGridMessage =
   | 'Large left, three on the right' | 'Large top, three below' | 'Large left, four on the right' | 'Large top, four below'
   | 'Large corner, five around' | 'Large corner, seven around'
   // The bar and its menus.
-  | 'Chart grid' | 'Layout' | 'Layout: {name}' | 'Layouts' | '1 chart' | '{count} charts' | '{name}, {count} charts' | 'Link: {name}'
+  | 'Chart grid' | 'Arrange charts' | 'Arrange charts: {name}' | '1 chart' | '{count} charts' | '{name}, {count} charts' | 'Link: {name}'
   | 'Maximize the chart' | 'Restore the grid' | 'There is only one chart' | 'The grid shows one chart at a time at this width' | 'Link' | 'Linking' | 'Link group' | 'Not linked' | 'Group {letter}'
   | 'New group' | 'Rename group' | 'Group name' | 'Save' | 'Cancel' | 'Links in {group}'
   | 'Crosshair' | 'Time range' | 'Symbol' | 'Interval' | 'Chart type' | 'Appearance' | 'Drawings'
   | 'Nearest bar' | 'where a chart has no bar at that time' | 'same instrument only'
-  | 'Share this chart\'s drawings' | 'Shared {count} drawings' | 'No drawing here can be shared'
+  | 'Share this chart\'s drawings' | 'Shared {count} drawing' | 'Shared {count} drawings' | 'No drawing here can be shared'
   | 'Link this chart to a group first' | 'Switch Drawings on first'
   | 'Capture every chart' | 'Every chart' | 'Download PNG of every chart' | 'Copy image of every chart'
   | 'Saved a PNG of every chart' | 'Every chart copied' | 'The image could not be saved: {error}'
   | 'Show every chart to capture them together'
   // Cells and their marks.
   | 'Chart {index}, linked in {name}' | 'Chart {index}, not linked' | 'Linked in {name}'
-  | 'Drag the bar background to swap charts; double-click it to maximize'
-  | 'Moved the chart to {place}'
   // Chords, in the shortcuts panel's Chart grid section.
   | 'Maximize or restore the chart' | 'Make the chart to the left active' | 'Make the chart to the right active'
   | 'Make the chart above active' | 'Make the chart below active' | 'Swap with the chart to the left'

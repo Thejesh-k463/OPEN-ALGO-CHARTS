@@ -6,6 +6,7 @@
  * kept as plain text; deciding which links are safe to open is the view's.
  */
 import type { InstrumentKey, NewsFeed, NewsItem, NewsPage } from 'openalgo-charts';
+import { errorText } from './localization';
 
 export type NewsStatus = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
@@ -40,7 +41,7 @@ export interface NewsReaderOptions {
   onChange?(snapshot: NewsSnapshot): void;
 }
 
-const message = (error: unknown): string => error instanceof Error ? error.message : String(error);
+const message = (error: unknown): string => errorText({}, error);
 /** Control characters become spaces; a line break survives only where the field allows one. */
 const controls = (value: string, breaks: boolean): string => Array.from(value, char => {
   const code = char.charCodeAt(0);

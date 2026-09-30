@@ -40,6 +40,8 @@ describe('widget account summary', () => {
     expect(el.textContent).toContain('Account data is not declared by this provider');
     const pick = el.querySelector('.oac-account__pick')!;
     expect(pick.disabled).toBe(true);
+    // Not "Account: Account" while none is chosen.
+    expect(pick.getAttribute('aria-label')).toBe('Account');
     // Inside the status line, beside the timezone rather than on the canvas.
     expect(root(widget).querySelector('.oac-statusline .oac-account')).toBe(el);
   });

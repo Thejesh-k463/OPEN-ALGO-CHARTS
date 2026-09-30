@@ -108,7 +108,8 @@ export function mountShortcutsPanel(ctx: WidgetContext, edit: boolean): () => vo
     for (const g of groups) {
       const box = h(doc, 'div', 'oac-keys__group');
       const gh = h(doc, 'div', 'oac-head');
-      gh.textContent = widgetText(ctx, `schema.shortcuts.group.${g.group}`, {}, g.group);
+      // The widget's own group keeps its id for hosts that register into it; a reader sees General.
+      gh.textContent = widgetText(ctx, `schema.shortcuts.group.${g.group}`, {}, g.group === 'Widget' ? 'General' : g.group);
       box.appendChild(gh);
       for (const r of g.rows) {
         const name = rowLabel(g.group, r);
@@ -162,8 +163,8 @@ export function mountShortcutsPanel(ctx: WidgetContext, edit: boolean): () => vo
       cols.appendChild(box);
     }
     note.textContent = shadowed === 0 ? '' : widgetText(ctx, shadowed === 1
-      ? '{count} chart shortcut struck through: a drawing tool uses the same chord here and takes precedence.'
-      : '{count} chart shortcuts struck through: a drawing tool uses the same chord here and takes precedence.', { count: shadowed });
+      ? '{count} chart shortcut struck through: another shortcut uses the same chord here and takes precedence.'
+      : '{count} chart shortcuts struck through: another shortcut uses the same chord here and takes precedence.', { count: shadowed });
     note.hidden = shadowed === 0;
     drawFoot();
     if (focus !== undefined) {
@@ -265,7 +266,11 @@ export function mountShortcutsPanel(ctx: WidgetContext, edit: boolean): () => vo
     if (/^(Shift\+)?[a-z0-9]$/.test(combo)) { say(widgetText(ctx, '{chord} types into the chart. Add {mod} or {alt}.', { chord, mod, alt })); return; }
     if (/^(Shift\+)?Space$/.test(combo)) { say(widgetText(ctx, '{chord} presses the focused control. Add {mod} or {alt}.', { chord, mod, alt })); return; }
     const chart = command.startsWith('chart:');
-    const code = chart ? eventToCombo(e, km.isMac) : '';
+    // The row shows the chord in this keymap's grammar, which folds Control
+    // and Cmd into Mod; the engine keeps them apart on macOS (and Windows
+    // keeps Meta), so fold them here too or Control+G is stored and Cmd+G shown.
+    const held = e.ctrlKey || e.metaKey;
+    const code = chart ? eventToCombo({ code: e.code, key: e.key, altKey: e.altKey, shiftKey: e.shiftKey, ctrlKey: !km.isMac && held, metaKey: km.isMac && held }, km.isMac) : '';
     if (chart && code === '') { say(widgetText(ctx, 'That key cannot be used here. Press another.')); return; }
     attempt(command, chart ? code : combo, chord, false, false);
   };

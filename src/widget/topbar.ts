@@ -1,4 +1,4 @@
-import { widgetText, type WidgetTranslationOptions } from './localization';
+import { errorText, widgetText, type WidgetTranslationOptions } from './localization';
 /**
  * The top bar: symbol, interval, chart type, indicators, settings, capture
  * and theme, left to right.
@@ -25,6 +25,7 @@ import type { PanelHandle } from './form';
 import type { LayoutsController } from './layouts';
 import { layoutNeedsAttention, layoutStatusText } from './layouts-widget';
 import { lazyPart, partFailed, usePart, type PartSlot } from './lazy';
+import { ariaKeys } from './keymap';
 
 /** The chart data dialog, fetched when it first opens. Internal. */
 export const dataExportPart = lazyPart(() => import('./chart-data-export-dialog'));
@@ -90,7 +91,7 @@ export interface MenuRow {
   sub?: string;
   /** Shown at the right edge, for a chord. */
   key?: string;
-  /** Marks the row as the current choice. */
+  /** Makes the row one of a set of choices, true for the current one; a row without it is an action. */
   on?: boolean;
   disabled?: boolean;
   danger?: boolean;
@@ -144,9 +145,11 @@ export function openMenu(ctx: WidgetContext, anchor: HTMLElement, rows: Readonly
         body.appendChild(g);
         pending = null;
       }
+      // A row with an `on` is one of a set of choices; any other is an action, which has no checked state.
       const b = h(doc, 'button', 'oac-menu__row' + (r.danger ? ' is-danger' : ''), {
-        type: 'button', role: 'menuitemradio', 'aria-checked': String(r.on === true), 'aria-disabled': String(r.disabled === true),
+        type: 'button', role: r.on === undefined ? 'menuitem' : 'menuitemradio', 'aria-disabled': String(r.disabled === true),
       });
+      if (r.on !== undefined) b.setAttribute('aria-checked', String(r.on));
       if (glyphs) b.appendChild(glyph(doc, rowGlyph(r.icon), 'chrome'));
       const label = h(doc, 'span', 'oac-menu__label');
       label.textContent = r.label;
@@ -157,9 +160,11 @@ export function openMenu(ctx: WidgetContext, anchor: HTMLElement, rows: Readonly
         b.appendChild(s);
       }
       if (r.key) {
-        const k = h(doc, 'kbd', 'oac-menu__key');
+        // Shown beside the name, said as the row's shortcut rather than read into its name.
+        const k = h(doc, 'kbd', 'oac-menu__key', { 'aria-hidden': 'true' });
         k.textContent = r.key;
         b.appendChild(k);
+        b.setAttribute('aria-keyshortcuts', ariaKeys(r.key));
       }
       b.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -358,7 +363,7 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
   const pills = h(doc, 'div', 'oac-pills', { role: 'radiogroup', 'aria-label': widgetText(ctx, 'Interval') });
   const pillByCode = new Map<string, HTMLButtonElement>();
   for (const code of opts.intervals) {
-    const b = h(doc, 'button', undefined, { type: 'button', role: 'radio', 'aria-pressed': 'false', 'aria-label': widgetText(ctx, 'Interval {code}', { code }) });
+    const b = h(doc, 'button', undefined, { type: 'button', role: 'radio', 'aria-pressed': 'false', 'aria-label': widgetText(ctx, 'Interval {code}', { code: intervalLabel(code) }) });
     b.textContent = intervalLabel(code);
     b.dataset.interval = code;
     b.addEventListener('click', () => opts.onInterval(code));
@@ -426,16 +431,16 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
     layouts.appendChild(label);
     ctx.tips.attach(layouts, () => {
       const name = held();
-      return { title: name === null ? title : `${title}: ${name}`, sub: layoutStatusText(ctx, controller.state()), side: 'bottom' };
+      const state = controller.state();
+      const said = name === null ? title : `${title}: ${name}`;
+      const status = layoutStatusText(ctx, state);
+      // The mark is a dot: a screen reader hears what it means with the name.
+      return { title: said, label: layoutNeedsAttention(state) ? `${said}, ${status}` : undefined, sub: status, side: 'bottom' };
     });
     const paintLayouts = (): void => {
-      const state = controller.state();
-      const attention = layoutNeedsAttention(state);
       label.textContent = held() ?? title;
-      layouts.dataset.attention = String(attention);
+      layouts.dataset.attention = String(layoutNeedsAttention(controller.state()));
       ctx.tips.refreshLabel(layouts);
-      // The mark is a dot: a screen reader hears what it means with the name.
-      if (attention) layouts.setAttribute('aria-label', `${layouts.getAttribute('aria-label') ?? title}, ${layoutStatusText(ctx, state)}`);
     };
     offLayouts = controller.subscribe(paintLayouts);
     paintLayouts();
@@ -526,11 +531,11 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
           const Item = (globalThis as { ClipboardItem: new (parts: Record<string, Blob>) => unknown }).ClipboardItem;
           (globalThis.navigator.clipboard as unknown as { write(items: unknown[]): Promise<void> })
             .write([new Item({ 'image/png': blob })])
-            .then(() => ctx.status(widgetText(ctx, 'Chart copied')), (err: unknown) => ctx.status(widgetText(ctx, 'Copy failed: {error}', { error: String((err as Error)?.message ?? err) }), 'error'));
+            .then(() => ctx.status(widgetText(ctx, 'Chart copied')), (err: unknown) => ctx.status(widgetText(ctx, 'Copy failed: {error}', { error: errorText(ctx, err) }), 'error'));
         }, 'image/png');
       } },
       { label: widgetText(ctx, 'Download chart data (CSV)'), disabled: !dataAvailable(), onSelect: () => {
-        const failed = (error: unknown): void => ctx.status(widgetText(ctx, 'Data export failed: {error}', { error: String((error as Error)?.message ?? error) }), 'error');
+        const failed = (error: unknown): void => ctx.status(widgetText(ctx, 'Data export failed: {error}', { error: errorText(ctx, error) }), 'error');
         // The dialog loads on first use (lazy.ts), and the chart it captures is checked again when it arrives.
         usePart(dataExportPart, module => {
           try {

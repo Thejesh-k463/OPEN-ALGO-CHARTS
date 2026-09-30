@@ -98,7 +98,8 @@ test('the replay bar names the chart once and the scope toggle names the scope',
   await expect(owner).toHaveText('Chart 1');
   await expect(scope).toHaveText('This chart');
   await expect(scope).toHaveAttribute('aria-label', 'Replay scope: This chart');
-  await expect(scope).toHaveAttribute('aria-pressed', 'false');
+  // Named for the scope in force; no pressed state says it a second time, or the opposite.
+  await expect(scope).not.toHaveAttribute('aria-pressed', /.*/);
   expect(await owner.textContent()).not.toBe(await scope.textContent());
   for (const theme of ['light', 'dark'] as const) {
     await setTheme(page, theme);

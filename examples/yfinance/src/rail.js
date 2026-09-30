@@ -2,7 +2,7 @@ import {
   getDrawingTool, hasDrawingTool, drawingShortcuts, matchDrawingShortcut, keyToDrawingAction,
   iconSprite, toolCursor, DRAWING_TOOL_ICONS, BUILTIN_DRAWING_TOOLS,
 } from '/dist/openalgo-charts.draw.mjs';
-import { el, inTextField } from './ui.js';
+import { el, inTextField, MOD } from './ui.js';
 import {
   RAIL_FLYOUT_CSS, toolGlyph, chromeGlyph, attachRailTip, hideRailTip, refreshTipLabel,
   openFlyout, closeFlyout, flyoutOpen, flyoutEl, openRailMenu, closeRailMenu, railMenuOpen,
@@ -247,7 +247,7 @@ export function cycleMagnet() {
   setMagnetMode(next);
   const status = el('status');
   if (status) {
-    status.textContent = next === 'off' ? 'magnet off · hold Ctrl to snap while placing or dragging'
+    status.textContent = next === 'off' ? `magnet off · hold ${MOD} to snap while placing or dragging`
       : next === 'weak' ? 'magnet weak: snaps when a bar or study value is within a few pixels'
       : 'magnet strong: every anchor lands on the nearest bar or study value';
   }
@@ -458,7 +458,7 @@ function controlsBlock() {
       title: 'Magnet: ' + prefs.magnet,
       sub: (prefs.magnet === 'off' ? 'Click for weak: snaps when a bar or study value is within a few pixels'
         : prefs.magnet === 'weak' ? 'Click for strong: every anchor lands on the nearest bar or study value'
-        : 'Click to switch the magnet off') + '. Hold Ctrl for a strong snap while placing or dragging',
+        : 'Click to switch the magnet off') + `. Hold ${MOD} for a strong snap while placing or dragging`,
       side: 'right',
     }),
     onClick: cycleMagnet,
@@ -494,11 +494,12 @@ function controlsBlock() {
 
   ctl.lock = makeBtn({
     cls: 'rail__btn--chrome',
-    glyph: chromeGlyph('lock'),
+    glyph: chromeGlyph('unlock'),
     tip: () => {
       const sel = selectionOf(app.draw);
-      if (!sel.length) return { title: 'Lock drawing', sub: 'Select a drawing first', side: 'right' };
-      return { title: allLocked(sel) ? 'Unlock drawing' : 'Lock drawing', side: 'right' };
+      // One name; the pressed state and the glyph say locked. A disabled
+      // button says why it is off.
+      return { title: 'Lock drawing', sub: !sel.length ? 'Select a drawing first' : readOnlySub(sel), side: 'right' };
     },
     onClick: () => {
       const sel = selectionOf(app.draw);
@@ -514,10 +515,8 @@ function controlsBlock() {
     glyph: chromeGlyph('eye'),
     tip: () => {
       const sel = selectionOf(app.draw);
-      if (!sel.length) return { title: 'Hide drawing', sub: 'Select a drawing first', side: 'right' };
-      return allHidden(sel)
-        ? { title: 'Show drawing', side: 'right' }
-        : { title: 'Hide drawing', sub: 'Stays selected, so the eye brings it back', side: 'right' };
+      return { title: 'Hide drawing', side: 'right', sub: !sel.length ? 'Select a drawing first'
+        : readOnlySub(sel) ?? (allHidden(sel) ? undefined : 'Stays selected, so the eye brings it back') };
     },
     onClick: () => {
       const sel = selectionOf(app.draw);
@@ -536,7 +535,7 @@ function controlsBlock() {
       // The count is what the press deletes: read-only drawings stay.
       const n = sel.filter((id) => isEditable(app.draw.get(id))).length;
       return sel.length
-        ? { title: n > 1 ? `Delete ${n} drawings` : 'Delete drawing', chord: 'Del', sub: 'Right-click to remove all', side: 'right' }
+        ? { title: n > 1 ? `Delete ${n} drawings` : 'Delete drawing', chord: 'Del', sub: readOnlySub(sel) ?? 'Right-click to remove all', side: 'right' }
         : { title: 'Delete drawing', chord: 'Del', sub: 'Select one first. Right-click to remove all', side: 'right' };
     },
     onClick: () => {
@@ -575,7 +574,7 @@ function controlsBlock() {
   ctl.undo = makeBtn({
     cls: 'rail__btn--chrome',
     glyph: chromeGlyph('undo'),
-    tip: () => ({ title: 'Undo', chord: 'Ctrl+Z', side: 'right' }),
+    tip: () => ({ title: 'Undo', chord: `${MOD}+Z`, side: 'right' }),
     // The main chart's whole timeline: a study or a pane, not only a drawing.
     onClick: () => { historyPress('undo', 1); refreshControls(); },
   });
@@ -583,7 +582,7 @@ function controlsBlock() {
   ctl.redo = makeBtn({
     cls: 'rail__btn--chrome',
     glyph: chromeGlyph('redo'),
-    tip: () => ({ title: 'Redo', chord: 'Ctrl+Y', side: 'right' }),
+    tip: () => ({ title: 'Redo', chord: `${MOD}+Y`, side: 'right' }),
     onClick: () => { historyPress('redo', 1); refreshControls(); },
   });
   box.appendChild(ctl.redo);
@@ -592,6 +591,8 @@ function controlsBlock() {
 
 /** Whether the user may edit `d`: a drawing whose policy says otherwise is the host's. */
 const isEditable = (d) => !!d && d.policy?.editable !== false;
+/** The sub line of a control that is off because nothing selected may be edited. */
+const readOnlySub = (ids) => (ids.some((id) => isEditable(app.draw.get(id))) ? undefined : 'Read-only');
 const allLocked = (ids) => ids.length > 0 && ids.every((id) => { const d = app.draw.get(id); return d && d.locked === true; });
 const allHidden = (ids) => ids.length > 0 && ids.every((id) => { const d = app.draw.get(id); return d && d.visible === false; });
 
@@ -621,13 +622,13 @@ export function refreshControls() {
   const none = !sel.some((id) => isEditable(d.get(id)));
   const locked = !none && allLocked(sel);
   const hidden = !none && allHidden(sel);
-  setState(ctl.lock, { off: none, on: locked, pressed: locked, glyph: locked ? 'unlock' : 'lock' });
+  setState(ctl.lock, { off: none, on: locked, pressed: locked, glyph: locked ? 'lock' : 'unlock' });
   setState(ctl.eye, { off: none, on: hidden, pressed: hidden, glyph: hidden ? 'eye-off' : 'eye' });
   setState(ctl.trash, { off: none });
   setState(ctl.undo, { off: !historyReady('undo', 1) });
   setState(ctl.redo, { off: !historyReady('redo', 1) });
-  // The accessible name says what the button would do now, not what it
-  // said when it was built or last hovered.
+  // The accessible name follows the tip now, not what it said when it was
+  // built or last hovered (the trash counts what it deletes).
   for (const b of Object.values(ctl)) refreshTipLabel(b);
 }
 
@@ -952,7 +953,7 @@ export function syncMobileControls(tool) {
   const magnet = el('mobile-magnet');
   if (magnet) {
     const mode = magnetMode();
-    magnet.textContent = 'Magnet ' + mode;
+    magnet.textContent = 'Magnet: ' + mode;
     magnet.setAttribute('aria-pressed', String(mode !== 'off'));
   }
   const undo = el('mobile-undo');
