@@ -17,10 +17,6 @@ export interface CrosshairState {
   price: number;
 }
 
-export const HIDDEN_CROSSHAIR: CrosshairState = {
-  visible: false, x: 0, y: 0, index: 0, price: 0,
-};
-
 /** Return whichever of the bar's O/H/L/C values is closest to `price`. */
 export function magnetSnapPrice(price: number, bar: Bar): number {
   const candidates = [bar.open, bar.high, bar.low, bar.close];
