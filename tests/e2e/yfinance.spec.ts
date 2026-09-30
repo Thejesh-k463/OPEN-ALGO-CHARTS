@@ -788,3 +788,11 @@ test('the canvas legend controls say what they do under the pointer', async ({ p
   }
   expect(errors).toEqual([]);
 });
+
+test('the Objects dock names a drawing the way the rail does', async ({ page }) => {
+  await openDemo(page);
+  await addSelected(page, 'trend-line');
+  await page.getByRole('button', { name: 'Chart objects', exact: true }).first().click();
+  await expect(page.locator('.oac-objects__name', { hasText: /^Trend Line/ }).first()).toBeVisible();
+  await expect(page.locator('.oac-objects__name', { hasText: /^Trend line/ })).toHaveCount(0);
+});

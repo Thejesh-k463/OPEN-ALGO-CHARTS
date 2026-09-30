@@ -6,6 +6,7 @@ import {
 } from '/dist/openalgo-charts.widget.mjs';
 import { el, currentTheme, chartTheme, topOverlay } from './ui.js';
 import { capturePaneTarget } from './pane-target.js';
+import { toolName } from './rail.js';
 import { openSettings } from './indicators.js';
 import { openChartSettings } from './chart-settings.js';
 import { autosave } from './persist.js';
@@ -43,7 +44,8 @@ export function attachInspection(host, pane = 1) {
   const layout = el('inspect-layout-' + pane);
   const chartElement = el(pane === 2 ? 'chart2' : 'chart');
   if (!chart || !draw || !ui || !layout || !chartElement) return null;
-  const objects = new ChartObjects(chart, { drawings: draw, onSettings: row => {
+  // Rows name a drawing as the rail and the properties title do, not by its id.
+  const objects = new ChartObjects(chart, { drawings: draw, drawingName: toolName, onSettings: row => {
     const target = capturePaneTarget(host, pane);
     if (!target?.current() || target.chart !== chart) return;
     if (row.kind === 'indicator') openSettings(row.sourceId, target);
