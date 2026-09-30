@@ -587,7 +587,11 @@ test('the grid bar keeps the desk saved layouts: save, change, and the saved des
   await page.evaluate(() => (window as any).fixture.grid.setPreset('1x1'));
   await expect(control).toHaveAttribute('data-attention', 'true');
   await expect(control).toHaveAccessibleName('Layouts: Morning desk, Unsaved changes');
+  // Escape handed focus back to the control, so focus goes elsewhere first:
+  // only a fresh focus raises its tip, which is what rewrote the name.
+  await page.locator('.oac-grid__layout').focus();
   await control.focus();
+  await expect(page.locator('.oac-tip.is-on')).toBeVisible();
   await expect(control).toHaveAccessibleName('Layouts: Morning desk, Unsaved changes');
   // The grid's own desk comes back as the one chart, and then the layout that was active opens over it.
   await page.reload();
