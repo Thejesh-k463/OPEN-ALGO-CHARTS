@@ -188,6 +188,39 @@ test('the legend buttons painted on the canvas say what they do under the pointe
   expect(errors).toEqual([]);
 });
 
+test('the close boxes on order and position lines say what they do under the pointer', async ({ page }) => {
+  const errors = await mount(page);
+  // The chart's own trading layer, and a position marker from the trade tier.
+  const lines = await page.evaluate(async () => {
+    const { chart } = (window as any).__widget;
+    const { PositionMarker } = await import('/dist/openalgo-charts.trade.mjs' as string);
+    const close = chart.primaryBars().at(-1).close as number;
+    chart.trading.setOrders([{ id: 'o1', side: 'buy', type: 'limit', size: 1, price: close - 6 }]);
+    chart.trading.setPositions([{ id: 'p1', side: 'long', size: 2, entryPrice: close - 3 }]);
+    chart.addPrimitive(new PositionMarker({ symbol: 'FIXTURE', netQty: 3, avgPrice: close + 3 }));
+    (window as any).__hover = null;
+    chart.on('hover', (e: { id: string | null }) => { (window as any).__hover = e.id; });
+    const box = document.querySelector('.oac-widget .oac-chart')!.getBoundingClientRect();
+    const at = (price: number) => box.top + chart.priceToCoordinate(price);
+    return { left: box.left, width: box.width, order: at(close - 6), position: at(close - 3), marker: at(close + 3) };
+  });
+  const tip = page.locator('.oac-tip.is-on');
+  // A pill group sits along its line; walk the pointer along it until the close box answers.
+  for (const [y, id, said] of [[lines.order, 'ord:o1::close', 'Cancel order'], [lines.position, 'pos:p1::close', 'Close position'],
+    [lines.marker, 'position:FIXTURE::close', 'Close position']] as const) {
+    let found = false;
+    for (let x = lines.left + 20; x < lines.left + lines.width - 60 && !found; x += 3) {
+      await page.mouse.move(x, y);
+      found = await page.evaluate(want => (window as any).__hover === want, id);
+    }
+    expect(found, id).toBe(true);
+    await expect(tip).toHaveText(said);
+    await page.mouse.move(10, 690);
+    await expect(tip).toHaveCount(0);
+  }
+  expect(errors).toEqual([]);
+});
+
 test('destroy removes every piece of chrome', async ({ page }) => {
   const errors = await mount(page);
   await page.evaluate(() => (window as any).__widget.destroy());

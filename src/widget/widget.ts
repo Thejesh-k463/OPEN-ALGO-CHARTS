@@ -465,10 +465,10 @@ class WidgetContextImpl implements WidgetContext {
 }
 
 /**
- * A study legend's eye, gear and cross and an order line's cross are painted
- * on the canvas, with no element to carry a name, so the chart's hover id
- * raises the widget's tip at the pointer saying what a press does. Returns
- * the teardown.
+ * A study legend's eye, gear and cross and the cross on an order or position
+ * line are painted on the canvas, with no element to carry a name, so the
+ * chart's hover id raises the widget's tip at the pointer saying what a press
+ * does. Returns the teardown.
  */
 function canvasButtonTips(ctx: WidgetContext, chartEl: HTMLElement): () => void {
   const spot = h(ctx.document, 'span', 'oac-tip-spot', { 'aria-hidden': 'true' });
@@ -478,7 +478,9 @@ function canvasButtonTips(ctx: WidgetContext, chartEl: HTMLElement): () => void 
     const sep = id.lastIndexOf('::');
     if (sep < 0) return null;
     const owner = id.slice(0, sep), action = id.slice(sep + 2);
-    if (owner.startsWith('order:')) return action === 'close' ? widgetText(ctx, 'Cancel order') : null;
+    // The trade tier's lines hit-test as order: and position:, the chart's own trading layer as ord: and pos:.
+    if (/^(?:ord|order):/.test(owner)) return action === 'close' ? widgetText(ctx, 'Cancel order') : null;
+    if (/^(?:pos|position):/.test(owner)) return action === 'close' ? widgetText(ctx, 'Close position') : null;
     const study = owner.startsWith('indicator:') ? ctx.chart.indicators().find(item => item.id === owner.slice('indicator:'.length)) : undefined;
     if (study === undefined) return null;
     const name = study.name;
