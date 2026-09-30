@@ -183,6 +183,16 @@ describe('widget alert editor', () => {
     expect(root.querySelector('.oac-alerts__summary')!.textContent).toContain('AAA / X / 1m / Extended hours USD');
   });
 
+  it('refuses an alert with no name', () => {
+    const { w, root } = make();
+    const editor = widget.mountAlertEditor(w.context);
+    change(root, 'title', '   ');
+    click(root, 'save-alert');
+    expect(w.alerts.list()).toHaveLength(0);
+    expect(editor.isOpen()).toBe(true);
+    expect(root.querySelector('.oac-alert-error')!.textContent).toBe('Enter a name');
+  });
+
   it('keeps keyboard focus on a selector when its dependent fields change', () => {
     const { w, root } = make();
     widget.mountAlertEditor(w.context);
@@ -401,6 +411,27 @@ describe('widget alert editor', () => {
 });
 
 describe('widget alert list', () => {
+  it('names each source the way the editor lists it, and prints a price in the pane format', () => {
+    const { w, root } = make();
+    const fib = w.draw.add({ tool: 'fib-retracement', paneIndex: 0, style: {}, points: [{ time: 900, price: 90 }, { time: 1100, price: 110 }] });
+    const line = w.draw.add({ tool: 'trend-line', paneIndex: 0, style: {}, points: [{ time: 900, price: 90 }, { time: 1100, price: 110 }] });
+    const study = w.chart.addIndicator('widget-alert-study');
+    const onFib = w.alerts.add({ source: { kind: 'drawing', drawingId: fib.id, level: 'ratio:0.618' } });
+    const onLine = w.alerts.add({ source: { kind: 'drawing', drawingId: line.id, level: 'line' } });
+    const onStudy = w.alerts.add({ source: { kind: 'indicator', instanceId: study.id, plotKey: 'close', value: 100 } });
+    const onPrice = w.alerts.add({ source: { kind: 'price', price: 22345.6789 } });
+    widget.mountAlertsPanel(w.context);
+    const summary = (id: string): string => root.querySelector(`[data-alert-id="${id}"] .oac-alerts__summary`)!.textContent;
+    // The level the editor lists for ratio 0.618.
+    expect(summary(onFib.id)).toContain('/ 61.8%');
+    expect(summary(onFib.id)).not.toContain('ratio:');
+    expect(summary(onLine.id)).toContain('/ Line');
+    expect(summary(onStudy.id)).toContain('Alert study / Close reading: 100');
+    const shown = w.chart.panes()[w.chart.primaryPaneIndex()].readoutScale().format(22345.6789);
+    expect(summary(onPrice.id)).toContain(`Price ${shown}`);
+    expect(summary(onPrice.id)).not.toContain('22345.6789');
+  });
+
   it('refreshes an open price-only list when the chart timezone changes without changing the expiry instant', () => {
     const { w, root } = make();
     w.chart.setTimezone('UTC');
