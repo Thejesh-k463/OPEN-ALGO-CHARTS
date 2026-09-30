@@ -492,6 +492,7 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
   snapBtn.setAttribute('aria-haspopup', 'menu');
   ctx.tips.attach(snapBtn, { title: widgetText(ctx, 'Capture'), sub: widgetText(ctx, 'PNG, SVG, CSV or the clipboard'), side: 'bottom' });
   let dataDialog: PanelHandle | null = null;
+  const dataSlot = { waiting: false };
   const openCapture = (anchor: HTMLElement): void => {
     const s = { ...opts.state() };
     const capturedChart = ctx.chart;
@@ -545,7 +546,7 @@ export function mountTopbar(ctx: WidgetContext, host: HTMLElement, opts: TopbarO
               ctx.status(widgetText(ctx, 'Chart data download started'));
             });
           } catch (error) { failed(error); }
-        }, error => ctx.status(partFailed(ctx, widgetText(ctx, 'Download chart data (CSV)'), error), 'error'), () => host.isConnected);
+        }, error => ctx.status(partFailed(ctx, widgetText(ctx, 'Download chart data (CSV)'), error), 'error'), () => host.isConnected, dataSlot);
       } },
       ...(opts.captureRows?.() ?? []),
     ], { ariaLabel: widgetText(ctx, 'Capture') });

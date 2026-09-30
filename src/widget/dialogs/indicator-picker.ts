@@ -93,15 +93,12 @@ export function mountIndicatorPicker(
   let templatesMenu: PanelHandle | null = null;
   if (templates?.planIndicatorTemplateState !== undefined) {
     // The list loads on first use; a press while it loads opens it once, and none opens after the picker closed.
-    let waiting = false;
+    const slot = { waiting: false };
     const open = button(doc, { label: widgetText(ctx, 'Templates'), icon: 'template', onClick: () => {
-      if (waiting) return;
-      waiting = true;
       usePart(templatesPart, module => {
-        waiting = false;
         templatesMenu?.close();
         templatesMenu = module.openTemplatesMenu(ctx, open, templates);
-      }, error => { waiting = false; ctx.toast(partFailed(ctx, widgetText(ctx, 'Templates'), error), 'error'); }, () => handle.isOpen());
+      }, error => ctx.toast(partFailed(ctx, widgetText(ctx, 'Templates'), error), 'error'), () => handle.isOpen(), slot);
     } });
     open.dataset.action = 'templates';
     open.setAttribute('aria-haspopup', 'dialog');

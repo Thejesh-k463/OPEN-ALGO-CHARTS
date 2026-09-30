@@ -73,10 +73,8 @@ export function openLayoutsMenu(ctx: WidgetContext, controller: LayoutsControlle
 export function showLayoutsMenu(ctx: WidgetContext, controller: LayoutsController, anchor: HTMLElement | undefined,
   menu: { handle: PanelHandle | null; waiting: boolean }, live: () => boolean): void {
   if (menu.handle?.isOpen()) { menu.handle.el.focus(); return; }
-  if (menu.waiting) return;
-  menu.waiting = true;
-  usePart(layoutsMenuPart, module => { menu.waiting = false; menu.handle = module.mountLayoutsMenu(ctx, controller, anchor); },
-    error => { menu.waiting = false; ctx.toast(partFailed(ctx, layoutText(ctx)('title', 'Layouts'), error), 'error'); }, live);
+  usePart(layoutsMenuPart, module => { menu.handle = module.mountLayoutsMenu(ctx, controller, anchor); },
+    error => ctx.toast(partFailed(ctx, layoutText(ctx)('title', 'Layouts'), error), 'error'), live, menu);
 }
 
 /** The top bar's Layouts button, which shows before the menu has loaded. */

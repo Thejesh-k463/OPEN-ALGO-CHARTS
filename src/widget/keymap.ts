@@ -1010,6 +1010,8 @@ export function markListOnly(keymap: object): void { LIST_ONLY.add(keymap); }
 
 /** The panel and its editing controls, fetched when it first opens. Internal. */
 export const shortcutsPart = lazyPart(() => import('./keymap-editor'));
+/** Per widget, whether a panel is on its way: `?` pressed again meanwhile opens one. */
+const WAITING = new WeakMap<object, { waiting: boolean }>();
 
 /**
  * The shortcuts panel: every group from `keymap.describe()`, two columns,
@@ -1021,8 +1023,10 @@ export const shortcutsPart = lazyPart(() => import('./keymap-editor'));
 export function openShortcutsPanel(ctx: WidgetContext, opts: ShortcutsPanelOptions = {}): () => void {
   let close: (() => void) | null = null;
   let wanted = true;
+  let slot = WAITING.get(ctx);
+  if (slot === undefined) WAITING.set(ctx, slot = { waiting: false });
   usePart(shortcutsPart, module => { close = module.mountShortcutsPanel(ctx, opts.edit ?? !LIST_ONLY.has(ctx.keymap)); },
     error => ctx.toast(partFailed(ctx, widgetText(ctx, 'Keyboard shortcuts'), error), 'error'),
-    () => wanted && ctx.root.isConnected);
+    () => wanted && ctx.root.isConnected, slot);
   return () => { wanted = false; close?.(); };
 }

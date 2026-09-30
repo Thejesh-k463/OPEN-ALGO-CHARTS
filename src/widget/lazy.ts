@@ -43,11 +43,20 @@ export function lazyPart<T>(load: () => Promise<T>): LazyPart<T> {
 /**
  * Run `use` with a part: at once when it has arrived, else when it does,
  * unless `live` says by then that whoever asked has gone. A failed load goes
- * to `failed` on the same terms.
+ * to `failed` on the same terms. A control that passes its `slot` is answered
+ * once however often it is pressed while the part loads, as it would be once
+ * the part had arrived and the first press had opened it.
  */
-export function usePart<T>(part: LazyPart<T>, use: (module: T) => void, failed: (error: unknown) => void, live: () => boolean): void {
+export function usePart<T>(part: LazyPart<T>, use: (module: T) => void, failed: (error: unknown) => void, live: () => boolean,
+  slot?: { waiting: boolean }): void {
   if (part.now !== null) { use(part.now); return; }
-  part.load().then(module => { if (live()) use(module); }, (error: unknown) => { if (live()) failed(error); });
+  if (slot?.waiting === true) return;
+  if (slot !== undefined) slot.waiting = true;
+  const settle = (): boolean => {
+    if (slot !== undefined) slot.waiting = false;
+    return live();
+  };
+  part.load().then(module => { if (settle()) use(module); }, (error: unknown) => { if (settle()) failed(error); });
 }
 
 /** What a part that could not load says: its name and the reason. */
