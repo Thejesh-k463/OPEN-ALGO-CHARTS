@@ -521,12 +521,12 @@ export function renderToolbar() {
   // user had no way to reach them, which also stranded the Trading tab's
   // entry and exit colours with nothing on the chart to recolour.
   bar.appendChild(divider());
-  const buy = tbtn('<b>Buy</b>', 'Place a Buy OCO bracket: entry, target and stop', pane === 2 ? 'Trading is available on chart 1' : undefined);
+  const buy = tbtn('<b>Buy</b>', 'Place a Buy OCO bracket: entry, target and stop', pane === 2 ? 'Trading is available on Chart 1' : undefined);
   buy.disabled = pane === 2;
   buy.classList.add('tbtn--buy');
   buy.addEventListener('click', () => { if (pane === 1 && currentTarget(target)) el('buy').click(); });
   bar.appendChild(buy);
-  const sell = tbtn('<b>Sell</b>', 'Place a Sell OCO bracket: entry, target and stop', pane === 2 ? 'Trading is available on chart 1' : undefined);
+  const sell = tbtn('<b>Sell</b>', 'Place a Sell OCO bracket: entry, target and stop', pane === 2 ? 'Trading is available on Chart 1' : undefined);
   sell.disabled = pane === 2;
   sell.classList.add('tbtn--sell');
   sell.addEventListener('click', () => { if (pane === 1 && currentTarget(target)) el('sell').click(); });
@@ -534,7 +534,7 @@ export function renderToolbar() {
   // The sandbox broker: the trade tier's account, preview and native close
   // contract against a simulated provider, beside the page's own simulation.
   const account = tbtn('<span>Account</span>', 'Sandbox broker account',
-    pane === 2 ? 'The sandbox broker trades chart 1' : 'Figures, preview, durations, native close and reverse');
+    pane === 2 ? 'The sandbox broker trades Chart 1' : 'Figures, preview, durations, native close and reverse');
   account.id = 'account';
   account.disabled = pane === 2;
   account.setAttribute('aria-haspopup', 'dialog');

@@ -161,7 +161,7 @@ export function chartSettingUnavailable(key, option, target = chartSetTarget || 
   if (key === 'statusLine.lastDayChange' && previousSessionClose(target.chart.primaryBars(), target.chart.timezone()) == null) {
     return 'No previous session in the loaded range';
   }
-  if (target.pane === 2 && key.startsWith('trading.')) return 'Trading is available on chart 1';
+  if (target.pane === 2 && key.startsWith('trading.')) return 'Trading is available on Chart 1';
   const longPos = app.position && app.position.netQty > 0;
   const shortPos = app.position && app.position.netQty < 0;
   switch (key) {

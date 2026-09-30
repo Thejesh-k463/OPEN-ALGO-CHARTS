@@ -760,6 +760,17 @@ test('one action keeps one name across the page', async ({ page }) => {
   await expect(page.locator('#snap-save')).toContainText('Save PNG');
   await page.getByRole('button', { name: /Compare/ }).first().click();
   await expect(page.locator('#cmp-title')).toHaveText('Compare symbols: Chart 1');
+  await page.keyboard.press('Escape');
+  // Chart 2's disabled trading controls name the chart that trades as the page names it.
+  await page.getByRole('button', { name: /Open a second, linked chart/ }).click();
+  await page.waitForFunction(() => (window as any).__oac?.app.chart2?.primaryBars().length > 0 && !(window as any).__oac.app.loading2);
+  await page.locator('#chart2').focus();
+  for (const [selector, said] of [['.tbtn--buy', 'Trading is available on Chart 1'], ['#account', 'The sandbox broker trades Chart 1']]) {
+    await expect(page.locator(selector)).toBeDisabled();
+    // A disabled button takes no pointer, so its tip is raised the way the pointer would.
+    await page.locator(selector).dispatchEvent('pointerenter');
+    await expect(page.locator('#tip.is-on')).toContainText(said);
+  }
 });
 
 test('the canvas legend controls say what they do under the pointer', async ({ page }) => {

@@ -35,7 +35,7 @@ export const clipboardPort = (typeof navigator !== 'undefined' && navigator.clip
   : null;
 
 export const activeDraw = () => (app.focusPane === 2 && app.draw2 ? app.draw2 : app.draw);
-export const paneName = (d) => (d === app.draw2 ? 'chart 2' : 'chart 1');
+export const paneName = (d) => (d === app.draw2 ? 'Chart 2' : 'Chart 1');
 export const canClip = () => {
   const d = activeDraw();
   return Boolean(d) && typeof d.copy === 'function';

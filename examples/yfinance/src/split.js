@@ -344,7 +344,7 @@ export function buildChart2({ keepView = true, typeChanged = false, state } = {}
     armCursor(el('chart2'), tool);
     if (app.focusPane === 2) syncMobileControls(tool);
   });
-  app.chart2.on('draw:add', () => { el('status').textContent = 'chart 2: ' + app.draw2.drawings().length + ' drawings'; });
+  app.chart2.on('draw:add', () => { el('status').textContent = 'Chart 2: ' + app.draw2.drawings().length + ' drawings'; });
   app.offCanvasTips2 = attachCanvasTips(app.chart2, el('chart2'), 2);
   for (const event of ['draw:add', 'draw:remove', 'draw:update', 'indicatorAdded', 'indicatorRemoved', 'indicatorUpdated', 'paneCollapsed']) app.chart2.on(event, autosave);
   // No properties widget over here (it is glued to the main chart's box),
@@ -495,7 +495,7 @@ export function setPane2Legend(bar) {
 export function renderPane2Bar() {
   const bar = el('p2bar');
   bar.innerHTML = '';
-  const select = tbtn('Chart 2', 'Select chart 2');
+  const select = tbtn('Chart 2', 'Select Chart 2');
   select.addEventListener('click', () => { focusChart(2); el('chart2').focus(); });
   bar.appendChild(select);
 
