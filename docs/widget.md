@@ -416,16 +416,25 @@ widget: a tier loaded beside it would import its own second engine.
 Some of the widget loads on first use. The shortcuts panel, the Layouts menu, the
 indicator templates list, the chart data dialog, a chart grid's bar and menus, and the
 IndexedDB store a persisting widget reads are not in `openalgo-charts.widget.mjs` but in
-files beside it (`openalgo-charts.widget.<part>.mjs`), fetched with `import()` the first
-time they are needed. A part resolves against the tier's own URL, so `dist/` or a CDN
-path needs nothing more, and a bundler splits it the same way. Under a Content Security
-Policy, `script-src` must allow the tier's origin, as it already must for the tier
-itself; a part's rules join the widget's stylesheet and keep its nonce. A part that
+files beside it (`openalgo-charts.widget.<part>-<hash>.mjs`), fetched with `import()`
+the first time they are needed. A part resolves against the tier's own URL, so `dist/`
+or a CDN path needs nothing more, and a bundler splits it the same way. Under a Content
+Security Policy, `script-src` must allow the tier's origin, as it already must for the
+tier itself; a part's rules join the widget's stylesheet and keep its nonce. A part that
 cannot load says so in a toast (the store, on the status line) each time it is asked
 for, and the rest of the widget goes on working; a browser keeps a failed module fetch
 until the page reloads. While a part loads, a control pressed again asks once, the last
 control pressed is the one answered, and a user who has moved on by the time it arrives
 (a press elsewhere, Escape, or typing into another field) is not interrupted by it.
+
+A tier file and its parts must come from the same release, because a part uses the
+tier's internals and those change from build to build. The hash in a part's name is of
+its content, so a new tier file asks for its own parts, never for a copy a cache kept. A
+host serving `dist/` itself should serve the tier files, whose names stay the same from
+release to release, with revalidation (`Cache-Control: no-cache`), and may cache the
+hashed parts for a long time (`max-age=31536000, immutable`). A CDN URL must pin the
+exact version, never a range or no version at all. A `script-src` that lists files
+cannot name a part either: allow the origin, or the directory as a path ending in `/`.
 
 ## Size
 

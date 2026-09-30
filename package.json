@@ -92,7 +92,7 @@
   ],
   "scripts": {
     "clean": "rimraf dist",
-    "build": "rollup -c",
+    "build": "rimraf dist && rollup -c",
     "build:watch": "rollup -c --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

@@ -2,7 +2,7 @@
 // live, in-page chart demos run against the real library. Runs automatically
 // before `next dev` / `next build` (see package.json predev/prebuild). If the
 // library has not been built yet, it prints a hint instead of failing the build.
-import { mkdirSync, copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, copyFileSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { lightDiagram } from './diagram-light.mjs';
@@ -28,6 +28,9 @@ if (!existsSync(distDir)) {
   process.exit(0);
 }
 
+// Emptied first: a widget part's file name changes with its content, so a copy
+// over the last sync would keep every part the library no longer builds.
+rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
 
 const wanted = readdirSync(distDir).filter((f) => f.endsWith('.mjs') || f.endsWith('.mjs.map'));
@@ -44,6 +47,7 @@ const demoSource = resolve(here, '..', '..', 'examples', 'market-profile');
 const demoOutput = resolve(here, '..', 'public', 'demos', 'market-profile');
 const demoBundles = resolve(demoOutput, '..', 'dist');
 mkdirSync(demoOutput, { recursive: true });
+rmSync(demoBundles, { recursive: true, force: true });
 mkdirSync(demoBundles, { recursive: true });
 const demoHtml = readFileSync(join(demoSource, 'index.html'), 'utf8').replaceAll("from '/dist/", "from '../dist/");
 writeFileSync(join(demoOutput, 'index.html'), demoHtml);

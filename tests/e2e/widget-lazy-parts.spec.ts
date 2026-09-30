@@ -6,14 +6,17 @@ import { test, expect, type Page, type Request } from '@playwright/test';
 // fetch none of them, a part is slowed and failed on the wire, and a grid's
 // bar arrives into a strip that already has its height.
 
-const PART = /\/dist\/openalgo-charts\.widget\.[a-z-]+\.mjs$/;
+// A part's file name carries a content hash (rollup.config.js), so a request
+// is routed and recorded by the part's name, whatever its hash in this build.
+const PART = /\/dist\/openalgo-charts\.widget\.([a-z-]+)-[\w-]{8}\.mjs$/;
+const part = (name: string): string => `**/dist/openalgo-charts.widget.${name}-*.mjs`;
 const DIALOG = '.oac-keys-dialog';
 
 async function mount(page: Page, path: string): Promise<{ errors: string[]; parts: string[] }> {
   const errors: string[] = [];
   const parts: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
-  page.on('request', (r: Request) => { if (PART.test(r.url())) parts.push(new URL(r.url()).pathname); });
+  page.on('request', (r: Request) => { const name = PART.exec(new URL(r.url()).pathname)?.[1]; if (name) parts.push(name); });
   await page.setViewportSize({ width: 1180, height: 760 });
   // Not "load": a part held back on purpose is a fetch some engines count toward it.
   await page.goto(path, { waitUntil: 'domcontentloaded' });
@@ -42,14 +45,14 @@ test('a plain widget fetches no part, and ? fetches the shortcuts panel once', a
   await expect(page.locator(DIALOG)).toHaveCount(0);
   await page.keyboard.press('Shift+Slash');
   await expect(page.locator(DIALOG)).toBeVisible();
-  expect(parts).toEqual(['/dist/openalgo-charts.widget.keymap-editor.mjs']);
+  expect(parts).toEqual(['keymap-editor']);
   expect(errors).toEqual([]);
 });
 
 test('a slow part opens once it arrives, once however often ? is pressed meanwhile', async ({ page }) => {
   let release: () => void = () => {};
   const held = new Promise<void>((resolve) => { release = resolve; });
-  await page.route('**/dist/openalgo-charts.widget.keymap-editor.mjs', async (route) => { await held; await route.continue(); });
+  await page.route(part('keymap-editor'), async (route) => { await held; await route.continue(); });
   const { errors } = await mountWidget(page);
   await page.keyboard.press('Shift+Slash');
   await page.keyboard.press('Shift+Slash');
@@ -64,7 +67,7 @@ test('a slow part opens once it arrives, once however often ? is pressed meanwhi
 
 test('a part that cannot load says so on each press, and the widget goes on working', async ({ page }) => {
   let fail = true;
-  await page.route('**/dist/openalgo-charts.widget.keymap-editor.mjs', (route) => (fail ? route.abort('failed') : route.continue()));
+  await page.route(part('keymap-editor'), (route) => (fail ? route.abort('failed') : route.continue()));
   const { errors } = await mountWidget(page);
   await page.keyboard.press('Shift+Slash');
   const toast = page.locator('.oac-toast', { hasText: 'Keyboard shortcuts could not load' });
@@ -92,7 +95,7 @@ test('a part that cannot load says so on each press, and the widget goes on work
 test('a grid bar arrives into a strip that already has its height, so the charts do not move', async ({ page }) => {
   let release: () => void = () => {};
   const held = new Promise<void>((resolve) => { release = resolve; });
-  await page.route('**/dist/openalgo-charts.widget.grid-bar.mjs', async (route) => { await held; await route.continue(); });
+  await page.route(part('grid-bar'), async (route) => { await held; await route.continue(); });
   const { errors, parts } = await mount(page, '/tests/e2e/widget-grid-fixture.html?toolbar=1&preset=2x2');
   const strip = page.locator('.oac-grid__bar');
   await expect(strip).toHaveAttribute('role', 'toolbar');
@@ -107,14 +110,14 @@ test('a grid bar arrives into a strip that already has its height, so the charts
   expect(await page.locator('.oac-grid__cells').boundingBox()).toEqual(before);
   await strip.locator('.oac-grid__layout').click();
   await expect(page.locator('.oac-grid__picker')).toBeVisible();
-  expect(parts).toEqual(['/dist/openalgo-charts.widget.grid-bar.mjs', '/dist/openalgo-charts.widget.grid-menus.mjs']);
+  expect(parts).toEqual(['grid-bar', 'grid-menus']);
   expect(errors).toEqual([]);
 });
 
 test('a part the user moved on from while it loaded opens nothing, and leaves the focus where they put it', async ({ page }) => {
   let release: () => void = () => {};
   const held = new Promise<void>((resolve) => { release = resolve; });
-  await page.route('**/dist/openalgo-charts.widget.keymap-editor.mjs', async (route) => { await held; await route.continue(); });
+  await page.route(part('keymap-editor'), async (route) => { await held; await route.continue(); });
   const { errors } = await mountWidget(page);
   // Asked for, then Escape: what a bundled panel would have been closed by.
   await page.keyboard.press('Shift+Slash');
@@ -141,7 +144,7 @@ test('a part the user moved on from while it loaded opens nothing, and leaves th
 test('the grid opens the menu pressed last while its menus load', async ({ page }) => {
   let release: () => void = () => {};
   const held = new Promise<void>((resolve) => { release = resolve; });
-  await page.route('**/dist/openalgo-charts.widget.grid-menus.mjs', async (route) => { await held; await route.continue(); });
+  await page.route(part('grid-menus'), async (route) => { await held; await route.continue(); });
   const { errors } = await mount(page, '/tests/e2e/widget-grid-fixture.html?toolbar=1&preset=2x2');
   const strip = page.locator('.oac-grid__bar');
   await expect(strip.locator('.oac-grid__layout')).toBeVisible();
