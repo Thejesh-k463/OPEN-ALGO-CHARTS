@@ -2,12 +2,12 @@
  * The widget's IndexedDB store as the shell holds it: `createIndexedDbWidgetStorage`
  * and the store `persist` uses when the host names none.
  *
- * The store itself (storage-idb.ts) loads when one is first used (lazy.ts),
- * so a widget that persists nothing never fetches it. Until it arrives its
- * reads and writes wait for it, and listeners added meanwhile are attached
- * once it is there; its journal is the page's synchronous store, as before,
- * so a page going away still has somewhere to put its pending writes. Once
- * it has arrived a store is built at once, as if it had been bundled in.
+ * The store itself (storage-idb.ts) loads when a store is first created
+ * (lazy.ts), so a widget that persists nothing never fetches it. Until it
+ * arrives its reads and writes wait for it, and listeners added meanwhile are
+ * attached once it is there; its journal is the page's synchronous store, as
+ * before, so a page going away still has somewhere to put its pending writes.
+ * Once it has arrived a store is built at once, as if it had been bundled in.
  */
 import { defaultStorage, type AsyncStorageLike, type StorageLike } from './context';
 import { lazyPart } from './lazy';
@@ -41,7 +41,7 @@ export interface IndexedDbWidgetStorage extends AsyncStorageLike {
   close(): void;
 }
 
-/** The IndexedDB store, fetched when a store is first built or used. Internal. */
+/** The IndexedDB store, fetched when the first store is created. Internal. */
 export const indexedDbPart = lazyPart(() => import('./storage-idb'));
 
 type IdbModule = NonNullable<typeof indexedDbPart.now>;
@@ -64,7 +64,8 @@ function lazyStore(open: (module: IdbModule) => AsyncStorageLike & { close?(): v
     const store = now();
     return store !== null ? call(store) : indexedDbPart.load().then(module => call(build(module)));
   };
-  now();
+  // Fetched as the store is created: a listener then hears other tabs' writes before this page reads or writes.
+  if (now() === null) indexedDbPart.load().then(build, () => { /* the first call reports it */ });
   return {
     journal,
     entries: prefix => use(store => store.entries(prefix)),
@@ -85,7 +86,8 @@ function lazyStore(open: (module: IdbModule) => AsyncStorageLike & { close?(): v
  * A key-value store for the widget over IndexedDB: one object store of JSON
  * texts under the widget's keys, one transaction per call. Pass the page's
  * `indexedDB`; importing this module needs no browser. The store's code loads
- * on first use (since 2.5.10): calls made before it arrives wait for it.
+ * as the first store is created (since 2.5.10): calls made before it arrives
+ * wait for it.
  *
  * ```ts
  * createWidget(el, { persist: 'desk', storage: createIndexedDbWidgetStorage(indexedDB, 'my-app-charts') });

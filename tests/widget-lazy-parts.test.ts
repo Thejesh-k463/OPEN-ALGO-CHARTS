@@ -449,6 +449,22 @@ describe('the IndexedDB store', () => {
     store.close();
   });
 
+  it('fetches its code as it is created, so a listener alone hears another tab without a read or write here', async () => {
+    const held = holdBack(indexedDbPart);
+    const db = new FakeIndexedDb() as unknown as IDBFactory;
+    const listening = createIndexedDbWidgetStorage(db, 'lazy-listen', { journal: null, migrateFrom: null });
+    const heard: Array<[string, string | null]> = [];
+    listening.subscribe((key, value) => heard.push([key, value]));
+    expect(held.loads).toBe(1);
+    await held.arrive();
+    const writer = createIndexedDbWidgetStorage(db, 'lazy-listen', { journal: null, migrateFrom: null });
+    await writer.setItem('oac-widget:a:state', '{"n":2}');
+    for (let i = 0; i < 50 && heard.length === 0; i++) await new Promise(resolve => setTimeout(resolve, 1));
+    expect(heard).toEqual([['oac-widget:a:state', '{"n":2}']]);
+    listening.close();
+    writer.close();
+  });
+
   it('fails its reads when its code cannot load', async () => {
     const held = holdBack(indexedDbPart);
     const store = createIndexedDbWidgetStorage(new FakeIndexedDb() as unknown as IDBFactory, 'lazy-test', { journal: null, migrateFrom: null });
