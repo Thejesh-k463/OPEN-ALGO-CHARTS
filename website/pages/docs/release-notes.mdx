@@ -8,6 +8,93 @@ description: Version history for OpenAlgo Charts.
 The full, authoritative changelog lives in
 [`CHANGELOG.md`](https://github.com/marketcalls/openalgo-charts/blob/master/CHANGELOG.md).
 
+## 2.5.10
+
+2026-09-30
+
+Persistence, saved layouts and the chart grid: widget state in IndexedDB, named layouts and
+indicator templates, a shortcuts editor, a bottom bar with ranges in trading sessions and the
+market status, calendars that know pre-open and post-close, a chart grid to sixteen charts, one
+icon registry for the whole widget, and a label pass over every control.
+
+### Added
+
+- **Widget persistence in IndexedDB.** With `persist`, the widget keeps its layout, drawings,
+  preferences and chords in IndexedDB and settles `widget.ready` once the saved state has
+  landed and the first load has gone out for the saved instrument only. Keys an earlier release
+  left in localStorage are copied in once, pending writes survive the page going away, and tabs
+  follow each other's writes. `storage: localStorage` keeps the 2.5.9 behaviour. See
+  [Persistence](/docs/widget#persistence).
+- **Saved layouts and indicator templates.** `workspaces` takes a `WorkspaceStore`: the top bar's
+  Layouts button and menu save, rename, delete and reopen layouts with autosave and conflict
+  handling, and the indicator picker saves and applies templates as one undo step.
+  `createLayoutsController` serves a host's own control. See
+  [Workspaces](/docs/workspaces).
+- **Shortcuts editor.** The ? panel changes any chord the widget owns, names a conflict, and
+  resets one chord or all; the chords are saved with `persist` and shared across a chart grid.
+  See [Keyboard shortcuts](/docs/keyboard-shortcuts).
+- **Bottom bar.** Preset ranges (1D to All) sized in trading sessions, Go to, the market status,
+  a clock with a timezone menu and the scale toggles, under the chart (`bottombar`, on by
+  default).
+- **Market phases and session shading.** Calendars take pre-open, post-close and extended hours;
+  `phaseAt`, `phaseSpans` and `marketStatusAt` say which part of the day an instant is in, and
+  `attachSessionShading` washes those bars in the price pane.
+- **The chart grid to sixteen charts.** 26 layouts, a grid bar with the layout picker, maximize,
+  link groups and capture, swap by drag or keyboard, up to sixteen named link groups, one picture
+  of the whole grid, the desk in IndexedDB with `grid.ready`, one bottom bar for the active
+  chart, and saved desks. See [Chart grid](/docs/chart-grid).
+- **Link channels for the chart type and drawings**, saved in the workspace schema with named
+  groups (`WorkspaceSync`, `WorkspaceLinkGroup`); a 2.5.9 workspace reads and writes back byte
+  for byte.
+- **Workspace revisions.** `expectedRevision` on every catalog change, `subscribe`, and
+  `createMemoryWorkspaceStorage`.
+- **Chrome icons.** 110 glyphs, one per chart type and transform (`chartTypeIcon`), and
+  `layoutIconPath` for layout tiles; the widget draws every picture from them.
+- **Hover labels** on a study legend's eye, gear and cross and on the close box of an order or
+  position line.
+- `TipSpec.label`, `ChartObjectsOptions.drawingName` and `ShortcutEvent.code`.
+
+### Changed
+
+- Widget persistence is asynchronous by default: a host that drives a persisting widget right
+  away awaits `widget.ready` first.
+- The widget loads seven parts a plain widget never opens (the shortcuts editor, the Layouts
+  menu, the templates list, the chart data dialog, the grid bar and its menus, and the IndexedDB
+  store) on first use, from files named by a content hash beside the tier. Serve a tier file and
+  its parts from one release.
+- Go to lives in the bottom bar, or in the top bar with `bottombar: false`.
+- Auto mobile mode follows the container's size, so tablets and touch laptops keep the desktop
+  chrome.
+- The widget says active, not armed.
+- `matchDrawingShortcut` reads the physical key under Alt only when no letter is typed.
+- Wording a host may match on: trading capability reasons in words, "Reset view" and "Fit all
+  bars" in `DEFAULT_KEYMAP`, "Williams VIX Fix" and "Rate of Change", "Linear" and "Auto-fit to
+  the data" in chart settings, and Cmd in the chart's shortcut hints on macOS.
+- Widget labels: toggles keep one name and say their state by attribute, action menu rows are
+  `menuitem`, repeated objects are numbered the same way on every surface ("Relative Strength
+  Index (2)"), alert rows read as the editor lists them, and `renderForm` groups rows under their
+  heading.
+
+### Deprecated
+
+- Widget message keys the widget no longer shows stay valid until 3.0.0; see
+  [Compatibility](/docs/compatibility).
+
+### Fixed
+
+- The status line follows the latest bar after a symbol, interval or live change.
+- Marker labels on neighbouring bars no longer overlap.
+- A touch on a rail group button picks its tool, a command that restores the chart keeps its
+  undo step, and menus name the chord in force.
+
+### Performance
+
+- Marker lanes stay bounded: ten thousand labels over twenty thousand bars paint in 2.0 to
+  4.2 ms.
+- The first-use parts keep about 18 kB (Brotli) of UI out of the widget tier file.
+
+See [Upgrading to 2.5.10](/docs/upgrading) for what a host may notice.
+
 ## 2.5.9
 
 2026-09-28

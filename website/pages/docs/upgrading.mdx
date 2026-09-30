@@ -1,12 +1,75 @@
 ---
-title: Upgrading to 2.5.9
-description: Version 2.5.9 keeps drawings per instrument, adds drawing gestures and a drawing toolbar, holds replay's forming bar inside the bar it closes on, and needs no code change for most hosts.
+title: Upgrading to 2.5.10
+description: Version 2.5.10 keeps widget state in IndexedDB, adds saved layouts, a shortcuts editor, a bottom bar and a chart grid to sixteen charts, and asks a host that persists the widget to await widget.ready.
 ---
 
-# Upgrading to 2.5.9
+# Upgrading to 2.5.10
 
-Version 2.5.9 needs no code change for most hosts. Saved layouts, drawings and workspace
-documents from 2.5.8 load unchanged, and no export was removed. What a host can notice:
+Saved layouts, drawings and workspace documents from 2.5.9 load unchanged, and no export was
+removed. Most hosts need no code change. A host that persists the widget, serves `dist/`
+itself, or tests the widget's words and roles should check these points:
+
+- **Widget persistence is asynchronous by default.** With `persist` and no `storage`, the
+  widget and the chart grid keep their state in IndexedDB. The saved symbol, interval, layout,
+  drawings and chords land once the store answers, and `widget.ready` (`grid.ready` for a
+  grid) settles then; until it does, the widget shows its defaults out of sight and asks the
+  feed for nothing. A host that changes the symbol or reads the saved state right after
+  `createWidget` awaits `widget.ready` first. The first visit copies the
+  `oac-widget:<namespace>:` keys 2.5.9 left in localStorage and leaves them there. To keep the
+  2.5.9 behaviour call for call, pass `storage: localStorage` or any synchronous store. See
+  [Persistence](/docs/widget#persistence).
+- **Serve the widget's parts with the tier.** Seven parts a plain widget never opens (the
+  shortcuts editor, the Layouts menu, the templates list, the chart data dialog, the grid bar
+  and its menus, and the IndexedDB store) load on first use from files beside the widget tier,
+  named by a content hash (`openalgo-charts.widget.<part>-<hash>.mjs`). A host that serves
+  `dist/` itself deploys the whole directory from one release, revalidates the tier files,
+  whose names stay the same, and may cache the hashed parts for a long time. A strict
+  `script-src` allows their directory, never a part by name. A CDN URL pinned to the version
+  needs nothing.
+- **The bottom bar is on by default.** It carries the preset ranges, Go to (moved from the top
+  bar), the market status, a clock with a timezone menu and the scale toggles, and the widget
+  attaches session shading, which shades nothing unless the calendar has pre-open, post-close
+  or extended hours. `bottombar: false` gives the 2.5.9 chrome back, with Go to in the top bar
+  and the market status on the status line, and `sessionShading: false` turns the shading off.
+  A chart grid shows one bar for the active chart only with `bottombar: true`.
+- **Auto mobile mode follows the container's size.** Tablets and touch laptops now keep the
+  toolbar and the drawing rail, and phones keep the compact controls. Pass `mobile: 'always'`
+  or `'never'` to force either, and refresh screenshot baselines taken on touch devices.
+- **Users can move shortcuts.** The ? panel edits every chord the widget owns, and with
+  `persist` the chords are saved. `shortcutsEditor: false` keeps the panel a list and applies
+  no saved chords.
+- **Words a host test may match on.** Trading capability reasons are in words ("Placing orders
+  is not supported", "Stop-loss orders are not supported", "Live trading is not supported")
+  where they named ids; test `supported` rather than the text. `DEFAULT_KEYMAP` says "Reset
+  view" and "Fit all bars", the indicators `williams-vix-fix` and `roc` are named "Williams VIX
+  Fix" and "Rate of Change" (the ids are unchanged), chart settings say "Linear" and "Auto-fit
+  to the data", and the unknown indicator and missing transform tier errors use a comma where
+  they had an em dash. The widget says active, not armed.
+- **Widget roles and names.** An action row in a widget menu has the role `menuitem` (for
+  example "Download chart data (CSV)"), and only a choice keeps `menuitemradio`. A toggle keeps
+  one name ("Lock", "Hide", "Pin to rail") and reports its state through `aria-pressed` or
+  `aria-checked`, so a test that looked for "Unlock" or "Show drawing" looks for the constant
+  name and its state. Two objects of one name are "Relative Strength Index (2)" in Objects, the
+  alert editor and its list, study settings and the CSV dialog, where the alert editor wrote
+  "2: Relative Strength Index". `renderForm` puts the rows under a heading in a
+  `div.oac-form__group` with `role="group"` and `display: contents`, so a stylesheet with
+  `.oac-form > .oac-form__row` child selectors allows for it.
+- **Deprecated message keys.** A translation catalog keeps compiling. The keys the widget no
+  longer shows are listed on the [compatibility page](/docs/compatibility) with the keys to
+  translate instead, and are dropped in 3.0.0.
+- **`matchDrawingShortcut`.** Pass the keydown event itself, so `code` is there: Option chords
+  on macOS then match. A typed letter still decides the tool, so other layouts behave as in
+  2.5.9.
+- **Chrome glyphs.** Every widget picture comes from the icon registry, the theme button shows
+  a sun or a moon, and the maximize, restore, check and calendar glyphs are redrawn. Refresh
+  screenshot baselines of the widget chrome.
+
+See the [release notes](/docs/release-notes#2510) for everything 2.5.10 adds.
+
+## Earlier upgrades
+
+Version 2.5.9 needed no code change for most hosts. Saved layouts, drawings and workspace
+documents from 2.5.8 loaded unchanged, and no export was removed. What a host could notice:
 
 - **Drawings belong to the instrument they were drawn on.** The widget and the chart grid
   now keep one drawing document per instrument (`drawingScope: 'instrument'`, the
@@ -55,9 +118,7 @@ documents from 2.5.8 load unchanged, and no export was removed. What a host can 
   `--oac-down` tokens. Eighteen drawing tool glyphs are redrawn. Refresh screenshot
   baselines of the widget chrome.
 
-See the [release notes](/docs/release-notes#259) for everything 2.5.9 adds.
-
-## Earlier upgrades
+See the [release notes](/docs/release-notes#259) for everything 2.5.9 added.
 
 Version 2.5.8 needed no migration. Saved layouts, drawings and workspace documents
 from 2.5.7 load unchanged, no export was added or removed, and a chart that keeps

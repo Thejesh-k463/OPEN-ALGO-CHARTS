@@ -25,7 +25,7 @@ with no runtime dependencies.
 npm install openalgo-charts
 ```
 
-Current version: **2.5.9**, drawing interaction and replay: drawings belong to the instrument they were drawn on, the magnet works on every pane and in every drag, box select, drag to copy, an eraser, a temporary measure and visibility per interval join the drawing controller, the widget adds a floating drawing toolbar, style templates and a coordinates tab, replay's forming bar stays inside the bar it closes on (and can form over simulated steps where no finer data exists), and lines reach the edges of the view. 2.5.8 was the rendering performance release.
+Current version: **2.5.10**, persistence, saved layouts and the chart grid: the widget keeps its state in IndexedDB and says when it has landed (`widget.ready`), saves and reopens named layouts and indicator templates, and lets a user move any shortcut from the ? panel; a bottom bar carries preset ranges sized in trading sessions, Go to, the market status and a clock; calendars know pre-open, post-close and extended hours, and a chart can shade them; the chart grid lays out one to sixteen charts with a grid bar, maximize and swap, and named link groups that can share the chart type and drawings; and a label pass makes every control say what it is. 2.5.9 was the drawing interaction and replay release.
 See the [changelog](./CHANGELOG.md) for release notes.
 
 ## Quick start
@@ -117,7 +117,7 @@ You can also load the library from a CDN in a plain HTML page:
 ```html
 <div id="chart" style="width:100vw;height:100vh"></div>
 <script type="module">
-  import { createChart, generateBars } from 'https://unpkg.com/openalgo-charts@2.5.9/dist/openalgo-charts.mjs';
+  import { createChart, generateBars } from 'https://unpkg.com/openalgo-charts@2.5.10/dist/openalgo-charts.mjs';
   const chart = createChart(document.getElementById('chart'), { timezone: 'Asia/Kolkata' });
   chart.addSeries('candlestick').setData(generateBars(1700000000, 200, 3600));
   chart.fitContent();
@@ -597,7 +597,7 @@ npm run verify     # lint + types + unit + endurance harness + build + demo + dt
 
 ## Status &amp; limitations
 
-Version **2.5.9**. All engine build phases are implemented. Upgrading a 1.9.x host: [Migrating to 2.0](./docs/migrating-to-2.md).
+Version **2.5.10**. All engine build phases are implemented. Upgrading a 1.9.x host: [Migrating to 2.0](./docs/migrating-to-2.md).
 
 Known gaps, stated plainly:
 
