@@ -95,8 +95,12 @@ icon registry for the whole widget, and a label pass over every control.
   measures 121.44 kB against 99.64 kB in 2.5.9 with everything this release adds; the parts
   measure 18.19 kB together and load only when used. The chart-only import grows from 84.82 to
   85.73 KiB, almost all of it the marker lanes.
+- Against 2.5.9 on the release bench, frames are on par: on Canvas 2D a full zoom-out takes
+  about 7 percent longer at 50,000 bars and 9 percent at 200,000, pans and ticks are within
+  3 percent, and WebGL2 is within 4 percent.
 
-See [Upgrading to 2.5.10](/docs/upgrading) for what a host may notice.
+See [Upgrading to 2.5.10](/docs/upgrading) for what a host may notice, and the
+[benchmark](/benchmarks#2510) measured against 2.5.9.
 
 ## 2.5.9
 

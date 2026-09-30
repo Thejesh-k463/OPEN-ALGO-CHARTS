@@ -2,6 +2,367 @@
   "schema": 1,
   "releases": [
     {
+      "version": "2.5.10",
+      "date": "2026-09-30",
+      "comparedWith": "2.5.9",
+      "runs": {
+        "release": 5,
+        "previous": 5
+      },
+      "machine": {
+        "cpu": "AMD Ryzen 7 7700 8-Core Processor",
+        "logicalCpus": 16,
+        "os": "Windows 10.0.26200",
+        "browser": "headless Chromium 149.0.7827.55",
+        "gl": "software GL (SwiftShader)",
+        "dpr": 1
+      },
+      "cells": [
+        {
+          "renderer": "canvas2d",
+          "bars": 10000,
+          "metric": "pan",
+          "releaseP95": [
+            2.6,
+            2.8,
+            2.7,
+            2.4,
+            2.5
+          ],
+          "previousP95": [
+            2.7,
+            3,
+            2.5,
+            2.8,
+            2.4
+          ]
+        },
+        {
+          "renderer": "canvas2d",
+          "bars": 10000,
+          "metric": "zoomOut",
+          "releaseP95": [
+            9.6,
+            8.1,
+            10.4,
+            8.4,
+            8.1
+          ],
+          "previousP95": [
+            9.3,
+            8.2,
+            9.7,
+            9.8,
+            8.4
+          ]
+        },
+        {
+          "renderer": "canvas2d",
+          "bars": 10000,
+          "metric": "tick",
+          "releaseP95": [
+            21.9,
+            21.1,
+            21.4,
+            22.1,
+            21.3
+          ],
+          "previousP95": [
+            22.4,
+            21.1,
+            21.4,
+            22,
+            22.4
+          ]
+        },
+        {
+          "renderer": "canvas2d",
+          "bars": 50000,
+          "metric": "pan",
+          "releaseP95": [
+            2.9,
+            2.9,
+            2.6,
+            3,
+            2.6
+          ],
+          "previousP95": [
+            2.5,
+            2.7,
+            2.7,
+            2.5,
+            2.8
+          ]
+        },
+        {
+          "renderer": "canvas2d",
+          "bars": 50000,
+          "metric": "zoomOut",
+          "releaseP95": [
+            24.9,
+            28.9,
+            23.4,
+            23.1,
+            22.7
+          ],
+          "previousP95": [
+            25.9,
+            24.3,
+            24.3,
+            21.3,
+            21.5
+          ]
+        },
+        {
+          "renderer": "canvas2d",
+          "bars": 50000,
+          "metric": "tick",
+          "releaseP95": [
+            49.7,
+            64,
+            81.2,
+            56.8,
+            46.8
+          ],
+          "previousP95": [
+            74.1,
+            83.9,
+            73.3,
+            46.8,
+            50.4
+          ]
+        },
+        {
+          "renderer": "canvas2d",
+          "bars": 200000,
+          "metric": "pan",
+          "releaseP95": [
+            2.8,
+            3.4,
+            3.1,
+            2.7,
+            2.6
+          ],
+          "previousP95": [
+            2.6,
+            3.7,
+            3,
+            2.6,
+            2.7
+          ]
+        },
+        {
+          "renderer": "canvas2d",
+          "bars": 200000,
+          "metric": "zoomOut",
+          "releaseP95": [
+            69.1,
+            82.6,
+            103.8,
+            62.7,
+            62.7
+          ],
+          "previousP95": [
+            57.6,
+            122.9,
+            67.6,
+            61.4,
+            65.7
+          ]
+        },
+        {
+          "renderer": "canvas2d",
+          "bars": 200000,
+          "metric": "tick",
+          "releaseP95": [
+            185.8,
+            219.1,
+            187.8,
+            157.6,
+            157.8
+          ],
+          "previousP95": [
+            158.8,
+            171.7,
+            152.5,
+            188.1,
+            156.8
+          ]
+        },
+        {
+          "renderer": "webgl2",
+          "bars": 10000,
+          "metric": "pan",
+          "releaseP95": [
+            13.2,
+            12.6,
+            13.4,
+            13.3,
+            12.5
+          ],
+          "previousP95": [
+            12.6,
+            12.7,
+            13,
+            13.2,
+            12.4
+          ]
+        },
+        {
+          "renderer": "webgl2",
+          "bars": 10000,
+          "metric": "zoomOut",
+          "releaseP95": [
+            14.7,
+            15.5,
+            14.7,
+            14.8,
+            15.4
+          ],
+          "previousP95": [
+            16.2,
+            14.4,
+            14.9,
+            14.9,
+            16.1
+          ]
+        },
+        {
+          "renderer": "webgl2",
+          "bars": 10000,
+          "metric": "tick",
+          "releaseP95": [
+            32.7,
+            34.3,
+            32.7,
+            31.6,
+            30.2
+          ],
+          "previousP95": [
+            31.1,
+            29.8,
+            30.6,
+            29.9,
+            31.7
+          ]
+        },
+        {
+          "renderer": "webgl2",
+          "bars": 50000,
+          "metric": "pan",
+          "releaseP95": [
+            12.3,
+            13.5,
+            12.5,
+            12.5,
+            13.2
+          ],
+          "previousP95": [
+            12.3,
+            12.1,
+            13,
+            12.2,
+            12.5
+          ]
+        },
+        {
+          "renderer": "webgl2",
+          "bars": 50000,
+          "metric": "zoomOut",
+          "releaseP95": [
+            24,
+            24.6,
+            25,
+            25.1,
+            24
+          ],
+          "previousP95": [
+            22.9,
+            24.5,
+            26.3,
+            23.3,
+            24.3
+          ]
+        },
+        {
+          "renderer": "webgl2",
+          "bars": 50000,
+          "metric": "tick",
+          "releaseP95": [
+            71.4,
+            70.5,
+            65.1,
+            60.8,
+            60
+          ],
+          "previousP95": [
+            61.8,
+            59.4,
+            64.7,
+            60.8,
+            58.1
+          ]
+        },
+        {
+          "renderer": "webgl2",
+          "bars": 200000,
+          "metric": "pan",
+          "releaseP95": [
+            12.9,
+            12.7,
+            12.9,
+            13,
+            12.4
+          ],
+          "previousP95": [
+            12.6,
+            12.7,
+            12.9,
+            12.7,
+            12.8
+          ]
+        },
+        {
+          "renderer": "webgl2",
+          "bars": 200000,
+          "metric": "zoomOut",
+          "releaseP95": [
+            97.4,
+            90.6,
+            73.3,
+            76.9,
+            74.7
+          ],
+          "previousP95": [
+            86,
+            72.7,
+            71.3,
+            70.8,
+            74.7
+          ]
+        },
+        {
+          "renderer": "webgl2",
+          "bars": 200000,
+          "metric": "tick",
+          "releaseP95": [
+            189.4,
+            220.6,
+            197.5,
+            191.4,
+            171.1
+          ],
+          "previousP95": [
+            181.1,
+            209.6,
+            179.6,
+            186.4,
+            169.4
+          ]
+        }
+      ]
+    },
+    {
       "version": "2.5.9",
       "date": "2026-09-27",
       "comparedWith": "2.5.8",

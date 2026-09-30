@@ -228,6 +228,13 @@ strings a host may match on are reworded. See the upgrade notes.
 - **The widget tier file carries what a plain widget uses.** Moving the seven
   first-use parts out took 9.94 kB (Brotli) off it; the parts measure 18.19 kB
   on their own and are fetched only when used.
+- **Measured against 2.5.9** on the release bench (five runs of each build in one
+  session, `benchmarks/releases.json`, the website's Benchmarks page): frames are
+  on par. On Canvas 2D a full zoom-out takes about 7 percent longer at 50,000
+  bars and 9 percent at 200,000 (21.3 to 22.7 ms and 57.6 to 62.7 ms, each the
+  lowest p95 of its five runs); pans are the same, a ten-study tick at 200,000
+  bars takes about 3 percent longer (152.5 to 157.6 ms), and WebGL2 frames are
+  within 4 percent.
 
 ### Website
 
