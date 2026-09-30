@@ -36,6 +36,18 @@ describe('shared capability query', () => {
     expect(checkTradingCapability({ modify: 'unknown' }, { operation: 'modify' })).toMatchObject({ supported: false, reason: expect.stringContaining('unknown') });
   });
 
+  it('says what is refused in words a trader reads, not in ids', () => {
+    const reason = (capabilities: TradingCapabilities, request: TradingCapabilityRequest): string => {
+      const result = checkTradingCapability(capabilities, request);
+      return result.supported ? '' : result.reason;
+    };
+    expect(reason({ place: false }, { operation: 'place' })).toBe('Placing orders is not supported');
+    expect(reason({ cancel: 'unknown' }, { operation: 'cancel' })).toBe('Support for cancelling orders is unknown');
+    expect(reason({ orderTypes: ['LIMIT'] }, { operation: 'place', type: 'SL' })).toBe('Stop-loss orders are not supported');
+    expect(reason({ orderTypes: ['LIMIT'] }, { operation: 'place', type: 'SL-M' })).toBe('Stop-loss market orders are not supported');
+    expect(reason({ modes: ['analyzer'] }, { operation: 'place', type: 'LIMIT', mode: 'live' })).toBe('Live trading is not supported');
+  });
+
   it('requires the relevant qualifiers when a declaration restricts new orders', () => {
     const capabilities: TradingCapabilities = { orderTypes: ['LIMIT'], modes: ['analyzer'] };
     expect(checkTradingCapability(capabilities, { operation: 'place' }).supported).toBe(false);

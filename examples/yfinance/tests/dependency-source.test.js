@@ -53,12 +53,14 @@ function setup(source = 'close') {
 describe('reference host study source selection', () => {
   it('offers scalar study outputs with distinct identities while keeping price-only selectors unchanged', () => {
     const rig = setup(), labels = rig.options().map(option => option.textContent);
-    expect(labels.some(label => label.includes('first') && label.includes('Scalar'))).toBe(true);
-    expect(labels.some(label => label.includes('second') && label.includes('Scalar'))).toBe(true);
+    // Numbered by their place on the chart, never named by an internal id.
+    expect(labels).toContain('2: Repeated study / Scalar');
+    expect(labels).toContain('3: Repeated study / Scalar');
+    expect(labels.some(label => label.includes('first') || label.includes('second') || label.includes('['))).toBe(false);
     expect(labels.some(label => label.includes('Consumer value') || label.includes('Candles'))).toBe(false);
     expect(rig.document.getElementById('set-body_priceOnly').querySelectorAll('option').map(option => option.value))
       .toEqual(INDICATOR_SOURCES.map(option => option.value));
-    const token = rig.options().find(option => option.textContent.includes('first')).value;
+    const token = rig.options().find(option => option.textContent.startsWith('2: ')).value;
     expect(token).not.toContain('first');
     rig.field().value = token;
     const values = collectInputRows(rig.document.getElementById('set-body'));
@@ -93,7 +95,7 @@ describe('reference host study source selection', () => {
 
   it('marks a removed draft producer unavailable without discarding the draft or choosing price', () => {
     const rig = setup();
-    rig.field().value = rig.options().find(option => option.textContent.includes('first')).value;
+    rig.field().value = rig.options().find(option => option.textContent.startsWith('2: ')).value;
     rig.instances.splice(1, 1); rig.removed();
     expect(rig.options().find(option => option.value === rig.field().value).textContent).toContain('Unavailable');
     expect(collectInputRows(rig.document.getElementById('set-body')).source).toEqual(reference('first'));

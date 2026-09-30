@@ -413,7 +413,7 @@ describe('explicit close, partial close and reverse', () => {
     let locked = true;
     const engine = new OrderEngine({ feed: broker, mode: 'analyzer', armed: true, constraints: { tickSize: 0.05, lotSize: 5 },
       selectedAccount: () => accounts.selectedAccount(), capabilities: () => ({ place: !locked, orderTypes: ['LIMIT'] }) });
-    expect(await engine.closePosition({ symbol: 'SYN' })).toMatchObject({ ok: false, intent: 'BLOCKED', reason: 'Trading operation place is not supported' });
+    expect(await engine.closePosition({ symbol: 'SYN' })).toMatchObject({ ok: false, intent: 'BLOCKED', reason: 'Placing orders is not supported' });
     locked = false;
     expect(await engine.closePosition({ symbol: 'SYN', qty: 3 })).toMatchObject({ ok: false, intent: 'BLOCKED', reason: 'quantity 3 is not a multiple of lot size 5' });
     // An order-type list describes new orders; a native close has no order type of its own.

@@ -50,9 +50,11 @@ describe('widget chart data download options', () => {
     expect(dialog.getAttribute('role')).toBe('dialog');
     expect(field(dialog, 'study-0').checked).toBe(true);
     expect(field(dialog, 'study-1').checked).toBe(true);
-    expect(dialog.textContent).toContain(first.id);
-    expect(dialog.textContent).toContain(hidden.id);
-    expect(dialog.textContent).toContain('Hidden');
+    // Repeated instances are told apart by their place on the chart, not by an internal id.
+    const label = (key: string): string => dialog.querySelector(`[data-key="${key}"] label`)!.textContent;
+    expect(label('study-0')).toBe(`1: ${first.name}`);
+    expect(label('study-1')).toBe(`2: ${hidden.name}, hidden`);
+    expect(dialog.textContent).not.toContain(first.id);
     widget.chart.addIndicator('ema', { length: 1 });
     expect(dialog.querySelectorAll('input[type="checkbox"]')).toHaveLength(2);
   });

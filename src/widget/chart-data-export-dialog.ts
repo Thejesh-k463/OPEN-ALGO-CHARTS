@@ -38,7 +38,8 @@ export function openChartDataExportDialog(
     ] },
     ...studies.map((study, index): FormControl => ({
       key: `study-${index}`, kind: 'boolean', group: widgetText(ctx, 'Studies'),
-      label: `${study.name} (${study.id})${study.hidden ? ` - ${widgetText(ctx, 'Hidden')}` : ''}`,
+      // Its place on the chart tells repeated studies apart, not an internal id.
+      label: `${index + 1}: ${study.hidden ? widgetText(ctx, '{name}, hidden', { name: study.name }) : study.name}`,
     })),
   ];
   const form = renderForm(formHost, controls, {

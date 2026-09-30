@@ -494,6 +494,7 @@ export type WidgetBuiltinMessage =
   | "Nothing changed."
   // The label pass, since 2.5.10.
   | "unknown error"
+  | "{name}, hidden"
   // Retained so host translation catalogs written for the armed wording stay
   // type compatible. The widget says active since 2.5.10; a union member takes
   // no doc tag, so COMPATIBILITY.md lists these as deprecated, and 3.0.0 drops them.

@@ -57,8 +57,10 @@ describe('widget study source selection', () => {
   it('lists scalar outputs for distinct hidden and moved instances without changing ordinary source controls', () => {
     const rig = setup();
     const labels = rig.options().map(option => option.textContent);
-    expect(labels.some(label => label.includes('first') && label.includes('Scalar'))).toBe(true);
-    expect(labels.some(label => label.includes('second') && label.includes('Scalar'))).toBe(true);
+    // Told apart by their place on the chart, as the alert editor numbers studies, never by an internal id.
+    expect(labels).toContain('2: Repeated study / Scalar');
+    expect(labels).toContain('3: Repeated study / Scalar');
+    expect(labels.some(label => label.includes('first') || label.includes('second') || label.includes('['))).toBe(false);
     expect(labels.some(label => label.includes('Consumer value') || label.includes('Candles'))).toBe(false);
     expect(rig.options().some(option => option.value === 'close')).toBe(true);
     expect(rig.layer.querySelector('#oac-ind-consumer-priceOnly')!.querySelectorAll('option').map(option => option.value))
@@ -67,7 +69,7 @@ describe('widget study source selection', () => {
 
   it('maps opaque DOM tokens to fresh references and retains ordinary strings', () => {
     const rig = setup();
-    const token = rig.options().find(option => option.textContent.includes('first'))!.value;
+    const token = rig.options().find(option => option.textContent.startsWith('2: '))!.value;
     expect(token).not.toContain('first');
     rig.select(token);
     expect(rig.settings().source).toEqual(reference('first'));

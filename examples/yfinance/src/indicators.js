@@ -561,10 +561,11 @@ export function renderSettingsTab(draft) {
   const descriptor = getIndicator(inst.indicatorId);
   const inputs = settingsTab === 'style' ? indicatorStyleInputs(descriptor) : descriptor.inputs.map(input => {
     if (input.type !== 'source' || !input.allowStudyOutputs) return input;
-    const studyOutputs = settingsTarget.chart.indicators().flatMap(producer => producer.id === inst.id ? []
+    // Its place on the chart tells repeated studies apart, not an internal id.
+    const studyOutputs = settingsTarget.chart.indicators().flatMap((producer, index) => producer.id === inst.id ? []
       : getIndicator(producer.indicatorId).plots.filter(plot => !plot.ohlc).map(plot => ({
         reference: { kind: 'indicator', instanceId: producer.id, plotKey: plot.key },
-        label: `${producer.name} [${producer.id}] / ${plot.title ?? plot.key}`,
+        label: `${index + 1}: ${producer.name} / ${plot.title ?? plot.key}`,
       })));
     return { ...input, studyOutputs };
   });

@@ -51,10 +51,10 @@ export function openChartDataControls(app, target = capturePaneTarget(app)) {
   el('csv-from').value = ''; el('csv-to').value = '';
   el('csv-alignment').value = 'source'; el('csv-comparisons').checked = true;
   clearError();
-  const boxes = studies.map(study => {
+  const boxes = studies.map((study, index) => {
     const label = document.createElement('label'); label.className = 'csv-study';
     const input = document.createElement('input'); input.type = 'checkbox'; input.checked = true;
-    const title = document.createElement('span'); title.textContent = `${study.name} (${study.id})`;
+    const title = document.createElement('span'); title.textContent = `${index + 1}: ${study.name}`;
     label.appendChild(input); label.appendChild(title);
     return { id: study.id, input, label };
   });

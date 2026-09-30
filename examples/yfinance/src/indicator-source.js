@@ -46,7 +46,7 @@ export function bindIndicatorSource(chart, pane) {
     owner = { chart, instanceId };
     const context = chart.getDataContext();
     el('indsource-title').textContent = instance.name + ' source';
-    el('indsource-owner').textContent = `Chart ${pane}: ${context?.symbol || 'Unknown symbol'} | Instance ${instanceId}`;
+    el('indsource-owner').textContent = `Chart ${pane}: ${context?.symbol || 'Unknown symbol'}, study ${chart.indicators().indexOf(instance) + 1}`;
     el('indsource-code').textContent = sourceSignalDescriptor.toString() + '\n\nregisterIndicator(sourceSignalDescriptor());';
     el('indsource').hidden = false;
   });
