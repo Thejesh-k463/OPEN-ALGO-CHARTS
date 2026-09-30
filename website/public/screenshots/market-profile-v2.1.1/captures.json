@@ -1,6 +1,6 @@
 {
   "sources": {
-    "examples/market-profile/index.html": "f0082d0307970310fa3d70e5f8f112a359def8021c8814a7de693209ca491937",
+    "examples/market-profile/index.html": "7a7bcdf6173ddf1fd16e664ee721a92fbc2e91678e679024c21f947c5b90dd68",
     "examples/market-profile/themes.js": "2cbc8488168ee94bc836ea816b8edb499803fd0184fe9d4b2f534d6096462a98",
     "src/profile/market-profile-primitive.ts": "976b093c83d43d0fe021cfd06d5207f32b7b09f016e70418c94589f1994a1afd",
     "src/profile/market-profile.ts": "364ba7bbe1572d63a2de2489960e7dfd8e592a96a08fece06caa3331168b05d1",
@@ -18,7 +18,7 @@
   "captures": {
     "compressed-overview": {
       "file": "compressed-overview.png",
-      "sha256": "35d79654cae35077ffd5d7ab6bbb3926bf853e5f8cab60592018598af7bd09dc",
+      "sha256": "052bb0c30a437e44b929542a66f8758db051e96b4b2b629859121823c4c7d78b",
       "width": 2880,
       "height": 2000
     },
