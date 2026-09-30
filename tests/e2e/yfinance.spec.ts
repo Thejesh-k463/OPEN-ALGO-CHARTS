@@ -796,3 +796,12 @@ test('the Objects dock names a drawing the way the rail does', async ({ page }) 
   await expect(page.locator('.oac-objects__name', { hasText: /^Trend Line/ }).first()).toBeVisible();
   await expect(page.locator('.oac-objects__name', { hasText: /^Trend line/ })).toHaveCount(0);
 });
+
+test('a paired colour swatch in the settings says which row it belongs to', async ({ page }) => {
+  await openDemo(page);
+  await page.getByRole('button', { name: /^Chart settings/ }).first().click();
+  await expect(page.locator('#csetmodal, #cset-body').first()).toBeVisible();
+  // Three rows have an Up swatch; each is named with its row, as the widget's form names them.
+  await expect(page.getByRole('button', { name: 'Body Up', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Up', exact: true })).toHaveCount(0);
+});
