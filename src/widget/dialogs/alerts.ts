@@ -268,8 +268,14 @@ export function mountAlertsPanel(ctx: WidgetContext, anchor?: HTMLElement, opts:
       return `${listed(controls, 'drawingId', source.drawingId) ?? widgetText(ctx, 'Unavailable drawing')} / ${listed(controls, 'level', source.level) ?? source.level ?? widgetText(ctx, 'Default level')}`;
     }
     const instance = ctx.chart.indicators().find(item => item.id === source.instanceId);
-    const plot = listed(alertSourceFields(ctx, { kind: 'indicator', instanceId: source.instanceId, plotKey: source.plotKey, value: source.value }).controls, 'plotKey', source.plotKey) ?? source.plotKey;
-    return widgetText(ctx, source.upperValue === undefined ? '{name} / {plot}: {value}' : '{name} / {plot}: {value} to {upper}', { name: instance?.name ?? widgetText(ctx, 'Unavailable study'), plot, value: source.value, upper: source.upperValue ?? '' });
+    const { controls } = alertSourceFields(ctx, { kind: 'indicator', instanceId: source.instanceId, plotKey: source.plotKey, value: source.value });
+    const plot = listed(controls, 'plotKey', source.plotKey) ?? source.plotKey;
+    // On the study's own scale, as the price branch prints on the pane's.
+    const scale = instance?.series(source.plotKey)?.priceScale();
+    const value = (v: number): string => scale?.format(v) ?? String(v);
+    return widgetText(ctx, source.upperValue === undefined ? '{name} / {plot}: {value}' : '{name} / {plot}: {value} to {upper}', {
+      name: instance?.name ?? widgetText(ctx, 'Unavailable study'), plot,
+      value: value(source.value), upper: source.upperValue === undefined ? '' : value(source.upperValue) });
   }
   function render(): void {
     if (closed || rendering) return;

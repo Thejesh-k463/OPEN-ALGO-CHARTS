@@ -432,6 +432,20 @@ describe('widget alert list', () => {
     expect(summary(onPrice.id)).not.toContain('22345.6789');
   });
 
+  it('prints a study value and its upper bound on the study\'s own scale', () => {
+    const { w, root } = make();
+    const study = w.chart.addIndicator('widget-alert-study');
+    const one = w.alerts.add({ source: { kind: 'indicator', instanceId: study.id, plotKey: 'close', value: 1.23456789 } });
+    const band = w.alerts.add({ source: { kind: 'indicator', instanceId: study.id, plotKey: 'close', value: 1.23456789, upperValue: 2.98765432 } });
+    widget.mountAlertsPanel(w.context);
+    const summary = (id: string): string => root.querySelector(`[data-alert-id="${id}"] .oac-alerts__summary`)!.textContent;
+    const scale = study.series('close')!.priceScale();
+    expect(scale.format(1.23456789)).not.toBe('1.23456789');
+    expect(summary(one.id)).toContain(`Alert study / Close reading: ${scale.format(1.23456789)}`);
+    expect(summary(band.id)).toContain(`${scale.format(1.23456789)} to ${scale.format(2.98765432)}`);
+    expect(summary(band.id)).not.toContain('1.23456789');
+  });
+
   it('refreshes an open price-only list when the chart timezone changes without changing the expiry instant', () => {
     const { w, root } = make();
     w.chart.setTimezone('UTC');
