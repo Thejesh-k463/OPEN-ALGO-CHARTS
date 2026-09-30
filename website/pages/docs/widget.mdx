@@ -12,7 +12,7 @@ import { Callout } from 'nextra/components'
 with a top bar (symbol, interval, chart type, theme, settings, indicators, objects, alerts), a drawing rail
 down the left, a status line, the dialogs behind each of those buttons, keyboard shortcuts
 with a `?` panel that lists them, and optional persistence of the layout. It is one of nine
-loadable tiers (**121.44 kB** Brotli in 2.5.10) and the only tier that supplies
+loadable tiers (**121.36 kB** Brotli in 2.5.10) and the only tier that supplies
 application controls.
 
 The drawing rail includes Anchored VWAP and fixed-range Volume Profile. They use
@@ -885,9 +885,9 @@ Brotli kB, enforced by `npm run size`:
 
 | Row | Files | Budget | Measured |
 |---|---|--:|--:|
-| Widget tier | `openalgo-charts.widget.mjs` | 121.45 kB | 121.44 kB |
+| Widget tier | `openalgo-charts.widget.mjs` | 121.36 kB | 121.36 kB |
 | Widget first-use parts | `openalgo-charts.widget.<part>-<hash>.mjs`, seven files | 18.19 kB | 18.19 kB |
-| Widget terminal | base + draw + indicators + widget | 354.55 kB | 354.54 kB |
+| Widget terminal | base + draw + indicators + widget | 354.46 kB | 354.46 kB |
 
 The widget is a tier because of these rows. A host that never calls `createWidget`
 downloads none of it, and the base engine's own budget is unchanged.

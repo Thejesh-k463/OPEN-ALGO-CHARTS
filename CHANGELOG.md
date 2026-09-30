@@ -264,9 +264,9 @@ no runtime dependencies or package tiers were added.
 
 Sizes, measured on this release and against 2.5.9 (Brotli, decimal kB): base
 engine 131.68 to 134.69, base plus trade 148.36 to 151.38, indicators 40.38 to
-40.43, draw 55.61 to 57.98, profile 14.96 to 14.97, widget 99.64 to 121.44,
-workspace 11.33 to 11.53, widget terminal 327.32 to 354.54 and every tier
-together 381.78 to 409.21; the transform, WebGL2 and trade tiers are unchanged.
+40.43, draw 55.61 to 57.98, profile 14.96 to 14.97, widget 99.64 to 121.36,
+workspace 11.33 to 11.53, widget terminal 327.32 to 354.46 and every tier
+together 381.78 to 409.13; the transform, WebGL2 and trade tiers are unchanged.
 The widget's seven first-use parts, a new row, measure 18.19 together and are
 fetched only when used. The chart-only import grows from 84.82 to 85.73 KiB
 (932 bytes).

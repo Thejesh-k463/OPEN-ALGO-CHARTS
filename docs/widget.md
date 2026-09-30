@@ -443,9 +443,9 @@ Budgets from `.size-limit.json` and measurements from the 2.5.10 build, Brotli, 
 
 | Row | Files | Budget | Actual |
 |---|---|---|---|
-| Widget tier | `openalgo-charts.widget.mjs` | 121.45 kB | 121.44 kB |
+| Widget tier | `openalgo-charts.widget.mjs` | 121.36 kB | 121.36 kB |
 | Widget first-use parts | `openalgo-charts.widget.<part>-<hash>.mjs`, seven files | 18.19 kB | 18.19 kB |
-| Widget terminal | base + draw + indicators + widget | 354.55 kB | 354.54 kB |
+| Widget terminal | base + draw + indicators + widget | 354.46 kB | 354.46 kB |
 
 The widget is a tier because of these rows. A host that never calls `createWidget`
 downloads none of it, and the base engine's own budget is unchanged. Measure, do not

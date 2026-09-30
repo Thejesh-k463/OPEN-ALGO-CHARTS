@@ -409,7 +409,7 @@
     "baseBrotliKB": 134.69,
     "indicatorBrotliKB": 40.43,
     "workspaceBrotliKB": 11.53,
-    "allTiersBrotliKB": 409.21,
+    "allTiersBrotliKB": 409.13,
     "budgetChange": "The 2.5.10 build sets every limit to the smallest two-decimal value that passes, the transform, profile and WebGL2 rows included, and adds a row for the widget first-use parts (18.19 kB); the chart-only import measures 87785 bytes (85.73 KiB), under its 85.73 KiB ceiling.",
     "review": "Independent typed-input review found reentrant destruction, pane-slot replacement and context changes during pick:end. Eight actual-chart regressions failed before capture lifetime fences and now pass. No additional blocker found in scalar validation, exchange defaults, restore preflight or public exports. A final host review reproduced four failures involving constructor and __proto__ exchange keys; safe own-property defaults, patches and staged collection now preserve them through selection, Defaults, Cancel and Apply.",
     "packageVerification": "Full verify passes lint, typecheck, 7826 unit tests, seven endurance checks, build, all 478 example-host tests, declaration identity, measured size budgets and optional-tier removal checks. The installed public companion 0.7.0 passes 18 compiled-program integration checks and public adapter typechecking. API documentation generates without warnings. The separately discovered Python extreme-directional defect is outside those integration fixtures and remains tracked for correction.",

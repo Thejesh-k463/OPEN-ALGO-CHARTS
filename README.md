@@ -186,10 +186,10 @@ Unused optional tiers stay out of the base chart download.
 | `openalgo-charts/profile` | Volume Profile, Market Profile (TPO) with compact pixel letters, Footprint, order flow | 14.97 kB |
 | `openalgo-charts/trade` | Order, position and bracket tools, account state, order preview and position commands, plus a depth-of-market ladder | 16.69 kB |
 | `openalgo-charts/webgl` | GPU drawing for supported series, with Canvas 2D fallback | 6.93 kB |
-| `openalgo-charts/widget` | `createWidget`: toolbar, bottom bar, Data, Objects, Watchlist and News dock, account summary, symbol search, dialogs, mobile controls, a shortcuts editor, saved layouts, the chart grid (`createChartGrid`) and optional persistence in IndexedDB | 121.44 kB |
+| `openalgo-charts/widget` | `createWidget`: toolbar, bottom bar, Data, Objects, Watchlist and News dock, account summary, symbol search, dialogs, mobile controls, a shortcuts editor, saved layouts, the chart grid (`createChartGrid`) and optional persistence in IndexedDB | 121.36 kB |
 | `openalgo-charts/workspace` | Validated workspace and indicator-template documents, named watchlists, named catalogs with revision checks, asynchronous storage and an IndexedDB adapter; no DOM | 11.53 kB |
 
-Everything together is **409.21 kB Brotli**; a widget terminal with built-in indicators (base + draw + indicators + widget) is 354.54 kB. The widget's seven first-use parts (the shortcuts editor, the Layouts menu, the templates list, the chart data dialog, the grid bar and its menus, and the IndexedDB store) add 18.19 kB in files of their own, fetched only when a widget first uses one. Figures are measured from the 2.5.10 release build. The trade tier is 16.69 kB on its own; base + trade costs 151.38 kB. Sizes use decimal kB.
+Everything together is **409.13 kB Brotli**; a widget terminal with built-in indicators (base + draw + indicators + widget) is 354.46 kB. The widget's seven first-use parts (the shortcuts editor, the Layouts menu, the templates list, the chart data dialog, the grid bar and its menus, and the IndexedDB store) add 18.19 kB in files of their own, fetched only when a widget first uses one. Figures are measured from the 2.5.10 release build. The trade tier is 16.69 kB on its own; base + trade costs 151.38 kB. Sizes use decimal kB.
 
 ## What's built
 
@@ -522,11 +522,11 @@ Enforced in CI by [`size-limit`](./.size-limit.json). Nothing is excluded, becau
 | Transform tier | 4.56 kB | 4.55 kB |
 | Profile tier | 14.98 kB | 14.97 kB |
 | WebGL2 tier | 6.94 kB | 6.93 kB |
-| Widget tier | 121.45 kB | 121.44 kB |
+| Widget tier | 121.36 kB | 121.36 kB |
 | Widget first-use parts (seven files beside the widget tier) | 18.19 kB | 18.19 kB |
-| Widget terminal (base + draw + indicators + widget) | 354.55 kB | 354.54 kB |
+| Widget terminal (base + draw + indicators + widget) | 354.46 kB | 354.46 kB |
 | Workspace tier | 11.53 kB | 11.53 kB |
-| **Everything** | 409.22 kB | 409.21 kB |
+| **Everything** | 409.14 kB | 409.13 kB |
 
 ## Documentation
 
