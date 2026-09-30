@@ -420,8 +420,9 @@ time they are needed. A part resolves against the tier's own URL, so `dist/` or 
 path needs nothing more, and a bundler splits it the same way. Under a Content Security
 Policy, `script-src` must allow the tier's origin, as it already must for the tier
 itself; a part's rules join the widget's stylesheet and keep its nonce. A part that
-cannot load says so in a toast (the store, on the status line) and is fetched again the
-next time.
+cannot load says so in a toast (the store, on the status line) each time it is asked
+for, and the rest of the widget goes on working; a browser keeps a failed module fetch
+until the page reloads.
 
 ## Size
 

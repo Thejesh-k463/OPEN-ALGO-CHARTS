@@ -8,8 +8,10 @@
  * (rollup.config.js) and `import()` fetches it the first time it is needed.
  * Once a part has arrived it is used at once, as if it had been bundled in;
  * until then the request waits for it. A load that fails is reported where
- * the user asked, and forgotten, so the next request tries again rather than
- * failing for the rest of the page's life.
+ * the user asked, and forgotten, so the next request asks again rather than
+ * waiting on a promise that has already failed. A browser keeps a failed
+ * module fetch for the life of the page, so there the answer stays the same
+ * until the page reloads; a loader that retries gets its retry.
  *
  * Each part is declared beside the code that uses it. The tier entry exports
  * none of this.
