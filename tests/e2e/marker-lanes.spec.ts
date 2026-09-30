@@ -6,7 +6,8 @@ import { test, expect, type Page } from '@playwright/test';
 // neighbouring bars were painted over each other and the earlier ones lost
 // most of their plate. Each mark here has its own fill colour, so the pixels
 // of that colour are what is left visible of its plate: every plate in the
-// whipsaw has to keep about as many as a label standing alone.
+// whipsaw has to keep the extent of a label standing alone, clear of its
+// neighbours' plates.
 //
 // Against the baseline build (when dist-baseline/ exists) the same scene may
 // differ only inside the whipsaw: a label that collided with nothing, and every
@@ -100,11 +101,27 @@ test('labels on a whipsaw keep their whole plates, in the dark and the light the
     const sell = scene.counts['lone-sell'], buy = scene.counts['lone-buy'];
     expect(sell).toBeGreaterThan(150);
     expect(buy).toBeGreaterThan(120);
+    // A plate a neighbour covers loses its full extent on the side it is
+    // covered from, or, covered at a corner, shares that corner with the
+    // neighbour's extent. Pixel counts alone cannot say it: a plate at a
+    // fractional position has antialiased edge rows and columns, and how many
+    // depends on the platform's font, so its exact-colour count runs as much
+    // as a fifth below the lone plate's with nothing over it.
+    const size = (key: string): [number, number] => { const b = scene.boxes[key]; return [b[2] - b[0] + 1, b[3] - b[1] + 1]; };
     const short: string[] = [];
     for (let i = 92; i <= 117; i++) {
-      const seen = scene.counts[`w${i}`] ?? 0;
-      const whole = i % 2 === 0 ? buy : sell;
-      if (seen < whole * 0.9) short.push(`w${i}: ${seen} of ${whole}`);
+      const key = `w${i}`;
+      const seen = scene.counts[key] ?? 0;
+      const lone = i % 2 === 0 ? 'lone-buy' : 'lone-sell';
+      const whole = scene.counts[lone];
+      if (seen < whole * 0.75) { short.push(`${key}: ${seen} of ${whole}`); continue; }
+      const [w, h] = size(key), [lw, lh] = size(lone);
+      if (w < lw - 2 || h < lh - 2) short.push(`${key}: ${w} by ${h} of ${lw} by ${lh}`);
+      const [l, t, r, b] = scene.boxes[key];
+      for (let j = 92; j <= 117; j++) {
+        const o = scene.boxes[`w${j}`];
+        if (j !== i && o !== undefined && o[0] <= r && o[2] >= l && o[1] <= b && o[3] >= t) short.push(`${key}: meets w${j}`);
+      }
     }
     await page.locator('#scene').screenshot({ path: info.outputPath(`marker-lanes-${theme}.png`) });
     expect(short, `${theme}: plates partly covered by a neighbour`).toEqual([]);
